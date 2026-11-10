@@ -1,7 +1,7 @@
 /**
  * Record key lists for the remake field gate (implementation-plan.md §2.6; `checkRecordKeys` in remake.ts).
  *
- * Every content record the exporter writes (monster, quest, map, NPC, cutscene, story trigger) may only carry keys of its web type or
+ * Every content record the exporter writes (monster, quest, map, sub-dungeon, NPC, cutscene, story trigger) may only carry keys of its web type or
  * remake-only fields typed in unreal/GameData/types.ts and registered in `REMAKE_FIELDS`; anything else (a typo such as
  * `familly`, a field built through a spread or a cast that tsc cannot see, a field a package typed but never
  * registered) fails the export instead of leaking into unreal/Data past REMAKE_SCHEMA.
@@ -68,7 +68,7 @@ const questHunt = {
 const questObjective = {
   web: { type: true, targetId: true, targetName: true, required: true, current: true, location: true, source: true, itemKind: true,
     labelKey: true } satisfies Exact<KeysOf<Web.QuestObjective>>,
-  remake: {} satisfies Exact<Remade<Elem<GD.QuestDefinition['objectives']>, Web.QuestObjective>>,
+  remake: { zone: true, maxRemaining: true, after: true } satisfies Exact<Remade<Elem<GD.QuestDefinition['objectives']>, Web.QuestObjective>>,
 };
 
 const map = {
@@ -84,7 +84,20 @@ const mapEntrance = {
 type WebSpawn = Elem<Web.MapData['spawns']>;
 const mapSpawn = {
   web: { col: true, row: true, monsterId: true, count: true } satisfies Exact<KeysOf<WebSpawn>>,
-  remake: { mix: true, leader: true, variants: true } satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
+  remake: { mix: true, leader: true, variants: true, dormant: true } satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
+};
+
+// K7: a sub-dungeon (maps.json subDungeons); a hand-authored one carries its map.
+const subDungeon = {
+  web: { id: true, name: true, parentZone: true, cols: true, rows: true, theme: true, seed: true, spawns: true, miniBoss: true,
+    playerStart: true, exit: true, levelRange: true, bgColor: true } satisfies Exact<KeysOf<Web.SubDungeonMapData>>,
+  remake: { tiles: true, collisions: true, decorations: true, presentationTheme: true, regions: true, corpseSeeds: true,
+    storyDecorations: true, cleansedFlag: true } satisfies Exact<Remade<GD.SubDungeonMapData, Web.SubDungeonMapData>>,
+};
+type WebSubSpawn = Elem<Web.SubDungeonMapData['spawns']>;
+const subDungeonSpawn = {
+  web: { col: true, row: true, monsterId: true, count: true } satisfies Exact<KeysOf<WebSubSpawn>>,
+  remake: { mix: true, leader: true, variants: true, dormant: true } satisfies Exact<Remade<Elem<GD.SubDungeonMapData['spawns']>, WebSubSpawn>>,
 };
 
 type Npc = Web.NPCDefinition;
@@ -116,6 +129,7 @@ export const RECORD_KEYS: Readonly<Record<RemakeKind, Readonly<Record<string, Le
   quest: { '': level(quest), rewards: level(questRewards), defendTarget: level(questDefend), 'objectives[]': level(questObjective),
     'hunts[]': level(questHunt) },
   map: { '': level(map), 'subDungeonEntrances[]': level(mapEntrance), 'spawns[]': level(mapSpawn) },
+  subDungeon: { '': level(subDungeon), 'spawns[]': level(subDungeonSpawn) },
   npc: { '': level(npc) },
   cutscene: { '': level(cutscene), 'steps[]': level(cutsceneStep) },
   trigger: { '': level(trigger) },

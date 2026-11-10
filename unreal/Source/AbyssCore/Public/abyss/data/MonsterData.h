@@ -398,7 +398,8 @@ struct MonsterDef {
   std::vector<MonsterPhaseDef> phases;
   // ---- dark remake K5 (remake schema monster.packAggro / kite / block / morale / aura) ----
   // Pack aggro: when another living member of its pack within this many tiles is provoked (M2) or enters Chase, this
-  // monster is provoked too, once per trigger (it does not pass the alarm on). 0 = it keeps to itself.
+  // monster is provoked too, once per trigger (it does not pass the alarm on). 0 = it keeps to itself (K7: except
+  // while it stands dormant - a dormant entry wakes as one, MapData.h MapSpawnDormantDef).
   double packAggro = 0;
   MonsterKiteDef kite;
   MonsterBlockDef block;

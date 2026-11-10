@@ -28,6 +28,23 @@ uint64_t SimLoadDerivedSeed(const RngState& st, size_t streamIndex) {
   return h;
 }
 
+// K7: whether the quest log holds the cleanse that sets a sub-dungeon's `flag`: the quest with the clear_area objective
+// of that sub-dungeon (one per sub-dungeon, and nothing else sets the flag: DataStore::Finalize) is turned in or
+// completed, or - with more objectives after it - still active with that objective done.
+bool SimCleanseRecorded(const DataStore& data, const QuestSystem& quests, std::string_view flag) {
+  for (const QuestDef& q : data.Quests().quests) {
+    for (size_t i = 0; i < q.objectives.size(); ++i) {
+      const QuestObjectiveDef& o = q.objectives[i];
+      if (o.type != ObjectiveType::ClearArea || o.cleansedFlag != flag) continue;
+      const QuestProgress* p = quests.Progress(q.id);
+      if (p == nullptr) continue;
+      if (p->status == QuestStatus::TurnedIn || p->status == QuestStatus::Completed) return true;
+      if (p->status == QuestStatus::Active && i < p->objectives.size() && p->objectives[i] >= o.required) return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
@@ -40,12 +57,36 @@ void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
   out.classId = hero->Class();
   hero->ToSave(out.player);
   out.player.currentMap = session.currentMap;
+  // Dark remake K7 (world 9.6 "in the labyrinth: abyss_rift (15,22)"): a sub-dungeon is rebuilt on every visit and is
+  // never a save's map. A save made inside is written in the parent zone at the tile the exit returns to (so is the
+  // zone-entry autosave of the sub-dungeon itself); a hero that died inside is written where its respawn restarts the
+  // parent (camps[0], fallback playerStart: CombatSystem::DungeonRespawnTarget). While the hero is already on its way
+  // out (the 400 ms fade) the save names where that zone change leads: the return tile again for the exit, the parent's
+  // camp for a death's restart - also the one ResolvePendingDeath starts when the app goes to the background or quits
+  // (save-ui-input 3.4 rule 3: "placed at the parent zone's camps[0] ... then save").
+  const SubDungeonDef* sub = data.World().FindSubDungeon(session.currentMap);
+  const MapDef* subParent = sub != nullptr ? data.World().FindMapProper(sub->parentZone) : nullptr;
+  if (subParent != nullptr) {
+    out.player.currentMap = subParent->id;
+    out.player.tileCol = sub->returnPos.col;
+    out.player.tileRow = sub->returnPos.row;
+    std::string leavingTo;
+    Vec2 leavingAt;
+    if (zone->PendingZoneChange(leavingTo, leavingAt) && leavingTo == subParent->id) {
+      out.player.tileCol = leavingAt.x;
+      out.player.tileRow = leavingAt.y;
+    }
+  }
   if (hero->Life() != HeroLife::Alive || !(hero->Hp() > 0)) {
     // C12 / rule 1: a Dying hero is written as respawned at the current zone's camps[0] with full HP/MP. The death
     // penalty and the soul echo were already applied at death. Only the dead hero is rewritten: during a zone change
     // (CanSave() false while `transitioning`) UE answers the ZoneChange request after the step, and that save (as well as
     // a 60 s / background save inside the 400 ms fade) keeps the live hero in the old zone (save 3.6, world 9.2).
-    const Vec2 camp = zone->CampPosition(0);
+    Vec2 camp = zone->CampPosition(0);
+    if (subParent != nullptr) {
+      const TilePos t = !subParent->camps.empty() ? subParent->camps[0].pos : subParent->playerStart;
+      camp = Vec2(t.col, t.row);
+    }
     out.player.tileCol = camp.x;
     out.player.tileRow = camp.y;
     out.player.hp = hero->MaxHp();
@@ -152,6 +193,20 @@ SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
     inventory->SetPotionSlot(static_cast<PotionSlot>(i), s.potionSlots[i]);
   }
   quests->Load(s.quests);
+  // K7 (3A review R3): a cleansed sub-dungeon spawns nothing, so its flag must not outlive the cleanse that set it.
+  // In play the two move together (QuestWorld::CheckClearArea), but a load can part them: the cleansing quest's record
+  // dropped (ApplyContentVersion: its id changed) or reset (QuestSystem::Load: its objective list changed), or a
+  // hand-edited save. The quest could then never be finished - nothing left to kill for the objective its clear_area
+  // waits for. A cleansedFlag without its cleanse in the quest log is dropped here, before the zone entry reads it:
+  // the sub-dungeon is populated again and the quest can cleanse it once more. Other world flags are not touched.
+  for (const SubDungeonDef& sd : data.World().subDungeons) {
+    if (sd.cleansedFlag.empty() || !session.HasFlag(sd.cleansedFlag)) continue;
+    if (SimCleanseRecorded(data, *quests, sd.cleansedFlag)) continue;
+    LogWarning("save: world flag '" + sd.cleansedFlag + "' without the cleanse of '" + sd.id +
+               "' in the quest log; dropped (the sub-dungeon is not cleansed)");
+    std::vector<std::string>& flags = session.worldFlags;
+    flags.erase(std::remove(flags.begin(), flags.end(), sd.cleansedFlag), flags.end());
+  }
   story->ReadSave(s);
   soulEcho->ReadSave(s);
   homestead->ReadSave(s);
@@ -182,6 +237,30 @@ SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
     badPos = true;
     LogWarning("save: the tower is locked; the hero loads in " + mapId);
   }
+  // K7: BuildSave never names a sub-dungeon (a save made inside is written at the parent's return tile). A save that
+  // does (hand-edited, or its sub-dungeon became one after it was written) loads the same way: in the parent zone at the
+  // return tile, so nothing ever loads into a zone that is rebuilt on every visit.
+  // Either way the hero stands on a return tile, which is authored against the parent's generated grid: when a prop
+  // or a wall stands on it the load uses the exit's rule (ZoneRuntime::EnterZone: the nearest walkable tile within 8)
+  // before 3.7's camp fallback, so "a save made inside loads at the entrance" does not depend on that tile. A return
+  // tile is recognised by its exact tile coordinates in the parent of a hand-authored sub-dungeon (a walking hero
+  // never stands on an unwalkable tile, so only BuildSave's remap puts a save there).
+  Vec2 savedPos(s.player.tileCol, s.player.tileRow);
+  bool onReturnTile = false;
+  if (const SubDungeonDef* sub = data.World().FindSubDungeon(mapId)) {
+    LogWarning("save: '" + mapId + "' is a sub-dungeon; the hero loads at its entrance in " + sub->parentZone);
+    mapId = sub->parentZone;
+    savedPos = Vec2(sub->returnPos.col, sub->returnPos.row);
+    badPos = false;
+    onReturnTile = true;
+  } else if (!badPos) {
+    for (const SubDungeonDef& sd : data.World().subDungeons) {
+      if (sd.hasMap && sd.parentZone == mapId && savedPos.x == sd.returnPos.col && savedPos.y == sd.returnPos.row) {
+        onReturnTile = true;
+        break;
+      }
+    }
+  }
   // S3: the zone entry (spawn jitter, elite affix rolls, hunts on RngStream::Ai) runs on streams DERIVED from the loaded
   // states, then the loaded states are put back: the session continues exactly the saved streams (SaveGame() right
   // after LoadGame() reproduces the save) and the first draws in play are not the uniforms that just placed and rolled
@@ -190,7 +269,9 @@ SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
   for (size_t i = 0; i < kRngStreamCount; ++i) {
     rng.Get(static_cast<RngStream>(i)).Seed(SimLoadDerivedSeed(loadedStreams[i], i));
   }
-  const bool ok = EnterZone(mapId, !badPos, badPos ? Vec2() : Vec2(s.player.tileCol, s.player.tileRow));
+  session.arrivingFromSubDungeon = onReturnTile;  // read and cleared by the zone entry
+  const bool ok = EnterZone(mapId, !badPos, badPos ? Vec2() : savedPos);
+  session.arrivingFromSubDungeon = false;
   if (!ok) {
     if (err != nullptr) *err = "unknown map";
     hasSession = false;

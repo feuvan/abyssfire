@@ -235,6 +235,12 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
   if (!webLeashTick) {
     if (!kiteTick) switch (m.state) {
       case MonsterState::Idle: {
+        if (m.dormant) {
+          // K7 (MapData.h MapSpawnDormantDef): it stands where it spawned - no patrol, no draw - and notices the hero
+          // only inside its wake range; MonsterSystem wakes it (WakeDormant) once it leaves Idle.
+          if (dP <= m.dormantWakeRange) m.state = MonsterState::Chase;  // no movement this tick
+          break;
+        }
         m.patrolTimerMs += in.dtMs;
         if (dP <= m.def.aggroRange) {
           m.state = MonsterState::Chase;  // no movement this tick
@@ -321,7 +327,7 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
       case MonsterState::Dead:
         break;
     }
-    MonsterAiSeparate(m, ai, in, world);
+    if (!m.dormant) MonsterAiSeparate(m, ai, in, world);  // K7: a dormant monster holds its tile
   }
 
   r.stateChanged = m.state != r.previous;

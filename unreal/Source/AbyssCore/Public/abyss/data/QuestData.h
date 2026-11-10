@@ -31,9 +31,12 @@ enum class ObjectiveType : uint8_t {
   CraftCollect,
   CraftCraft,
   CraftDeliver,
+  // Dark remake K7 (remake schema quest.clearArea; implementation-plan.md 3 K7, chapter1.md 9.2 "Cleanse"): cleanse the
+  // sub-dungeon `zone`. Appended: the web's ten keep their values.
+  ClearArea,
 };
 ABYSS_ENUM_STRINGS(ObjectiveType, "kill", "collect", "explore", "talk", "escort", "defend_wave", "investigate_clue",
-                   "craft_collect", "craft_craft", "craft_deliver")
+                   "craft_collect", "craft_craft", "craft_deliver", "clear_area")
 
 enum class ItemSourceKind : uint8_t { None, Drop, Gather };
 
@@ -55,7 +58,25 @@ struct QuestObjectiveDef {
   int32_t gatherCount = 0;                // gather source
   std::string itemKind;                   // icon / node look (derived default by target, else "relic")
   std::string labelKey;                   // overrides the label when set
+  // Dark remake K7 (remake schema quest.objectiveZone): the zone the objective is done in when it is not the quest's
+  // own: a sub-dungeon of the quest's zone (DataStore::Finalize). "" = the quest's zone. The guide points at the way
+  // there (the entrance from the parent, the exit from inside: QuestGuide.h); gather nodes, clue marks and explore
+  // spots of such an objective live in that zone.
+  std::string zone;
+  // K7 clear_area (type ClearArea; remake schema quest.clearArea): cleanse the sub-dungeon `targetId` (a hand-authored
+  // one with a cleansedFlag; the loader makes it the objective's `zone`). Done when the hero stands in it, objective
+  // `after` of the same quest is complete (an earlier index; -1 = none: the guardian's kill objective), the zone's
+  // guardian (its sub-dungeon mini-boss) is not alive and at most `maxRemaining` monsters are
+  // (0..kClearAreaMaxRemaining). QuestWorld checks it every step and on completion sets the zone's cleansedFlag
+  // (EvWorldFlag) and emits EvAreaCleansed. `required` is 1.
+  int32_t maxRemaining = 0;
+  int32_t after = -1;
+  // derived (DataStore::Finalize): the cleansedFlag of a clear_area objective's zone ("" otherwise); the K6 validator
+  // and its flag checks read it from the quest tables alone.
+  std::string cleansedFlag;
 };
+
+inline constexpr int32_t kClearAreaMaxRemaining = 1000;
 
 // Dark remake K6 (remake schema quest.permanentRewards; chapter1.md S1 / S6 / S7): granted once per (quest, difficulty)
 // at the turn-in (SessionState::permanentRewards, saved as `permanentRewards`). maxLife joins the merged equip stats as

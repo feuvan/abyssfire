@@ -494,9 +494,14 @@ bool DataStore::Finalize(DataLoadReport& report) {
 
   // ---- world ----
   // GameSim::NewGame enters it, and ZoneRuntime::EnterZone falls back to it for an unknown saved map.
-  if (!world_.FindMap(world_.defaultMap)) ck.Error("maps.json", "defaultMap", "unknown map '" + world_.defaultMap + "'");
+  // K7: both name zones proper (FindMap also finds a hand-authored sub-dungeon's map, which is entered through its
+  // parent's entrance only and is never on the world map).
+  const auto notProper = [&](const std::string& id) {
+    return world_.FindSubDungeon(id) != nullptr ? "'" + id + "' is a sub-dungeon, not a map" : "unknown map '" + id + "'";
+  };
+  if (!world_.FindMapProper(world_.defaultMap)) ck.Error("maps.json", "defaultMap", notProper(world_.defaultMap));
   for (const std::string& id : world_.mapOrder) {
-    if (!world_.FindMap(id)) ck.Error("maps.json", "order", "unknown map '" + id + "'");
+    if (!world_.FindMapProper(id)) ck.Error("maps.json", "order", notProper(id));
   }
   // Geometry (finding: a generated map with cols/rows <= 0 or 60000 passed and made ZoneGrid allocate GBs). Every
   // authored position must lie on its grid; the ported MapGen / zone runtime index with these values.
@@ -506,8 +511,16 @@ bool DataStore::Finalize(DataLoadReport& report) {
       ck.Error("maps.json", where, StrCat("tile (", p.col, ",", p.row, ") outside the ", m.cols, "x", m.rows, " grid"));
     }
   };
-  for (const MapDef& m : world_.maps) {
-    const std::string path = "maps." + m.id;
+  // Every zone: the maps and (K7) the hand-authored sub-dungeons' maps (SubDungeonDef::map, the same rules).
+  std::vector<std::pair<const MapDef*, std::string>> zoneMaps;
+  for (const MapDef& m : world_.maps) zoneMaps.emplace_back(&m, "maps." + m.id);
+  for (const SubDungeonDef& sd : world_.subDungeons) {
+    if (sd.hasMap) zoneMaps.emplace_back(&sd.map, "subDungeons." + sd.id);
+  }
+  for (const auto& [zoneMap, zonePath] : zoneMaps) {
+    const MapDef& m = *zoneMap;
+    const std::string& path = zonePath;
+    const bool subDungeonMap = world_.FindSubDungeon(m.id) != nullptr && zoneMap != world_.FindMapProper(m.id);
     if (m.cols < 1 || m.rows < 1 || m.cols > kMaxMapDim || m.rows > kMaxMapDim) {
       ck.Error("maps.json", path, StrCat("map size ", m.cols, "x", m.rows, " outside 1..", kMaxMapDim));
       continue;  // positions cannot be checked against a bad grid
@@ -555,12 +568,25 @@ bool DataStore::Finalize(DataLoadReport& report) {
           ck.Error("maps.json", spPath + ".leader", "the story boss keeps a spawn entry of its own");
         }
       }
+      // K7 dormant (MapData.h MapSpawnDormantDef): a line's members stand on the grid, one tile each (the last of the
+      // most members the entry ever spawns: its count or a variant's). A hand-authored grid is checked tile by tile
+      // with the sub-dungeons below.
+      if (sp.dormant.present && sp.dormant.hasLine) {
+        if (sp.dormant.lineStep.col == 0 && sp.dormant.lineStep.row == 0) {
+          ck.Error("maps.json", spPath + ".dormant.line", "a line needs a step (dCol / dRow not both 0)");
+        }
+        const TilePos last = DormantLineTile(sp, (std::max)(0, SpawnMaxMembers(sp) - 1));
+        if (inGrid(m, sp.pos) && !inGrid(m, last)) {
+          ck.Error("maps.json", spPath + ".dormant.line",
+                   StrCat("the line's last member (", last.col, ",", last.row, ") stands outside the grid"));
+        }
+      }
     }
     for (size_t i = 0; i < m.camps.size(); ++i) checkPos(m, StrCat(path, ".camps[", i, "]"), m.camps[i].pos);
     for (size_t i = 0; i < m.exits.size(); ++i) {
       const MapExitDef& e = m.exits[i];
       checkPos(m, StrCat(path, ".exits[", i, "]"), e.pos);
-      if (const MapDef* target = world_.FindMap(e.targetMap)) {
+      if (const MapDef* target = world_.FindMapProper(e.targetMap)) {
         if (target->cols >= 1 && target->rows >= 1 && !inGrid(*target, e.target)) {
           ck.Error("maps.json", StrCat(path, ".exits[", i, "].targetCol"),
                    StrCat("target tile (", e.target.col, ",", e.target.row, ") outside ", e.targetMap));
@@ -611,12 +637,25 @@ bool DataStore::Finalize(DataLoadReport& report) {
       if (!npcs_.Find(f.npcId)) ck.Error("maps.json", path + ".fieldNpcs", "unknown npc '" + f.npcId + "'");
     }
     for (const MapExitDef& e : m.exits) {
-      if (!world_.FindMap(e.targetMap)) ck.Error("maps.json", path + ".exits", "unknown target map '" + e.targetMap + "'");
+      // K7: an exit leads to a zone proper; a sub-dungeon is entered through an entrance of its parent (the visit, the
+      // return tile and the save rules hang on it).
+      if (!world_.FindMapProper(e.targetMap)) {
+        ck.Error("maps.json", path + ".exits",
+                 world_.FindSubDungeon(e.targetMap) != nullptr
+                     ? "target '" + e.targetMap + "' is a sub-dungeon (it is entered through a subDungeonEntrance)"
+                     : "unknown target map '" + e.targetMap + "'");
+      }
     }
     for (const SubDungeonEntranceDef& s : m.subDungeonEntrances) {
       // K1: a sealed entrance may point at a sub-dungeon a later wave adds (the Pit before Wave 3).
-      if (!s.sealed && !world_.FindSubDungeon(s.targetSubDungeon)) {
+      const SubDungeonDef* target = world_.FindSubDungeon(s.targetSubDungeon);
+      if (!s.sealed && target == nullptr) {
         ck.Error("maps.json", path + ".subDungeonEntrances", "unknown sub-dungeon");
+      }
+      // K7: the way into a hand-authored sub-dungeon stands in its parent zone (its exit returns there).
+      if (target != nullptr && target->hasMap && target->parentZone != m.id) {
+        ck.Error("maps.json", path + ".subDungeonEntrances",
+                 "'" + s.id + "' leads to '" + target->id + "', a sub-dungeon of '" + target->parentZone + "'");
       }
     }
     for (const PetSpawnDef& p : m.petSpawns) {
@@ -629,10 +668,16 @@ bool DataStore::Finalize(DataLoadReport& report) {
       for (const std::string& row : m.tiles) {
         if (row.size() != static_cast<size_t>(m.cols)) ck.Error("maps.json", path + ".tiles", "row width differs from `cols`");
       }
+      for (const std::string& row : m.collisions) {
+        if (row.size() != static_cast<size_t>(m.cols)) {
+          ck.Error("maps.json", path + ".collisions", "row width differs from `cols`");
+        }
+      }
     }
     MapTheme t{};
     if (!world_.moods.ThemeFor(m.id, t)) {
-      ck.Warn("zone_moods.json", "themeByZone", "no mood theme for " + m.id);
+      // K7: a sub-dungeon without a themeByZone row shows its presentation theme's mood, else its generator theme's.
+      if (!subDungeonMap) ck.Warn("zone_moods.json", "themeByZone", "no mood theme for " + m.id);
     } else if (!world_.moods.moods[EnumIndex(t)].defined) {
       ck.Error("zone_moods.json", "themeByZone." + m.id, "mood '" + std::string(EnumName(t)) + "' is not in `moods`");
     }
@@ -654,8 +699,10 @@ bool DataStore::Finalize(DataLoadReport& report) {
   }
   for (const SubDungeonDef& s : world_.subDungeons) {
     const std::string path = "subDungeons." + s.id;
-    if (!world_.FindMap(s.parentZone)) ck.Error("maps.json", path, "unknown parent zone");
+    // The parent is a zone proper (K7: FindMap also finds sub-dungeon maps; a sub-dungeon has no sub-dungeon).
+    if (!world_.FindMapProper(s.parentZone)) ck.Error("maps.json", path, "unknown parent zone");
     if (!monsters_.Find(s.miniBossId)) ck.Error("maps.json", path, "unknown mini-boss '" + s.miniBossId + "'");
+    if (world_.FindMapProper(s.id) != nullptr) ck.Error("maps.json", path, "a map has the same id");
     if (s.cols < 1 || s.rows < 1 || s.cols > kMaxMapDim || s.rows > kMaxMapDim) {
       ck.Error("maps.json", path, StrCat("sub-dungeon size ", s.cols, "x", s.rows, " outside 1..", kMaxMapDim));
       continue;
@@ -668,6 +715,63 @@ bool DataStore::Finalize(DataLoadReport& report) {
     for (size_t i = 0; i < s.spawns.size(); ++i) {
       if (!inSub(s.spawns[i].pos)) ck.Error("maps.json", StrCat(path, ".spawns[", i, "]"), "spawn outside the sub-dungeon grid");
       if (s.spawns[i].count < 0) ck.Error("maps.json", StrCat(path, ".spawns[", i, "].count"), "negative spawn count");
+    }
+    if (!s.hasMap) continue;
+    // K7 hand-authored sub-dungeon (the zone map's own rules ran above with the maps): the tiles the hero, the exit, the
+    // boss and every spawn anchor stand on are walkable in the authored grid (collisions rows, '1' = walkable).
+    const auto walkable = [&](TilePos p) {
+      if (!inSub(p) || static_cast<size_t>(p.row) >= s.map.collisions.size()) return false;
+      const std::string& row = s.map.collisions[static_cast<size_t>(p.row)];
+      return static_cast<size_t>(p.col) < row.size() && row[static_cast<size_t>(p.col)] == '1';
+    };
+    const std::pair<const char*, const TilePos*> anchors[] = {
+        {"playerStart", &s.playerStart}, {"exit", &s.exitPos}, {"miniBoss", &s.miniBossPos}};
+    for (const auto& [name, p] : anchors) {
+      if (inSub(*p) && !walkable(*p)) {
+        ck.Error("maps.json", StrCat(path, ".", name), StrCat("tile (", p->col, ",", p->row, ") is not walkable"));
+      }
+    }
+    for (size_t i = 0; i < s.spawns.size(); ++i) {
+      const MapSpawnDef& sp = s.spawns[i];
+      const TilePos p = sp.pos;
+      if (inSub(p) && !walkable(p)) {
+        ck.Error("maps.json", StrCat(path, ".spawns[", i, "]"), StrCat("tile (", p.col, ",", p.row, ") is not walkable"));
+      }
+      // A dormant line stands as authored: every member's tile is walkable here (at runtime a member whose tile is not
+      // would stand on the anchor, on top of member 0 - the fallback a generated zone needs, a mistake in this grid).
+      if (!sp.dormant.present || !sp.dormant.hasLine) continue;
+      for (int32_t k = 1; k < SpawnMaxMembers(sp); ++k) {
+        const TilePos at = DormantLineTile(sp, k);
+        if (inSub(at) && !walkable(at)) {
+          ck.Error("maps.json", StrCat(path, ".spawns[", i, "].dormant.line"),
+                   StrCat("member ", k, " stands on (", at.col, ",", at.row, "), which is not walkable"));
+        }
+      }
+    }
+    // The exit is a proximity trigger (world 9.2: within 1.5 tiles) armed only after the hero has been more than
+    // exitArmDistance away (W8): a start inside the trigger is fine, but the two must not share a tile.
+    if (s.playerStart == s.exitPos) ck.Error("maps.json", path + ".exit", "the exit stands on the player start");
+    // An entrance of the parent leads in (a sealed one counts: it opens later).
+    if (const MapDef* parent = world_.FindMapProper(s.parentZone)) {
+      bool entrance = false;
+      for (const SubDungeonEntranceDef& e : parent->subDungeonEntrances) entrance = entrance || e.targetSubDungeon == s.id;
+      if (!entrance) ck.Warn("maps.json", path, "no entrance of '" + s.parentZone + "' leads to it");
+    }
+    // A cleansedFlag is this sub-dungeon's own: a second sub-dungeon or a quest's setsFlags setting it would cleanse it
+    // from elsewhere.
+    if (!s.cleansedFlag.empty()) {
+      for (const SubDungeonDef& o : world_.subDungeons) {
+        if (&o != &s && o.cleansedFlag == s.cleansedFlag) {
+          ck.Error("maps.json", path + ".cleansedFlag", "'" + s.cleansedFlag + "' is also the flag of '" + o.id + "'");
+          break;
+        }
+      }
+      for (const QuestDef& q : quests_.quests) {
+        if (std::find(q.setsFlags.begin(), q.setsFlags.end(), s.cleansedFlag) != q.setsFlags.end()) {
+          ck.Error("maps.json", path + ".cleansedFlag",
+                   "'" + s.cleansedFlag + "' is also set by quest '" + q.id + "' (setsFlags)");
+        }
+      }
     }
   }
   // Art manifest footprints (W5 blocking loops over them).
@@ -689,7 +793,13 @@ bool DataStore::Finalize(DataLoadReport& report) {
     }
   }
   for (const ZoneEventDataDef& z : world_.randomEvents.zones) {
-    if (!world_.FindMap(z.zoneId)) ck.Error("random_events.json", "zones." + z.zoneId, "unknown zone");
+    // K7: a zone proper - no random event rolls inside a sub-dungeon (RandomEventSystem), so a row for one would never
+    // be read.
+    if (!world_.FindMapProper(z.zoneId)) {
+      ck.Error("random_events.json", "zones." + z.zoneId,
+               world_.FindSubDungeon(z.zoneId) != nullptr ? "a sub-dungeon rolls no random event (drop the row)"
+                                                          : "unknown zone");
+    }
     for (const std::string& id : z.ambushMonsters) {
       if (!monsters_.FindForZone(z.zoneId, id)) {
         ck.Warn("random_events.json", "zones." + z.zoneId + ".ambushMonsters", "unknown monster '" + id + "' (skipped at spawn)");
@@ -730,7 +840,13 @@ bool DataStore::Finalize(DataLoadReport& report) {
   // ---- quests ----
   for (QuestDef& q : quests_.quests) {
     const std::string path = "quests." + q.id;
-    if (!world_.FindMap(q.zone)) ck.Error("quests.json", path + ".zone", "unknown zone '" + q.zone + "'");
+    // A quest's zone is a zone proper (its giver stands there); K7: a sub-dungeon is named on the objective.
+    if (!world_.FindMapProper(q.zone)) {
+      ck.Error("quests.json", path + ".zone",
+               world_.FindSubDungeon(q.zone) != nullptr
+                   ? "'" + q.zone + "' is a sub-dungeon (name it on the objective: `zone`)"
+                   : "unknown zone '" + q.zone + "'");
+    }
     for (const std::string& p : q.prereqQuests) {
       if (!quests_.Find(p)) ck.Error("quests.json", path + ".prereqQuests", "unknown quest '" + p + "'");
     }
@@ -752,6 +868,114 @@ bool DataStore::Finalize(DataLoadReport& report) {
       }
       for (const std::string& m : o.dropMonsters) {
         if (!monsters_.Find(m) && !monsters_.FindHunt(m)) ck.Error("quests.json", path + ".objectives.source", "unknown drop monster '" + m + "'");
+      }
+    }
+    // K7 objective zones (QuestData.h): a hand-authored sub-dungeon of the quest's zone; a clear_area cleanses one that
+    // has a cleansedFlag, after an earlier objective that is not a clear_area itself.
+    for (size_t i = 0; i < q.objectives.size(); ++i) {
+      QuestObjectiveDef& o = q.objectives[i];
+      const std::string oPath = StrCat(path, ".objectives[", i, "]");
+      o.cleansedFlag.clear();
+      if (o.zone.empty()) continue;  // (a clear_area without one was refused by the loader)
+      const SubDungeonDef* sd = world_.FindSubDungeon(o.zone);
+      if (o.zone == q.zone) {
+        ck.Error("quests.json", oPath + ".zone", "the quest's own zone (omit it)");
+        continue;
+      }
+      if (sd == nullptr) {
+        ck.Error("quests.json", oPath + ".zone", "unknown sub-dungeon '" + o.zone + "'");
+        continue;
+      }
+      if (!sd->hasMap) {
+        ck.Error("quests.json", oPath + ".zone", "'" + o.zone + "' is a generated sub-dungeon (nothing enters it)");
+        continue;
+      }
+      if (sd->parentZone != q.zone) {
+        ck.Error("quests.json", oPath + ".zone",
+                 "'" + o.zone + "' is a sub-dungeon of '" + sd->parentZone + "', not of the quest's zone '" + q.zone + "'");
+      }
+      if (o.type == ObjectiveType::Escort || o.type == ObjectiveType::DefendWave) {
+        // The escort / defend runtimes are the quest's (escortNpc / defendTarget tiles of its zone).
+        ck.Error("quests.json", oPath + ".zone", "an escort / defend_wave objective is done in the quest's zone");
+      }
+      if (o.type != ObjectiveType::ClearArea) continue;
+      if (sd->cleansedFlag.empty()) {
+        ck.Error("quests.json", oPath + ".zone", "'" + o.zone + "' has no cleansedFlag (it cannot be cleansed)");
+      }
+      o.cleansedFlag = sd->cleansedFlag;
+      if (o.after >= 0) {
+        if (static_cast<size_t>(o.after) >= i) {
+          ck.Error("quests.json", oPath + ".after", StrCat("objective ", o.after, " is not an earlier objective"));
+        } else if (q.objectives[static_cast<size_t>(o.after)].type == ObjectiveType::ClearArea) {
+          ck.Error("quests.json", oPath + ".after", "a clear_area cannot wait for another clear_area");
+        }
+      }
+    }
+  }
+  // K7: one clear_area per sub-dungeon (once cleansed it spawns nothing: a second one could never be earned).
+  {
+    std::vector<std::pair<std::string, std::string>> cleansers;  // zone -> quest
+    for (const QuestDef& q : quests_.quests) {
+      for (const QuestObjectiveDef& o : q.objectives) {
+        if (o.type != ObjectiveType::ClearArea || o.zone.empty()) continue;
+        for (const auto& [zone, quest] : cleansers) {
+          if (zone == o.zone) {
+            ck.Error("quests.json", "quests." + q.id + ".objectives",
+                     "a second clear_area of '" + o.zone + "' (quest '" + quest + "' cleanses it)");
+          }
+        }
+        cleansers.emplace_back(o.zone, q.id);
+      }
+    }
+    // K7 soft-lock guards. Once cleansed a sub-dungeon spawns nothing, so (a) the quest that cleanses it cannot be one
+    // that fails and is taken again (its second try would find nothing to kill), and (b) a kill or a drop another
+    // objective needs from that sub-dungeon has to be earned before the cleanse: in the cleansing quest it is the
+    // objective the clear_area waits for (`after`); in another quest, that quest is a prerequisite of the cleansing one.
+    const auto requiresQuest = [&](const QuestDef& quest, std::string_view prereq) {
+      std::vector<const QuestDef*> open{&quest}, seen;
+      while (!open.empty()) {
+        const QuestDef* at = open.back();
+        open.pop_back();
+        if (std::find(seen.begin(), seen.end(), at) != seen.end()) continue;
+        seen.push_back(at);
+        for (const std::string& p : at->prereqQuests) {
+          if (p == prereq) return true;
+          if (const QuestDef* next = quests_.Find(p)) open.push_back(next);
+        }
+      }
+      return false;
+    };
+    for (const auto& [zone, cleanserId] : cleansers) {
+      const QuestDef* cleanser = quests_.Find(cleanserId);
+      if (cleanser == nullptr) continue;
+      if (cleanser->hasEscortNpc || cleanser->hasDefendTarget) {
+        ck.Error("quests.json", "quests." + cleanser->id + ".objectives",
+                 "a quest that can fail (an escort / a defend target) cannot cleanse '" + zone +
+                     "': taken again, it would find the sub-dungeon empty");
+      }
+      int32_t after = -1;
+      for (const QuestObjectiveDef& o : cleanser->objectives) {
+        if (o.type == ObjectiveType::ClearArea && o.zone == zone) after = o.after;
+      }
+      for (const QuestDef& q : quests_.quests) {
+        for (size_t i = 0; i < q.objectives.size(); ++i) {
+          const QuestObjectiveDef& o = q.objectives[i];
+          if (o.zone != zone) continue;
+          const bool collect = o.type == ObjectiveType::Collect || o.type == ObjectiveType::CraftCollect;
+          if (o.type != ObjectiveType::Kill && !(collect && o.sourceKind == ItemSourceKind::Drop)) continue;
+          const std::string oPath = StrCat("quests.", q.id, ".objectives[", i, "].zone");
+          if (&q == cleanser) {
+            if (static_cast<int32_t>(i) != after) {
+              ck.Error("quests.json", oPath,
+                       "'" + zone + "' spawns nothing once this quest has cleansed it: its clear_area has to wait for " +
+                           "this objective (`after`)");
+            }
+          } else if (!requiresQuest(*cleanser, q.id)) {
+            ck.Error("quests.json", oPath,
+                     "'" + zone + "' spawns nothing once quest '" + cleanser->id + "' has cleansed it: '" + q.id +
+                         "' has to be a prerequisite of that quest");
+          }
+        }
       }
     }
   }
@@ -828,6 +1052,10 @@ bool DataStore::Finalize(DataLoadReport& report) {
                  m.subDungeonEntrances[i].sealedTextKey);
     }
   }
+  // K7: a hand-authored sub-dungeon is entered - its name shows on the zone banner and in the enter line.
+  for (const SubDungeonDef& sd : world_.subDungeons) {
+    if (sd.hasMap) requireKey("maps.json", "subDungeons." + sd.id + ".name", sd.nameKey);
+  }
   // ---- dark remake K6 (implementation-plan.md 3 K6; world/WorldState.h) ----
   {
     // Statuses: a StackCount type (Ashnumb) lands only with its stacks row (StatusEffectRules::Lands); a landing one needs
@@ -871,8 +1099,9 @@ bool DataStore::Finalize(DataLoadReport& report) {
     }
     checkLands("status_effects.json", "eliteFrozenOnHit.status", sr.eliteFrozenStatus);
 
-    // World flags: a flag a condition or a spawn variant reads that no quest sets (setsFlags) never holds (warning: a
-    // later package's source, e.g. K7's cleanse, may set it).
+    // World flags: a flag a condition or a spawn variant reads that no quest sets never holds (a warning). A quest sets
+    // a flag by its setsFlags on its turn-in or (K7) by a clear_area objective, whose zone's cleansedFlag it sets when
+    // the area is cleansed (QuestsSettingFlag knows both).
     const auto flagSet = [&](const std::string& flag) { return !QuestsSettingFlag(quests_, flag).empty(); };
     const auto checkCondition = [&](const WorldCondition& c, const std::string& path) {
       for (const std::vector<WorldConditionLeaf>* leaves : {&c.all, &c.any}) {
@@ -907,11 +1136,12 @@ bool DataStore::Finalize(DataLoadReport& report) {
     // Spawn variants: a known monster of the zone, never the story boss, never on the story boss's own entry (its
     // once-per-visit spawn reads the entry's monsterId); a flag no quest sets warns.
     const std::string& storyBoss = monsters_.ai.storyBossId;
-    for (const MapDef& m : world_.maps) {
+    for (const auto& [zoneMap, zonePath] : zoneMaps) {
+      const MapDef& m = *zoneMap;
       for (size_t i = 0; i < m.spawns.size(); ++i) {
         const MapSpawnDef& sp = m.spawns[i];
         if (sp.variants.empty()) continue;
-        const std::string spPath = StrCat("maps.", m.id, ".spawns[", i, "].variants");
+        const std::string spPath = StrCat(zonePath, ".spawns[", i, "].variants");
         bool bossEntry = !storyBoss.empty() && sp.monsterId == storyBoss;
         for (const MapSpawnMixDef& e : sp.mix) bossEntry = bossEntry || (!storyBoss.empty() && e.monsterId == storyBoss);
         if (bossEntry) ck.Error("maps.json", spPath, "the story boss's entry has no variants (its spawn reads the entry)");

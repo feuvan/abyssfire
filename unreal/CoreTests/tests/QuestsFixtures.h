@@ -137,7 +137,69 @@ inline std::set<std::string> MonstersIn(const DataStore& data, std::string_view 
   if (m == nullptr) return out;
   for (const MapSpawnDef& s : m->spawns) out.insert(s.monsterId);
   if (const MiniBossEntry* b = data.Monsters().MiniBossFor(zone)) out.insert(b->monsterId);
+  // K7: a hand-authored sub-dungeon is a zone of its own (FindMap finds its map); its guardian stands on its boss tile.
+  if (const SubDungeonDef* sd = data.World().FindEnterableSubDungeon(zone)) out.insert(sd->miniBossId);
   return out;
+}
+
+// QuestContent.test.ts (kill / talk / drop targets exist in the quest's zone, gather sources have enough nodes),
+// extended by K7: a target stands in its OBJECTIVE's zone - the quest's zone, or the sub-dungeon of it the objective
+// names (`zone`) - and a clear_area names an enterable sub-dungeon of the quest's zone that has a guardian to kill.
+// (A hunt is raised in the quest's zone, so it counts there only.)
+inline void CheckQuestTargetsStandInTheirZones(const DataStore& data) {
+  for (const QuestDef& q : data.Quests().quests) {
+    CAPTURE(q.id);
+    for (size_t i = 0; i < q.objectives.size(); ++i) {
+      const QuestObjectiveDef& o = q.objectives[i];
+      CAPTURE(o.targetId);
+      const std::string& zone = ObjectiveZone(q, o);
+      CAPTURE(zone);
+      if (zone != q.zone) {
+        const SubDungeonDef* sd = data.World().FindEnterableSubDungeon(zone);
+        REQUIRE(sd != nullptr);
+        CHECK(sd->parentZone == q.zone);
+      }
+      std::set<std::string> monsters = MonstersIn(data, zone);
+      if (zone == q.zone) {
+        for (const QuestHuntRef& hr : q.hunts) monsters.insert(hr.huntId);
+      }
+      const std::set<std::string> npcs = NpcsIn(data, zone);
+      if (o.type == ObjectiveType::Kill) CHECK(monsters.count(o.targetId) == 1);
+      if (o.type == ObjectiveType::Talk) CHECK(npcs.count(o.targetId) == 1);
+      if (o.type == ObjectiveType::ClearArea) {
+        const SubDungeonDef* sd = data.World().FindEnterableSubDungeon(o.targetId);
+        REQUIRE(sd != nullptr);
+        CHECK(zone == sd->id);
+        CHECK(data.Monsters().Find(sd->miniBossId) != nullptr);
+        CHECK_FALSE(sd->cleansedFlag.empty());
+      }
+      if (o.type == ObjectiveType::Collect || o.type == ObjectiveType::CraftCollect) {
+        CHECK(o.sourceKind != ItemSourceKind::None);
+        if (o.sourceKind == ItemSourceKind::Drop) {
+          CHECK(o.dropChance > 0);
+          for (const std::string& m : o.dropMonsters) CHECK(monsters.count(m) == 1);
+        } else if (o.sourceKind == ItemSourceKind::Gather) {
+          CHECK(o.gatherCount >= o.required);
+          const MapDef* map = data.FindMap(zone);
+          REQUIRE(map != nullptr);
+          const ZoneGrid grid = BuildZoneGrid(data, *map);
+          const std::vector<TilePos> spots = ResolveGatherSpots(
+              o.gatherArea, o.gatherCount, [&grid](int32_t c, int32_t r) { return grid.Walkable(c, r); },
+              q.id + ":" + std::to_string(i));
+          CHECK(static_cast<int32_t>(spots.size()) == o.gatherCount);
+        }
+      }
+    }
+    for (const QuestHuntRef& hr : q.hunts) {
+      const HuntDef* hunt = data.Monsters().FindHunt(hr.huntId);
+      REQUIRE(hunt != nullptr);
+      CHECK(data.Monsters().Find(hunt->monsterId) != nullptr);
+      if (hunt->hasMinions) CHECK(data.Monsters().Find(hunt->minionMonsterId) != nullptr);
+      CHECK(std::any_of(q.objectives.begin(), q.objectives.end(), [&](const QuestObjectiveDef& o) {
+        return o.type == ObjectiveType::Kill && o.targetId == hr.huntId;
+      }));
+    }
+  }
 }
 
 // ---- dialogue navigation helpers (quest-dialogue-navigation.test.ts) and DlgRig -------------------------------------

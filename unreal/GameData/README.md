@@ -180,8 +180,14 @@ sees (`REMAKE_TABLE_FEATURES` in `src/remake.ts`): `statusEffects.add.ashnumb` (
 `randomEvents` `zones.<zone>.ambushChampion` (`RemakeAmbushChampion`, its `leaderLoot` the leader's guaranteed magic /
 rare drop; feature `events.ambushChampion`; since the 2F review its `notFlag` and the zone's `ambushVariants`
 (`RemakeAmbushVariant`), feature `events.ambushVariants`) (implementation-plan.md *2E outcomes*). Since package 2F also a quest hunt's `abilities` (`RemakeQuestHunt`: they follow
-the base's on the hunt's definition; feature `quest.huntAbilities`; implementation-plan.md *2F outcomes*). Still
-withheld: every Wave 3 field.
+the base's on the hunt's definition; feature `quest.huntAbilities`; implementation-plan.md *2F outcomes*). Since K7
+(package 3A, DECISIONS DR8 *K7 as built*) also a **hand-authored sub-dungeon** (`SubDungeonMapData` with `tiles`: the
+zone the hero enters; optional `collisions`, `decorations`, `presentationTheme`, `regions`, `corpseSeeds`,
+`storyDecorations`, its spawns typed as a map's; feature `subDungeon.map`) and its `cleansedFlag` (feature
+`subDungeon.cleansedFlag`), an objective's `zone` (feature `quest.objectiveZone`), the `clear_area` objective with
+`maxRemaining` / `after` (`QuestObjective`; feature `quest.clearArea`) and a spawn entry's `dormant` (`RemakeDormant`;
+feature `map.spawnDormant`). No record uses them yet: the Pit is package 3B's, authored as a redirect of
+`src/data/subDungeons.ts` (implementation-plan.md *3A outcomes*, *For 3B*). Still withheld: every other Wave 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

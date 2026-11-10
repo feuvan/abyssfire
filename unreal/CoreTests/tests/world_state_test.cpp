@@ -738,7 +738,7 @@ TEST_SUITE("world") {
       CHECK_FALSE(r.Ok());
       CHECK(K6HasIssue(r.errors, b.file, b.path, b.text));
     }
-    // A sub-dungeon spawn refuses variants until K7.
+    // A generated sub-dungeon's spawn refuses variants (K7: a hand-authored one reads them - subdungeon_test.cpp).
     {
       DataLoadReport r = K6BadLoad("maps.json", [](JsonValue& doc) {
         JsonValue* subs = K6At(doc, {"subDungeons"});
@@ -750,7 +750,7 @@ TEST_SUITE("world") {
         spawns->MutableItems()[0].Set("variants",
                                       K6Parse(StrCat(R"([{"whenFlag": "a", "monsterId": ")", kGnaw, R"(", "count": 1}])")));
       });
-      CHECK(K6HasIssue(r.errors, "maps.json", "variants", "a sub-dungeon spawn has no variants until K7"));
+      CHECK(K6HasIssue(r.errors, "maps.json", "variants", "a generated sub-dungeon's spawn has no 'variants'"));
     }
   }
 

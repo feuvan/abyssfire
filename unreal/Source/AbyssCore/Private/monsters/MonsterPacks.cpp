@@ -40,8 +40,11 @@ void MonsterSystem::PackAlarm(EntityId from) {
   const Vec2 at = src->pos;
   std::vector<EntityId>& ids = scratchPack_;
   ids.clear();
+  // K7: a dormant member is always reached. A dormant entry stands as one formation and wakes as one, whatever its
+  // members' packAggro (the Helm Wall's footmen have none: on the surface they keep to themselves) and however long
+  // its line; awake, the member follows its packAggro again.
   for (const MonsterInstance& m : monsters_) {
-    if (m.packId == pack && m.id != from && m.IsAlive() && m.def.packAggro > 0) ids.push_back(m.id);
+    if (m.packId == pack && m.id != from && m.IsAlive() && (m.def.packAggro > 0 || m.dormant)) ids.push_back(m.id);
   }
   if (ids.empty()) return;
   const std::vector<EntityId> members = ids;  // a copy: MonsterAggroMsg handlers run below
@@ -51,7 +54,7 @@ void MonsterSystem::PackAlarm(EntityId from) {
   for (EntityId id : members) {
     MonsterInstance* m = Find(id);
     if (m == nullptr || !m->IsAlive()) continue;
-    if (DistSq(m->pos, at) > m->def.packAggro * m->def.packAggro) continue;
+    if (!m->dormant && DistSq(m->pos, at) > m->def.packAggro * m->def.packAggro) continue;
     const MonsterState before = m->state;
     if (ProvokeMonster(*m, ai, now, Dist(m->pos, hero)) &&
         (before == MonsterState::Idle || before == MonsterState::Patrol)) {

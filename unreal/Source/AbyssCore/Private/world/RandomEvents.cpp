@@ -208,6 +208,10 @@ void RandomEventSystem::Tick() {
   }
   PruneFinished();
   if (hero.Life() != HeroLife::Alive || hero.Hp() <= 0) return;  // checkRandomEvents: dead hero
+  // Dark remake K7 (implementation-plan.md 3 K7): no random event rolls inside a sub-dungeon (no draw on the Events
+  // stream, no movement counted): an ambush would add monsters to a zone a clear_area counts, and a cleansed one stays
+  // empty. (The web rolled them there; DECISIONS G1.)
+  if (ctx_.data.World().FindSubDungeon(zone->MapId()) != nullptr) return;
   RandomEventTriggerInput in;
   in.nowMs = ctx_.Now();
   in.dtMs = kSimStepMs;

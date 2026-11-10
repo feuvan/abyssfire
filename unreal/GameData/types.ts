@@ -10,9 +10,9 @@
  * field may be authored before the core reads it. The Wave 1 fields, K2's (monster abilities, hit cap), K3's (on-death
  * effects, corpses, the Unburied rise, map corpse seeds, elite affix on-death / rise / families), K4's (monster phases)
  * K5's (pack aggro, kite, block, morale, auras, spawn mixes and leaders; buff / call abilities) and K6's (the Ashnumb
- * status, quest `setsFlags` and permanent rewards, spawn variants, NPC `lines` / `visibleWhen`) are typed here; K7 adds
- * its own together with its `REMAKE_SCHEMA` feature. (K6's status row and ambush champion packs are override-table
- * fields: GameData/world.ts.)
+ * status, quest `setsFlags` and permanent rewards, spawn variants, NPC `lines` / `visibleWhen`) and K7's (a quest
+ * objective's `zone`, the `clear_area` objective, a hand-authored sub-dungeon's map and `cleansedFlag`, dormant spawns)
+ * are typed here. (K6's status row and ambush champion packs are override-table fields: GameData/world.ts.)
  */
 import type * as Web from '@web/data/types';
 import type { StatusEffectType } from '@web/systems/StatusEffectSystem';
@@ -351,7 +351,30 @@ export type RemakeDefendTarget = NonNullable<Web.QuestDefinition['defendTarget']
  */
 export type RemakeQuestHunt = Web.QuestHunt & { abilities?: RemakeMonsterAbility[] };
 
-export interface QuestDefinition extends Omit<Web.QuestDefinition, 'rewards' | 'defendTarget' | 'hunts'> {
+/**
+ * A quest objective with its [W3] K7 fields (QuestData.h QuestObjectiveDef).
+ *
+ * `zone` (feature `quest.objectiveZone`): the zone the objective is done in when it is not the quest's own - a
+ * hand-authored sub-dungeon of the quest's zone (chapter1.md S7: the Pitwarden is killed in `sub_rf_pit`). The guide
+ * arrow points at the way there (the entrance from the parent zone, the exit from inside); gather nodes, clue marks and
+ * explore spots of such an objective live in that zone. Not on escort / defend_wave objectives.
+ *
+ * `clear_area` (feature `quest.clearArea`; chapter1.md §9.2 "Cleanse"): cleanse the sub-dungeon `targetId` (hand-authored,
+ * with a `cleansedFlag`; `zone` may repeat it). `required` 1. It completes while the hero stands in it once objective
+ * `after` of the same quest is complete (an earlier index, never another clear_area; omitted = none: normally the
+ * guardian's kill), the sub-dungeon's mini-boss is not alive and at most `maxRemaining` (0..1000, default 0) monsters
+ * are. The sub-dungeon's `cleansedFlag` is set then (the core emits EvWorldFlag and EvAreaCleansed), and from then on
+ * it spawns nothing. One clear_area per sub-dungeon.
+ */
+export interface QuestObjective extends Omit<Web.QuestObjective, 'type'> {
+  type: Web.QuestObjective['type'] | 'clear_area';
+  zone?: string;
+  maxRemaining?: number;
+  after?: number;
+}
+
+export interface QuestDefinition extends Omit<Web.QuestDefinition, 'rewards' | 'defendTarget' | 'hunts' | 'objectives'> {
+  objectives: QuestObjective[];
   rewards: QuestReward;
   defendTarget?: RemakeDefendTarget;
   hunts?: RemakeQuestHunt[];
@@ -394,12 +417,25 @@ export interface RemakeRegion {
  * monsters in list order instead of `count` x `monsterId` (the counts sum to `count`; the entry's `monsterId` stays and
  * must be one of the mix's members: the story-boss spawn and the quest guide's spawn points read it); `leader` names the
  * member that leads the pack (the first of its id), optionally elite (an elite leader rolls its affixes on the Ai stream
- * right after its placement, as an elite definition does, so the zone's later placements move). Map spawns only: a
- * sub-dungeon's spawns have no pack until K7. Not generator inputs (DECISIONS DR4: Wave 2 is golden-neutral).
+ * right after its placement, as an elite definition does, so the zone's later placements move). Map spawns and (K7) the
+ * spawns of a hand-authored sub-dungeon; a generated sub-dungeon's spawns carry none of the remake fields. Not generator
+ * inputs (DECISIONS DR4: Wave 2 is golden-neutral).
  */
 export type MapSpawn = Web.MapData['spawns'][number] & {
   mix?: { monsterId: string; count: number }[];
   leader?: { monsterId: string; elite?: boolean };
+  /**
+   * [W3] K7 dormant spawn (feature `map.spawnDormant`; chapter1.md §9.2 the Helm Wall, monsters.md §2.2 "dormant, aggro
+   * 3"; MapData.h MapSpawnDormantDef): the entry's members stand where they spawn - no patrol - and notice the hero only
+   * within `wakeRange` tiles (0 < wakeRange <= 30, in place of their aggroRange). One wakes for good when it first leaves
+   * idle (the hero inside the range, a hit, its pack's alarm); with `rise` (default true) it then plays its Rise clip
+   * and is rooted while it plays. The entry wakes as one: the first member to wake alarms every member still dormant,
+   * whatever its `packAggro` and distance. `line` {dCol, dRow} (each -8..8, not both 0) stands member k on the anchor
+   * tile + k x the step instead of the placement jitter (standing at attention; in a hand-authored sub-dungeon every
+   * member's tile must be walkable); `faceDeg` (tile-space degrees: 0 = +col, 90 = +row) is the heading they hold
+   * until they wake.
+   */
+  dormant?: RemakeDormant;
   /**
    * [W2] K6 spawn variants (feature `map.spawnVariants`; chapter1.md §8: after `rf_chapter_dawn` the trench and Dead
    * Ranks spawn Gravegnawers): the first whose world flag is set replaces the entry's mix / monsterId with `count`
@@ -414,6 +450,50 @@ export interface RemakeSpawnVariant {
   whenFlag: string;
   monsterId: string;
   count: number;
+}
+
+/** [W3] A K7 dormant spawn block (MapData.h MapSpawnDormantDef). */
+export interface RemakeDormant {
+  wakeRange: number;
+  rise?: boolean;
+  line?: { dCol: number; dRow: number };
+  faceDeg?: number;
+}
+
+/**
+ * A sub-dungeon (the web SubDungeonMapData) with its [W3] K7 fields (MapData.h SubDungeonDef; implementation-plan.md §3
+ * K7). The web's sub-dungeons are generated from `theme` + `seed` by a generator the core does not port: nothing enters
+ * them. A sub-dungeon with `tiles` is **hand-authored** (feature `subDungeon.map`): the zone the hero enters through
+ * the parent's unsealed entrance.
+ *
+ *  - `tiles`: `rows` x `cols` tile ids (0 grass, 1 dirt, 2 stone, 3 water, 4 wall, 5 camp, 6 camp wall; the presentation
+ *    theme's terrain style names them); `collisions` (true = walkable) defaults to "not water / wall / camp wall" and may
+ *    block more (a prop that blocks: set pieces do not); `decorations` as on a hand-built map.
+ *  - `playerStart`, `exit`, `miniBoss`, every spawn anchor and every member tile of a dormant `line` stand on walkable
+ *    tiles (a blocking decoration on one of them does not block it); the exit is a proximity trigger (1.5 tiles, armed
+ *    once the hero has been more than sqrt(6) tiles away) that returns to `parentZone` at `exit.returnCol` /
+ *    `returnRow` - author that tile walkable in the parent's generated grid (the core falls back to the nearest
+ *    walkable tile within 8).
+ *  - its spawns may carry the K5 / K6 / K7 spawn fields (`mix`, `leader`, `variants`, `dormant`); nothing respawns
+ *    inside, no random event rolls (it has no `random_events` row), a death restarts the parent zone at its first camp.
+ *  - `levelRange` is the label on the banner and the enter line (the level a hero should have), as a zone's is: the
+ *    monsters stand at their own levels, nothing is raised.
+ *  - `presentationTheme`, `regions`, `corpseSeeds`, `storyDecorations`: as on a map.
+ *  - `cleansedFlag` (feature `subDungeon.cleansedFlag`; chapter1.md §8 `rf_pit_cleansed`): the world flag the quest
+ *    objective `clear_area` of this sub-dungeon sets; once set the sub-dungeon spawns nothing. Its own: no other
+ *    sub-dungeon and no quest `setsFlags` names it.
+ *  - its name is the i18n key `data.subDungeon.<id>.name` (zh-CN and en required).
+ */
+export interface SubDungeonMapData extends Omit<Web.SubDungeonMapData, 'spawns'> {
+  spawns: MapSpawn[];
+  tiles?: number[][];
+  collisions?: boolean[][];
+  decorations?: NonNullable<Web.MapData['decorations']>;
+  presentationTheme?: string;
+  regions?: RemakeRegion[];
+  corpseSeeds?: { col: number; row: number; monsterId: string }[];
+  storyDecorations?: NonNullable<Web.MapData['storyDecorations']>;
+  cleansedFlag?: string;
 }
 
 export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances' | 'spawns'> {

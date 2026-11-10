@@ -1,7 +1,8 @@
 // Zones (authored map anchors + generator inputs), map-generation themes, world constants, random events, zone moods.
 // Sources: maps.json, map_gen.json, world_constants.json, random_events.json, zone_moods.json.
 // Spec: world-map-nav.md 2-4, 9-14, 19. The generated tile grids are produced at runtime by world/MapGen (W10);
-// only the hand-built ember_tower ships its tiles/collisions/decorations in the data.
+// only the hand-built ember_tower and the hand-authored sub-dungeons (dark remake K7: SubDungeonDef::map) ship their
+// tiles/collisions/decorations in the data.
 #pragma once
 
 #include <array>
@@ -37,12 +38,40 @@ struct MapSpawnLeaderDef {
 // the entry spawns `count` x monsterId instead of its mix / monsterId (still one pack, no leader). The first variant (list
 // order) whose flag is set wins; MonsterSystem reads it at the zone's spawn and at each respawn (MonsterSystem.h "K6").
 // count 0..kSpawnVariantMaxCount (0 = the entry spawns nothing once the flag is set); one variant per flag. Map spawns
-// only (a sub-dungeon's spawns refuse it until K7). Not generator inputs (DECISIONS DR4: Wave 2 is golden-neutral).
+// and the spawns of a hand-authored sub-dungeon (K7); a generated sub-dungeon's spawns refuse it (nothing enters one).
+// Not generator inputs (DECISIONS DR4: Wave 2 is golden-neutral).
 inline constexpr int32_t kSpawnVariantMaxCount = 100;
 struct MapSpawnVariantDef {
   std::string whenFlag;
   std::string monsterId;
   int32_t count = 1;
+};
+
+// Dark remake K7 (remake schema map.spawnDormant; chapter1.md 9.2 the Helm Wall, monsters.md 2.2 "dormant, aggro 3"):
+// the entry's members spawn dormant. A dormant monster stands where it spawned: it does not patrol (no draw on the Ai
+// stream) and notices the hero only within `wakeRange` tiles (in place of its aggroRange). It wakes for good the first
+// time it leaves Idle (the hero inside wakeRange, a hit, its pack's alarm): with `rise` it then plays its Rise clip and
+// is rooted while it plays (MonsterSystem::RiseMsFor), like a raised body. 0 < wakeRange <= kDormantWakeRangeMax.
+// The entry wakes as one: the first member to wake alarms its pack (the entry), and that alarm provokes every member
+// still dormant whatever its MonsterDef::packAggro and its distance (MonsterSystem::PackAlarm) - so the wall comes at
+// the hero together, also when one of them is shot from outside every wake range.
+// Standing at attention is a formation: with `line` {dCol, dRow} member k of the entry (mix order) stands on the anchor
+// tile + k x the step (DormantLineTile), with no placement draw, else the members are placed like any spawn (M10
+// jitter); `faceDeg` (tile-space degrees: 0 = +col, 90 = +row) is the heading they hold until they wake. Map spawns and
+// the spawns of a hand-authored sub-dungeon. Not a generator input. Every line tile is one of the zone's anchors (a
+// blocking decoration never stands on it: MapGen CollectAnchors). In a hand-authored grid every member's tile has to
+// be walkable (DataStore::Finalize, the exporter); in a generated zone, whose grid the data does not know, a member
+// whose tile turns out not walkable stands on the anchor instead.
+inline constexpr double kDormantWakeRangeMax = 30;
+inline constexpr int32_t kDormantLineStepMax = 8;
+struct MapSpawnDormantDef {
+  bool present = false;
+  double wakeRange = 0;
+  bool rise = true;
+  bool hasLine = false;
+  TilePos lineStep;  // {dCol, dRow}, each within +-kDormantLineStepMax
+  bool hasFace = false;
+  double faceDeg = 0;
 };
 
 struct MapSpawnDef {
@@ -53,7 +82,19 @@ struct MapSpawnDef {
   std::vector<MapSpawnMixDef> mix{};  // empty = `count` x monsterId
   MapSpawnLeaderDef leader{};
   std::vector<MapSpawnVariantDef> variants{};  // K6
+  MapSpawnDormantDef dormant{};                // K7
 };
+
+// The most members the entry ever spawns: its `count` (a mix sums to it) or the count of a K6 variant.
+inline int32_t SpawnMaxMembers(const MapSpawnDef& s) {
+  int32_t n = s.count;
+  for (const MapSpawnVariantDef& v : s.variants) n = v.count > n ? v.count : n;
+  return n;
+}
+// K7: the tile member k (0-based, mix order) of a dormant entry with a `line` stands on.
+inline TilePos DormantLineTile(const MapSpawnDef& s, int32_t k) {
+  return TilePos{s.pos.col + s.dormant.lineStep.col * k, s.pos.row + s.dormant.lineStep.row * k};
+}
 
 struct MapCampDef {
   TilePos pos;
@@ -105,6 +146,8 @@ struct SubDungeonEntranceDef {
   // K1 sealed entrance (remake schema map.sealedEntrances): inert until its sub-dungeon exists (the Pit before Wave 3).
   // The interact action / a press on it logs sealedTextKey as a toast and does nothing else (ZoneRuntime); its
   // targetSubDungeon may name a sub-dungeon that is not in the data yet. A sealed entrance needs a sealedTextKey.
+  // K7: an unsealed entrance whose sub-dungeon is hand-authored (SubDungeonDef::hasMap) is the way in (ZoneRuntime
+  // "sub-dungeon travel"); one whose sub-dungeon is generated (the web's two) stays inert.
   bool sealed = false;
   std::string sealedTextKey;
 };
@@ -188,9 +231,24 @@ struct MapDef {
   int32_t orderIndex = -1;  // index in MapOrder (world map), -1 when not listed
 };
 
+// A sub-dungeon (world 16; maps.json subDungeons). The web's two are generated from theme + seed by a generator the
+// core does not port: nothing enters them (their entrances stay inert). Dark remake K7 (implementation-plan.md 3 K7;
+// remake schema subDungeon.map): a hand-authored one ships its tiles, so `map` is the zone ZoneRuntime enters -
+//   * WorldTables::FindMap(id) finds it (zone entry, quest zones, the zone_entered trigger, set pieces);
+//   * `map` = the sub-dungeon as a MapDef: id / name / size / theme / seed / level range / spawns (with K5 packs, K6
+//     variants, K7 dormant), playerStart, one exit (exitPos -> parentZone at returnPos), no camps, not generated, its
+//     tiles / collisions / decorations, and the optional presentation fields (presentationTheme, regions, corpseSeeds,
+//     storyDecorations); nameKey = data.subDungeon.<id>.name;
+//   * `cleansedFlag` (remake schema subDungeon.cleansedFlag; chapter1.md 8 `rf_pit_cleansed`): the world flag a
+//     clear_area objective of this zone sets when it completes (QuestWorld, EvAreaCleansed). Once set, the zone spawns
+//     nothing on entry (neither its spawns nor its boss): it stays cleansed. "" = it cannot be cleansed.
+// Rules for every sub-dungeon zone (MonsterSystem / RandomEventSystem / CombatSystem): nothing respawns inside, no
+// random event rolls, a death restarts the parent zone at its camps[0] and leaves no echo (combat 15), a save made
+// inside is written at the parent's return tile (SimSave).
 struct SubDungeonDef {
   std::string id;
   std::string name;
+  std::string nameKey;  // data.subDungeon.<id>.name (derived)
   std::string parentZone;
   int32_t cols = 0, rows = 0;
   MapTheme theme = MapTheme::Plains;
@@ -203,6 +261,10 @@ struct SubDungeonDef {
   TilePos returnPos;
   int32_t levelMin = 1, levelMax = 1;
   std::string bgColor;
+  // K7
+  bool hasMap = false;
+  MapDef map;
+  std::string cleansedFlag;
 };
 
 struct EmberTowerPlotDef {
@@ -414,8 +476,14 @@ struct ABYSS_API WorldTables {
   RandomEventsDef randomEvents;
   ZoneMoodTables moods;
 
+  // A zone by id: a map, else (K7) the map of a hand-authored sub-dungeon. `maps` itself stays the list of the zones
+  // proper (the five story zones and the tower).
   const MapDef* FindMap(std::string_view id) const;
+  // A zone proper: an entry of `maps` only (a quest's zone, a sub-dungeon's parent).
+  const MapDef* FindMapProper(std::string_view id) const;
   const SubDungeonDef* FindSubDungeon(std::string_view id) const;
+  // K7: the hand-authored sub-dungeon `id` (one ZoneRuntime can enter), else nullptr.
+  const SubDungeonDef* FindEnterableSubDungeon(std::string_view id) const;
 };
 
 }  // namespace abyss

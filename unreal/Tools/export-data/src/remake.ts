@@ -27,7 +27,7 @@ const CONFIG_TS = 'unreal/GameData/config.ts';
 
 // ── Schema gate ─────────────────────────────────────────────────────────────
 
-export type RemakeKind = 'monster' | 'quest' | 'map' | 'npc' | 'cutscene' | 'trigger';
+export type RemakeKind = 'monster' | 'quest' | 'map' | 'subDungeon' | 'npc' | 'cutscene' | 'trigger';
 
 /**
  * Remake-only fields (implementation-plan.md §2.6), by record kind. `path` is dotted; `[]` walks an array. A field is
@@ -56,6 +56,8 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
   { kind: 'quest', path: 'rewards.permanent', feature: 'quest.permanentRewards', wave: 2 },
   { kind: 'quest', path: 'hunts[].abilities', feature: 'quest.huntAbilities', wave: 2 },
   { kind: 'quest', path: 'objectives[].zone', feature: 'quest.objectiveZone', wave: 3 },
+  { kind: 'quest', path: 'objectives[].maxRemaining', feature: 'quest.clearArea', wave: 3 },
+  { kind: 'quest', path: 'objectives[].after', feature: 'quest.clearArea', wave: 3 },
   { kind: 'map', path: 'presentationTheme', feature: 'map.presentationTheme', wave: 1 },
   { kind: 'map', path: 'subDungeonEntrances[].sealed', feature: 'map.sealedEntrances', wave: 1 },
   { kind: 'map', path: 'subDungeonEntrances[].sealedTextKey', feature: 'map.sealedEntrances', wave: 1 },
@@ -64,6 +66,21 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
   { kind: 'map', path: 'spawns[].leader', feature: 'map.spawnMix', wave: 2 },
   { kind: 'map', path: 'spawns[].variants', feature: 'map.spawnVariants', wave: 2 },
   { kind: 'map', path: 'corpseSeeds', feature: 'map.corpseSeeds', wave: 2 },
+  { kind: 'map', path: 'spawns[].dormant', feature: 'map.spawnDormant', wave: 3 },
+  // K7: a hand-authored sub-dungeon (maps.json subDungeons.<id>; LoadWorld.cpp -> SubDungeonDef::map). Its grid and the
+  // spawn fields a zone's spawns carry ride on one feature: a sub-dungeon stripped of its tiles would be a generated one.
+  { kind: 'subDungeon', path: 'tiles', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'collisions', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'decorations', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'presentationTheme', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'regions', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'corpseSeeds', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'storyDecorations', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'spawns[].mix', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'spawns[].leader', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'spawns[].variants', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'spawns[].dormant', feature: 'subDungeon.map', wave: 3 },
+  { kind: 'subDungeon', path: 'cleansedFlag', feature: 'subDungeon.cleansedFlag', wave: 3 },
   { kind: 'npc', path: 'lines', feature: 'npc.lines', wave: 2 },
   { kind: 'npc', path: 'visibleWhen', feature: 'npc.visibleWhen', wave: 2 },
   { kind: 'cutscene', path: 'steps[].anim', feature: 'story.focusAnim', wave: 1 },

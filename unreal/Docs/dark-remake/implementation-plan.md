@@ -276,6 +276,9 @@ names so CMake needs no change; both compilers, ASan, the shared-library build).
   `maxRemaining` hostiles remain; emits `EvAreaCleansed`; sets the `rf_pit_cleansed` flag (K6).
 - **Tests** (`subdungeon_test.cpp`, suite `world`): enter / exit round trip; no respawn; death return; clear_area
   completion and the flag; save inside; the guide arrow.
+- *As built: 3A outcomes (§9 Phase 3). The schema differs in three places: a hand-authored sub-dungeon is a
+  `subDungeons.<id>` record with `tiles` (not a `maps` entry), `clear_area` names its sub-dungeon in `targetId` (no
+  `zoneId` field), and the flag it sets is the sub-dungeon's `cleansedFlag`.*
 
 ## 4. UE presentation
 
@@ -2144,6 +2147,176 @@ real; every one is fixed, three with a recorded remainder (below).
 | **3C Art W3** | A13 | `environment/crypt_pit.py`, `monsters/pitwarden.py` | 1D | kit, ship, coherence |
 | **3D UE W3** | U6 | `Private/World/**` | 3A, 3B | mac-content, mac-autotest (chapter route includes the Pit), mac-look |
 
+**3A outcomes (K7 as built, 2026-11; pending review, the 3A review's fixes folded in - listed at the end of this
+block; DECISIONS DR8 *K7 as built*, DR7 note).**
+- **Scope.** The core travels into a hand-authored sub-dungeon and back, and a quest can cleanse one. No Pit content
+  is authored (3B): the shipped data has no hand-authored sub-dungeon, no objective `zone`, no `clear_area` and no
+  dormant spawn, `Data/**` is byte-identical, and the playthrough saves are byte-identical to the previous commit's
+  (20-seed sweep + default seeds + the reaction-limited sweep, GCC and Clang). The tests run on a synthetic crypt
+  (`sub_fx_k7_crypt`, 20 x 16) grafted onto the Chapter 1 zone's entrance.
+- **A hand-authored sub-dungeon** (`MapData.h` `SubDungeonDef`, `LoadWorld.cpp`; remake schema `subDungeon.map`). A
+  `maps.json` `subDungeons.<id>` record **with `tiles`** is one (`hasMap`): the loader builds `SubDungeonDef::map`, a
+  `MapDef` with the record's id, name (`data.subDungeon.<id>.name`, required), size, `theme`, `tiles`, optional
+  `collisions` / `decorations` / `presentationTheme` / `regions` / `corpseSeeds` / `storyDecorations`, its `spawns`,
+  `playerStart`, and **one exit** on `exitPos` that leads to `parentZone` at `returnPos`. No camps, NPCs or further
+  exits. `WorldTables::FindMap(id)` finds it (so every zone system runs on it unchanged); `world.maps` stays the zones
+  proper (`FindMapProper`), so the world map, `MapOrder` and the generators do not see it. Its spawns take what a map
+  spawn takes: `mix` / `leader` (K5), `variants` (K6), `dormant` (below). A record **without** `tiles` is one of the
+  web's two generated sub-dungeons: loaded as before, **never entered** (`FindEnterableSubDungeon` is null; its
+  entrance is not a target), and refuses every key above ("a generated sub-dungeon's spawn has no '<key>'": the K5 /
+  K6 "until K7" refusals, re-pinned). Finalize: the parent is a zone proper, no map shares the id, the start, the
+  exit, the boss tile, every spawn anchor and every member tile of a dormant line are walkable in the authored
+  collisions, the exit is not the start, an entrance's target is a sub-dungeon of that map, a sub-dungeon no entrance
+  of its parent leads to is a warning. A sub-dungeon is no zone proper: it cannot be `defaultMap`, stand in `order`,
+  be an exit's `targetMap` or have a `random_events.json` row (errors). The zone's built grid spares its anchors from
+  blocking decorations (`MapGen` `CollectAnchors`); the guardian's tile and a dormant line's member tiles are anchors
+  too.
+- **Travel** (`Zone.cpp`, `SimZone.cpp`, `Session.h` `SubDungeonVisit`). `InteractKind::SubDungeon` is handled: an
+  unsealed entrance whose target is enterable is an interact target within 3 tiles (prompt, the interact action, a
+  press that walks there first; a sealed one keeps K1's toast). `ZoneRuntime::EnterSubDungeon` notes the visit (parent
+  zone, entrance id and tile, return tile), logs `zone.subDungeon.enter {name}` and requests the zone change to the
+  sub-dungeon's `playerStart`; the usual sequence follows (autosave of the parent, fade, `EvZone` Exited / Entered,
+  the zone banner, `zone_entered`, the entry autosave). The sub-dungeon's exit is an ordinary exit (W8 arming: the
+  start may lie inside its arming distance), logs `zone.subDungeon.exit` and returns to the record's `returnPos` -
+  whichever entrance the hero used (`SubDungeonVisit::entranceId` / `entrancePos` only feed the snapshot); a return
+  tile that is not walkable becomes the nearest walkable one within 8 tiles. The visit ends when any other zone is
+  entered.
+- **Rules inside every sub-dungeon** (`MonsterSystem.cpp`, `RandomEvents.cpp`, `Combat.cpp` as it was): nothing
+  respawns (`RoleNeverRespawns`), **no random event rolls** (no draw on the Events stream: an ambush or a chest roll
+  from the parent's table would be content nobody authored), elites roll the **parent** zone's affix count, the boss
+  stands on `miniBossPos` with role `SubDungeonMiniBoss`, a death returns to the parent's first camp (combat 15,
+  unchanged: the penalty is permanent, no echo) - by the respawn timer and by `ResolvePendingDeath` alike (the app
+  going to the background, return to menu, quit: save-ui-input 3.4 rule 3) -, the town portal ends on the exit tile
+  and so leaves ("already at the exit" within 3 tiles). **A save made inside is written at the entrance** (parent zone
+  + `returnPos`; a dying hero, or one already on its way out after a death: the parent's first camp) and a save that
+  names any sub-dungeon as its map loads in the parent at `returnPos`, so no save ever starts inside; a load onto a
+  return tile that is not walkable uses the exit's rule (the nearest walkable tile within 8), not the camp fallback.
+  A second visit is a fresh one: the whole population stands again - unless it is cleansed.
+- **Objective `zone`** (`QuestData.h`, remake schema `quest.objectiveZone`). An objective may name a hand-authored
+  sub-dungeon of the quest's zone: its gather nodes, clue marks and explore spots live there, the drops of the
+  parent's quests roll inside, and the arrow (`QuestGuide`) leads there: `GuideTargetKind::Entrance` in the parent,
+  the target itself inside, `GuideTargetKind::Exit` when the tracked objective (or the turn-in) is outside. Inside, a
+  quest with an unfinished objective there is guided ahead of the others (after the pinned one). An escort /
+  defend_wave objective cannot name one. The content rule "a kill / talk / drop target stands in the quest's zone" now
+  reads the **objective's** zone (`QuestsFixtures.h` `CheckQuestTargetsStandInTheirZones`, run on the shipped data by
+  `quests_test` and on the fixture).
+- **`clear_area`** (remake schema `quest.clearArea`; `QuestWorld::CheckClearArea`, every step). `{type: 'clear_area',
+  targetId: <sub-dungeon>, required: 1, maxRemaining, after}`: completes when the hero is alive inside, objective
+  `after` (an earlier objective of the quest, usually the guardian's kill) is done, no `SubDungeonMiniBoss` lives and
+  at most `maxRemaining` (0..1000) monsters do. It sets the sub-dungeon's **`cleansedFlag`** (schema
+  `subDungeon.cleansedFlag`; `EvWorldFlag`, saved with K6's flags), emits **`EvAreaCleansed`** and then counts the
+  objective - in that order, one step. A cleansed sub-dungeon spawns **nothing** on later visits (no population, no
+  boss; seeded corpses stay). The flag belongs to the cleanse: a load drops a `cleansedFlag` whose cleanse is not in
+  the quest log (the cleansing quest turned in or completed, or active with its `clear_area` done), so the flag never
+  outlives the quest record that earned it. The validator (K6) knows the flag: set once the cleansing quest is
+  complete, unknown while it is active (`WsCleanses`); "no quest sets flag" counts it.
+- **Soft-lock guards** (Finalize + the exporter): one `clear_area` per sub-dungeon; the cleansing quest cannot be one
+  that fails (an escort / a defend target: taken again it would find the place empty); a kill or drop objective inside
+  a cleansable sub-dungeon is either the objective the `clear_area` waits for (`after`) or belongs to a quest that is
+  a prerequisite of the cleansing one. (If quest progress ever resets per difficulty, the cleanse flags reset with it
+  as long as the reset goes through a load: the rule above.)
+- **Dormant spawns** (remake schema `map.spawnDormant`; monsters.md 2.2 *Packs, spawns*: the Helm Wall). A spawn entry's `dormant
+  {wakeRange, rise, line {dCol, dRow}, faceDeg}`: its members stand where they are put (with `line`: member k on the
+  anchor + k x step, no jitter and no RNG draw; `faceDeg` their heading), do not patrol or drift apart, and notice the
+  hero only inside `wakeRange` tiles (0 < r <= 30) - or when hit. **The entry wakes as one**: the first member to wake
+  alarms its pack (K5 `PackAlarm`), and that alarm provokes every member still dormant whatever its `packAggro` and
+  distance (a footman has none: on the surface he keeps to himself). Waking plays `EvPlayAnim{Rise}` and roots the
+  monster for the clip (K3's rule) unless `rise: false`.
+- **Events / snapshot.** `EvAreaCleansed {zoneId, questId, objectiveIndex, flag, remaining, pos}` (appended to the
+  variant). `ZoneView::subDungeon` (`SubDungeonView`: inside, id, parent zone + its name key, entrance id / tile,
+  return tile, exit tile, guardian id + alive, hostiles, cleansedFlag, cleansed), `MarkerKind::SubDungeonEntrance`
+  markers in the parent (`target`, `enterable`, `sealed`, `cleansed`), `MonsterView::dormant`, `GuideTargetKind`
+  `entrance` / `exit`, `ObjectiveType` `clear_area`, `MapTheme` `pit` / `pit_cleansed` (3C's 3D note 1, core half).
+  All appended: no existing value moved.
+- **Across the transition** (tested): pending telegraphs, hazards, arenas, corpses and zone timers stay behind (the
+  zone teardown K2-K5 already had); the pet comes along; an escort does not follow - its quest stays active and it
+  stands at its start again when the hero returns.
+- **Tests.** `subdungeon_test.cpp` (suite `world`, 39 cases after the review) + the two re-pinned refusals
+  (`packs_test`, `world_state_test`) + the generalised content rule in `quests_test` + `combat_test`'s dungeon respawn
+  case (the `ResolvePendingDeath` rows re-pinned to the spec's scenario 17).
+- **Deviations from §3 K7, and why.** (1) Not a `maps` entry: a sub-dungeon in `maps` would enter the world map, zone
+  order, generator and "every map has a camp" rules; the record stays where the web keeps sub-dungeons. (2)
+  `clear_area` has no `zoneId`: its `targetId` is the sub-dungeon (every objective has a `targetId`; `zone` is derived).
+  (3) The flag is the sub-dungeon's `cleansedFlag`, not a quest field: the spawn rule ("cleansed = empty") and the
+  quest then read one source. (4) "No respawn inside" and "no random events inside" hold for every sub-dungeon, not
+  per record. (5) **No level raise** (decided in the 3A review, R6): a sub-dungeon's `levelRange` is what a zone's is
+  on the web - the label on the banner and the enter line, the level a hero should have - and its monsters stand at
+  their own levels. chapter1.md 9.2's "Lv 8-9" could not be delivered by the roster it lists (breach clot Lv 1, footman
+  2, gravegnawer 3, arbalest 5, shieldbearer 7, the Pitwarden 8), and raising that roster would put a wall of six Lv 8
+  footmen in front of an L5 quest (S7) and move every exp total DR9 pins; the labyrinth's `RaiseToLevel` would not do
+  it either (it leaves monsters within 6 levels of the target alone). The Pit's label is therefore **`levelRange:
+  [5, 8]`** (S7's level to the Pitwarden's; chapter1.md 9.2 amended), and its difficulty is its composition: the wall
+  that wakes as one, the feeders in the Tag Cellar, the Pitwarden behind two shieldbearers, no respawn to farm and a
+  permanent death penalty. (6) The soul echo is not moved to the entrance: combat 15's "permanent in a dungeon"
+  stands. (7) "The exit tile returns to the entrance" is "returns to the record's `returnPos`": a sub-dungeon has one
+  return tile whichever entrance was used (the Pit has one entrance; the tile the hero comes back to is authored, not
+  derived from the entrance's, so it can sit clear of the prop that marks the pit mouth). (8) Beyond the plan: a
+  dormant entry wakes as one (review R6), a load drops a cleanse flag without its cleanse (R3), and the background /
+  menu / quit path of a death inside restarts the parent like the timer (R1).
+- **3A review fixes** (round 1, 2026-11, pending review). (R1, major) `CombatSystem::ResolvePendingDeath` - the app
+  going to the background, return to menu, quit - stood a hero that died inside a sub-dungeon up at the dungeon's
+  start with full life and the fight's damage kept (an alt-tab inside the 1100 ms death window was a free revive). It
+  now has the timer's effects, as save-ui-input 3.4 rule 3 and its scenario 17 say: the parent zone restarts at its
+  first camp (`Respawn(true)`; while a zone change is already under way, and on the zone-exit path, the hero still
+  stands up in the zone being left). The save written in that step names that camp (`BuildSave` reads the pending zone
+  change: `ZoneRuntime::PendingZoneChange`), so an app killed in the background reloads at the camp, not at the pit
+  mouth. `combat_test`'s row that pinned the old behaviour was re-pinned. (R2) `ApplySave` puts a hero that loads onto
+  a sub-dungeon's return tile (a save made inside, or one naming the sub-dungeon) on the nearest walkable tile within
+  8 when that tile is blocked - the exit's rule - before 3.7's camp fallback. (R3) A `cleansedFlag` whose cleanse is
+  not in the quest log is dropped at load (`SimSave.cpp` `SimCleanseRecorded`): reachable through a content-version
+  upgrade that renames the cleansing quest (`ApplyContentVersion` drops the record, keeps the flag), through
+  `QuestSystem::Load` resetting a record whose objective count changed, or a hand-edited save; without the rule the
+  quest could never be finished (nothing spawns, so its kill is never earned). (R4) Tests for three rules no case
+  pinned: population elites roll the parent zone's affix count (an edited table where the parent's count differs
+  from the default), a crowded dormant monster does not move while the one crowding it is pushed away, and the
+  guide's spawn points inside a sub-dungeon (its entries, the guardian's tile, none once cleansed). (R5) Validation:
+  every member tile of a dormant line in a hand-authored grid is walkable, counted over the most members the entry
+  ever spawns (`SpawnMaxMembers`: its count or a variant's; error in Finalize and the exporter - the runtime's
+  "stand on the anchor" fallback stays for generated zones, whose grid the data does not know); the guardian's tile
+  and the line's member tiles are anchors a blocking decoration is kept off; `defaultMap`, `order`, an exit's
+  `targetMap` and a `random_events.json` zone row must name a zone proper (`FindMapProper`; a sub-dungeon id is an
+  error with its own message). (R6) Docs against the shipped data: deviations (5) and (7) above; and the Helm Wall
+  would have woken man by man - `PackAlarm` reached only members with `packAggro`, which a footman lacks - so a
+  hero with reach could pick the line off from outside every wake range. Giving footmen `packAggro` would have
+  changed every footman pack on the surface (M1's eight in the Burial Trenches come at a Lv 1-2 hero together); the
+  rule is the dormant entry's instead: its alarm reaches every member still dormant. Mutation check after the fixes
+  (GCC, in place, each restored): 21 mutants, one per rule above (the in-zone `ResolvePendingDeath`, the save's
+  pending target, the load's nearest-walkable rule and its return-tile recognition, the flag drop and its two record
+  conditions, the affix zone, the separation guard, the two guide rules, the two anchor rules, the line's member
+  check and its variant count, the four zone-proper checks, the alarm's dormant reach and its distance waiver): all
+  killed by the K7 cases.
+
+**For 3B (content), from 3A.**
+1. Author the Pit as `unreal/GameData/subDungeons.ts` (a redirect of `src/data/subDungeons.ts` in
+   `Tools/export-data/redirects.json` + its snapshot): keep the web's two generated records, add `sub_rf_pit` with
+   `tiles` (40 x 40), `cleansedFlag: 'rf_pit_cleansed'`, `presentationTheme: 'pit'`, `theme: 'plains'`,
+   **`levelRange: [5, 8]`** (the label only: deviation 5; the roster keeps its monsters.md 2.0 levels), and the strings
+   `data.subDungeon.sub_rf_pit.name` (zh-CN / en). Bump nothing in `REMAKE_SCHEMA`: the five K7 features are listed.
+   No `random_events.json` row for it (none rolls inside; a row is an error).
+   The snapshot digest of a byte-identical copy (only the `./types` import kept) is
+   `44f26897f65359f426ae0d8ebcc0f3d721df366d13db27f5f537e8c9722196ac`. 3A ran this path once with a throwaway 12 x 10
+   record under that id (dormant line, `cleansedFlag`, `presentationTheme`), exported to a scratch directory: the
+   exporter wrote it (tiles / collisions as digit rows), the core loaded it with no error and no sub-dungeon warning,
+   and - the entrance unsealed in the scratch copy - entered it (6 monsters, 3 of them dormant). A second throwaway
+   run gave a Chapter 1 kill quest `zone: 'sub_rf_pit'` and a `clear_area` (`maxRemaining: 5, after: 0`): exported and
+   loaded clean; without `after` the export fails with the soft-lock guard's message. Nothing of either is committed.
+2. S7: `objectives: [{type: 'kill', targetId: 'sub_pitwarden', zone: 'sub_rf_pit', ...}, {type: 'clear_area', targetId:
+   'sub_rf_pit', required: 1, maxRemaining: 5, after: 0, ...}]`; `rf_pit_cleansed` is **not** in `setsFlags`.
+3. The Helm Wall: `{col, row, monsterId: 'risen_footman', count: 6, dormant: {wakeRange: 3, line: {dCol: 1, dRow: 0},
+   faceDeg: <toward the floor>}}`; **every** member's tile must be walkable (the export fails on one that is not) and
+   none of the six tiles may carry a blocking prop meant to block (they are anchors: a decoration there is spared from
+   blocking). No `packAggro` on `risen_footman`: the wall wakes as one by the dormant rule - all six rise and come
+   when the hero steps within 3 tiles of any of them or hits one from afar.
+4. Unseal `entrance_rf_pit` (drop `sealedTextKey`); `cs_rf_pit` is a `zone_entered` trigger on `sub_rf_pit`.
+5. Port string `sys.quest.objType.clear_area` (zh-CN e.g. 净化 / en Cleanse): UE's quest card falls back to the quest
+   type's label until it exists. `data_test`'s `subDungeons.size() == 2` pin moves to 3.
+6. AutoPilot: enter with the interact action at the entrance, leave by walking onto `ZoneView::subDungeon.exitPos`
+   after moving more than the exit's arming distance away from it.
+7. Content tests the fixture cannot give (they need the real Pit): `sub_rf_pit`'s `returnPos` is walkable in
+   `BuildZoneGrid(parent)` (the core falls back to the nearest walkable tile within 8, but "a save made in the Pit
+   loads at the pit mouth" should not lean on the fallback); its `levelRange` spans S7's level and the Pitwarden's;
+   the six Helm Wall tiles and the guardian's tile are walkable in `BuildZoneGrid(sub_rf_pit)`.
+
 **3C outcomes (A13 as built, 2026-11; art review round 1 applied — `Art/blender/README.md` §33 *Art review (3C), round 1*).**
 - **The Pitwarden.** `monsters/pitwarden.py` → `SK_Mon_Pitwarden` (`monster_sub_pitwarden`; 6979 / 2994 toon
   triangles, budget 7k / 3k), `SM_MonWeapon_PitSpade`, `T_UI_Portrait_Pitwarden`. Clips (ms; **the beat the core's
@@ -2255,6 +2428,41 @@ real; every one is fixed, three with a recorded remainder (below).
    `theme_test.cpp` accepts the themed ids `outcrop_plains@pit` / `exit_portal@pit` next to the `@march` ones (same
    footprint and blocking as their plain slots). The runtime rules themselves (`AbyssThemeRules`, the corpse layer)
    were not touched: item 1's parent chain is still to do.
+
+**3D notes from 3A (what U6 needs from the core; nothing in the UE module handles it yet, and nothing breaks without
+it: every new enum value falls into an existing `default:`).**
+13. **The entrance.** `Snapshot::markers` carries a `MarkerKind::SubDungeonEntrance` per entrance of the zone (`key` =
+    entrance id, `target` = sub-dungeon id, `sealed`, `enterable`, `cleansed`): the open pit mouth (note 7) is `!sealed`,
+    the lit one `cleansed`. The interact prompt (`Snapshot::prompt.kind == InteractKind::SubDungeon`, `key` = entrance
+    id) needs its label ("enter <name>": `data.subDungeon.<target>.name`).
+14. **Inside.** `ZoneView::subDungeon` (`inside`, `id`, `parentZone`, `parentNameKey`, `entrancePos`, `returnPos`,
+    `exitPos`, `miniBossId`, `guardianAlive`, `hostiles`, `cleansedFlag`, `cleansed`): the mood is `pit` or, when
+    `cleansed` at entry, `pit_cleansed` with every lamp lit at once (note 5). `ZoneView::mapId` is the sub-dungeon's id
+    and `nameKey` its name: the zone banner and the map title work as for a zone; the minimap has no camps. The world
+    map should show the hero in `parentZone`.
+15. **The cleanse.** `EvAreaCleansed {zoneId, questId, objectiveIndex, flag, remaining, pos}` starts the sequence of
+    note 5 (`pos` = the hero, for "nearest lamp first"); `EvWorldFlag{flag}` precedes it in the same step.
+16. **Dormant monsters.** `MonsterView::dormant` (true until it wakes): hold a still pose (the clip's first `Idle`
+    frame or an attention pose), no idle fidget, facing `heading`; on waking the core sends `EvPlayAnim{Rise}` (the K3
+    Rise the actor already maps) and roots the monster for the clip. An entry wakes as one (3A review): the Helm
+    Wall's six Rise events arrive within a step or two of each other - a staggered start (a few frames per man along
+    the line) is the presentation's to add.
+17. **The guide arrow.** `GuideTarget::kind` gains `entrance` (points at the entrance marker) and `exit` (the stair):
+    draw them as the NPC / exit arrow does today.
+18. **Quest card.** `ObjectiveType::ClearArea`: label key `sys.quest.objType.clear_area` (3B adds the string), target
+    label = the sub-dungeon's name (`data.subDungeon.<targetId>.name`), progress 0 / 1; `SubDungeonView::hostiles` /
+    `guardianAlive` can feed a "N left" line.
+19. **`MapTheme::Pit` / `PitCleansed`** exist in the core (`Enums.h`, strings `pit` / `pit_cleansed`): note 1's enum
+    half is done; `AbyssThemeRules::ExpandThemed`'s parent chain is still UE's.
+20. **Saves.** A save made inside loads at the entrance in the parent zone: the load screen's zone name is the
+    parent's. The town portal inside ends on the stair (log `zone.teleport.toSubDungeonEntrance`).
+21. **A death inside, resolved early** (3A review R1). `CmdAppBackground{true}` / `CmdResolvePendingDeath` (the
+    background, return-to-menu and quit paths `UAbyssGameInstance` already sends) now answer a death inside a
+    sub-dungeon as the respawn timer does: `EvHeroRespawned`, then `EvZone{TransitionBegan}` to the parent's first
+    camp, with `Snapshot` `transitioning` until the entry. Nothing to change in the module: its `SaveNow` after the
+    step writes the parent camp (the core maps the position), and in the background the fade simply waits for the
+    foreground (the sim is frozen). Worth one autotest probe: die in the Pit, deactivate the window, reactivate -
+    the hero stands at Knellwatch.
 
 ### Phase 4 — later chapters
 

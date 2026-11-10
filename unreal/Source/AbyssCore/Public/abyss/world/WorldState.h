@@ -16,8 +16,10 @@
 // while quest Q is offered (no record; for a reacceptable quest also offered again after it failed: a Failed record) /
 // active / completed, Q's prerequisites (transitively) are turned in, the quests that need Q (transitively) have no
 // record yet, and a flag is set when a prerequisite of Q sets it, unset when no quest sets it or only Q and the quests
-// after Q do; anything else is unknown, and an unknown counts as "could hide". A flag set by anything but a quest's
-// setsFlags (K7's cleanse) is outside the model until its package extends it.
+// after Q do; anything else is unknown, and an unknown counts as "could hide". K7: a flag a quest sets by cleansing (a
+// clear_area objective sets its zone's SubDungeonDef::cleansedFlag while the quest is open, QuestWorld) is set once
+// that quest is completed or a prerequisite, unset before it was ever accepted and while only later quests cleanse,
+// unknown while it is active (or offered again after failing: the flag stays).
 #pragma once
 
 #include <cstdint>
@@ -81,7 +83,8 @@ struct NpcVisibilityIssue {
 // dialogue trees an NPC's questTrigger choices accept quests from (nullptr: none).
 ABYSS_API std::vector<NpcVisibilityIssue> CheckNpcVisibility(const NpcTables& npcs, const QuestTables& quests,
                                                              const DialogueTables* trees = nullptr);
-// Every quest that sets `flag` (setsFlags), in quests.json order.
+// Every quest that sets `flag` (its setsFlags, or K7 a clear_area objective whose zone's cleansedFlag it is), in
+// quests.json order.
 ABYSS_API std::vector<const QuestDef*> QuestsSettingFlag(const QuestTables& quests, std::string_view flag);
 
 // ---- spawn variants ----

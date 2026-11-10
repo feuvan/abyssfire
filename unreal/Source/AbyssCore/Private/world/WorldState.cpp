@@ -68,16 +68,37 @@ void WsCollectAfter(const QuestTables& qt, std::string_view id, std::vector<std:
   }
 }
 
+// K7: quest `q` cleanses a sub-dungeon whose cleansedFlag is `flag` (a clear_area objective; QuestObjectiveDef::
+// cleansedFlag is derived by DataStore::Finalize).
+bool WsCleanses(const QuestDef& q, std::string_view flag) {
+  for (const QuestObjectiveDef& o : q.objectives) {
+    if (o.type == ObjectiveType::ClearArea && !o.cleansedFlag.empty() && o.cleansedFlag == flag) return true;
+  }
+  return false;
+}
+
 // A world flag while Q is in its phase: set when one of Q's prerequisites sets it (they are turned in); unset when no
 // quest sets it, or only Q itself and the quests after Q do (none of them is turned in yet); otherwise unknown.
+// K7: a flag a quest sets by cleansing (a clear_area objective) is set while that quest is open, not at its turn-in:
+// when the cleanser is a prerequisite of Q it is set; when it is Q itself it is unset while Q was never accepted, set
+// once Q is completed (every objective is done), and unknown while Q is active or offered again after failing (the
+// flag stays from the first attempt); when the cleanser comes after Q it is unset.
 WsTri WsFlagState(const WsQuestModel& m, std::string_view flag) {
   bool otherSetter = false;
+  bool unknown = false;
   for (const QuestDef& q : m.quests->quests) {
-    if (!WsContains(q.setsFlags, flag)) continue;
+    const bool turnIn = WsContains(q.setsFlags, flag);
+    const bool cleanse = WsCleanses(q, flag);
+    if (!turnIn && !cleanse) continue;
     if (m.IsBefore(q.id)) return WsTri::True;
+    if (cleanse && q.id == m.questId) {
+      if (m.phase == WsPhase::Completed) return WsTri::True;
+      if (m.phase == WsPhase::Active || m.phase == WsPhase::Reoffered) unknown = true;
+      continue;
+    }
     if (q.id != m.questId && !m.IsAfter(q.id)) otherSetter = true;
   }
-  return otherSetter ? WsTri::Unknown : WsTri::False;
+  return otherSetter || unknown ? WsTri::Unknown : WsTri::False;
 }
 
 WsTri WsQuestLeaf(const WsQuestModel& m, std::string_view questId, QuestGate gate) {
@@ -219,7 +240,7 @@ bool NpcVisibleNow(const NpcDef& npc, const WorldStateView& w) {
 std::vector<const QuestDef*> QuestsSettingFlag(const QuestTables& quests, std::string_view flag) {
   std::vector<const QuestDef*> out;
   for (const QuestDef& q : quests.quests) {
-    if (WsContains(q.setsFlags, flag)) out.push_back(&q);
+    if (WsContains(q.setsFlags, flag) || WsCleanses(q, flag)) out.push_back(&q);
   }
   return out;
 }

@@ -13,7 +13,8 @@ import { NPCDefinitions } from '../../../../../src/data/npcs';
 import * as Homestead from '../../../../../src/data/homestead';
 import { assert, assertSource, plain, type TableResult } from '../util';
 import { gateRemakeValues, withholdRemakeFields } from '../remake';
-import type { RemakeQuestHunt } from '../../../../GameData/types';
+import { subDungeons, isHandAuthored } from '../subdungeons';
+import type { RemakeQuestHunt, QuestObjective as RemakeObjective } from '../../../../GameData/types';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -80,8 +81,103 @@ function checkK6Quest(q: unknown): void {
   }
 }
 
+/** clear_area bound (QuestData.h kClearAreaMaxRemaining). */
+const CLEAR_AREA_MAX_REMAINING = 1000;
+
+/**
+ * K7 shapes the C++ loader and DataStore::Finalize reject (LoadQuests.cpp ReadObjective; QuestData.h QuestObjectiveDef),
+ * checked here first: an objective's `zone` is a hand-authored sub-dungeon of the quest's zone (never on an escort /
+ * defend_wave objective); a `clear_area` names its sub-dungeon as `targetId` (`zone` omitted or the same), has
+ * `required` 1, `maxRemaining` an integer 0..1000, `after` an earlier objective that is not a clear_area, and a
+ * sub-dungeon with a `cleansedFlag`; `maxRemaining` / `after` sit on clear_area objectives only. `cleansers` collects
+ * the sub-dungeons already cleansed by a quest: one clear_area per sub-dungeon.
+ */
+function checkK7Quest(q: unknown, cleansers: Map<string, string>): void {
+  const r = q as { id: string; zone: string; objectives: RemakeObjective[] };
+  const all = subDungeons();
+  r.objectives.forEach((o, i) => {
+    const where = `quests.${r.id}.objectives[${i}]`;
+    const clear = o.type === 'clear_area';
+    for (const key of ['maxRemaining', 'after'] as const) {
+      assert(clear || o[key] === undefined, `${where}.${key}: only a clear_area objective has it`);
+    }
+    if (clear) {
+      assert(typeof o.targetId === 'string' && o.targetId !== '', `${where}.targetId: a clear_area names the sub-dungeon to cleanse`);
+      assert(o.zone === undefined || o.zone === o.targetId, `${where}.zone: a clear_area's zone is its targetId ('${o.targetId}')`);
+      assert(o.required === 1, `${where}.required: a clear_area objective has required 1`);
+      assert(o.maxRemaining === undefined || (Number.isInteger(o.maxRemaining) && o.maxRemaining >= 0 && o.maxRemaining <= CLEAR_AREA_MAX_REMAINING),
+        `${where}.maxRemaining: expected an integer 0..${CLEAR_AREA_MAX_REMAINING}`);
+      if (o.after !== undefined) {
+        assert(Number.isInteger(o.after) && o.after >= 0 && o.after < i, `${where}.after: objective ${o.after} is not an earlier objective`);
+        assert(r.objectives[o.after].type !== 'clear_area', `${where}.after: a clear_area cannot wait for another clear_area`);
+      }
+    }
+    const zone = clear ? o.targetId : o.zone;
+    if (zone === undefined) return;
+    assert(typeof zone === 'string' && zone !== '', `${where}.zone: an empty zone id (omit it for the quest's zone)`);
+    assert(zone !== r.zone, `${where}.zone: the quest's own zone (omit it)`);
+    const sd = all[zone];
+    assert(sd, `${where}.zone: unknown sub-dungeon '${zone}'`);
+    assert(isHandAuthored(sd), `${where}.zone: '${zone}' is a generated sub-dungeon (nothing enters it)`);
+    assert(sd.parentZone === r.zone, `${where}.zone: '${zone}' is a sub-dungeon of '${sd.parentZone}', not of the quest's zone '${r.zone}'`);
+    assert(o.type !== 'escort' && o.type !== 'defend_wave', `${where}.zone: an escort / defend_wave objective is done in the quest's zone`);
+    if (!clear) return;
+    assert(typeof sd.cleansedFlag === 'string' && sd.cleansedFlag !== '', `${where}: '${zone}' has no cleansedFlag (it cannot be cleansed)`);
+    assert(!cleansers.has(zone), `${where}: a second clear_area of '${zone}' (quest '${cleansers.get(zone)}' cleanses it)`);
+    cleansers.set(zone, r.id);
+  });
+}
+
+/**
+ * K7 soft-lock guards (DataStore::Finalize has the same rules). Once cleansed a sub-dungeon spawns nothing, so the
+ * quest that cleanses it cannot be one that fails and is taken again, and a kill or a drop another objective needs from
+ * that sub-dungeon has to be earned before the cleanse: in the cleansing quest it is the objective its clear_area waits
+ * for (`after`); in another quest, that quest is a prerequisite of the cleansing one.
+ */
+function checkCleanseOrder(cleansers: Map<string, string>): void {
+  type Q = { id: string; prereqQuests?: string[]; escortNpc?: unknown; defendTarget?: unknown; objectives: RemakeObjective[] };
+  const all = AllQuests as unknown as Q[];
+  const byId = new Map(all.map(q => [q.id, q]));
+  const requires = (quest: Q, prereq: string): boolean => {
+    const open = [quest];
+    const seen = new Set<string>();
+    while (open.length > 0) {
+      const at = open.pop()!;
+      if (seen.has(at.id)) continue;
+      seen.add(at.id);
+      for (const p of at.prereqQuests ?? []) {
+        if (p === prereq) return true;
+        const next = byId.get(p);
+        if (next) open.push(next);
+      }
+    }
+    return false;
+  };
+  for (const [zone, cleanserId] of cleansers) {
+    const cleanser = byId.get(cleanserId)!;
+    assert(!cleanser.escortNpc && !cleanser.defendTarget,
+      `quests.${cleanser.id}.objectives: a quest that can fail (an escort / a defend target) cannot cleanse '${zone}': taken again, it would find the sub-dungeon empty`);
+    const after = cleanser.objectives.find(o => o.type === 'clear_area' && o.targetId === zone)?.after ?? -1;
+    for (const q of all) {
+      q.objectives.forEach((o, i) => {
+        if (o.type === 'clear_area' || o.zone !== zone) return;
+        const source = (o as unknown as { source?: { kind?: string } }).source;
+        const needsMonsters = o.type === 'kill' || ((o.type === 'collect' || o.type === 'craft_collect') && source?.kind === 'drop');
+        if (!needsMonsters) return;
+        const where = `quests.${q.id}.objectives[${i}].zone`;
+        if (q === cleanser) {
+          assert(i === after, `${where}: '${zone}' spawns nothing once this quest has cleansed it: its clear_area has to wait for this objective (\`after\`)`);
+        } else {
+          assert(requires(cleanser, q.id), `${where}: '${zone}' spawns nothing once quest '${cleanser.id}' has cleansed it: '${q.id}' has to be a prerequisite of that quest`);
+        }
+      });
+    }
+  }
+}
+
 export function exportQuests(): TableResult[] {
   const ids = new Set<string>();
+  const cleansers = new Map<string, string>();
   const quests = AllQuests.map(q => {
     assert(!ids.has(q.id), `duplicate quest ${q.id}`);
     ids.add(q.id);
@@ -89,6 +185,7 @@ export function exportQuests(): TableResult[] {
     gateRemakeValues('quest', q, `quests.${q.id}`);
     checkK1Hooks(q);
     checkK6Quest(q);
+    checkK7Quest(q, cleansers);
     const out = withholdRemakeFields('quest', plain(q), `quests.${q.id}`);
     // 2F: a hunt's own abilities live on its definition (quest_hunts.json defsNormal, tables/monsters.ts), not here.
     if (out.hunts) out.hunts = (out.hunts as RemakeQuestHunt[]).map(({ abilities: _abilities, ...h }) => h);
@@ -103,6 +200,7 @@ export function exportQuests(): TableResult[] {
     };
   });
   for (const q of AllQuests) for (const p of q.prereqQuests ?? []) assert(ids.has(p), `${q.id}: unknown prereq ${p}`);
+  checkCleanseOrder(cleansers);
   for (const npc of Object.values(NPCDefinitions)) for (const q of npc.quests ?? []) assert(ids.has(q), `${npc.id} lists unknown quest ${q}`);
   const byZone: Record<string, number> = {};
   for (const q of AllQuests) byZone[q.zone] = (byZone[q.zone] ?? 0) + 1;

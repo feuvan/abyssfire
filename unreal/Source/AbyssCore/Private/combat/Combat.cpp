@@ -1512,8 +1512,9 @@ void CombatSystem::KillHero(HeroDeathCause cause) {
   (void)cause;
 }
 
-// respawnAtCamp (world 9.5): full HP / MP after equipment (C1), camp 0, path and target cleared. The T12 respawn in a
-// sub-dungeon or a labyrinth floor (`parentZoneRestart`) restarts the parent zone instead (13.3 step 3).
+// respawnAtCamp (world 9.5): full HP / MP after equipment (C1), camp 0, path and target cleared. The T12 respawn and
+// ResolvePendingDeath in a sub-dungeon or a labyrinth floor (`parentZoneRestart`) restart the parent zone instead
+// (13.3 step 3, save-ui-input 3.4 rule 3).
 void CombatSystem::Respawn(bool parentZoneRestart) {
   Hero& hero = *ctx_.sys.hero;
   respawnTimer_ = kNoTimer;
@@ -1581,9 +1582,20 @@ bool CombatSystem::DungeonRespawnTarget(std::string& mapId, Vec2& pos) const {
   return true;
 }
 
-// The menu / quit / background / zone-exit path respawns in the current zone (the save that follows maps the position,
-// SimSave rule 1); only the T12 timer restarts a dungeon's parent zone.
+// The menu / quit / background path (save-ui-input 3.4 rule 3): the respawn completes now with exactly the effects of
+// the T12 timer - in the overworld at the zone's camps[0]; in a sub-dungeon or a labyrinth floor the parent zone
+// restarts at its camps[0] (K7: before sub-dungeon travel this path stood the hero up inside, a free revive at the
+// dungeon's start with the fight's damage kept). While a zone change is already under way Respawn() keeps the hero in
+// the zone that is being left (its guard), as the zone-exit path below does.
 void CombatSystem::ResolvePendingDeath() {
+  if (ctx_.sys.hero->Life() != HeroLife::Dying) return;
+  ctx_.timers.Cancel(respawnTimer_);
+  Respawn(true);
+}
+
+// Zone unload: the death never outlives the zone that holds its timer. The hero stands up in the zone being left (at
+// its camps[0]; the zone change that follows places it), never through a second zone request.
+void CombatSystem::ResolvePendingDeathInZone() {
   if (ctx_.sys.hero->Life() != HeroLife::Dying) return;
   ctx_.timers.Cancel(respawnTimer_);
   Respawn(false);
@@ -3376,7 +3388,7 @@ void CombatSystem::OnZoneEnter() {
 // Zone unload: every pending combat timer is dropped. A Dying hero is respawned first (at this zone's camp), so the
 // death never outlives its timer.
 void CombatSystem::OnZoneExit() {
-  ResolvePendingDeath();
+  ResolvePendingDeathInZone();
   ctx_.timers.CancelIf([](const Timer& t) { return t.owner == TimerOwner::Combat; });
   respawnTimer_ = kNoTimer;
   combatOffTimer_ = kNoTimer;

@@ -141,6 +141,9 @@ struct MonsterView {
   // `leashCentre` it walks home (and a phase-table monster resets there). A bound fight's centre is its authored home.
   Vec2 leashCentre;
   double leashRange = 0;
+  // K7: it stands dormant (a spawn entry's `dormant`: no patrol, it notices the hero only within its wake range) until
+  // it first leaves Idle; with the entry's `rise` its wake is an EvPlayAnim{Rise} that roots it while the clip plays.
+  bool dormant = false;
 };
 
 struct NpcView {
@@ -279,18 +282,44 @@ enum class MarkerKind : uint8_t {
   StoryDecoration,
   Exit,
   Camp,
+  // K7 (appended): a sub-dungeon entrance of the zone (static: no entity). key = the entrance id, `sealed` = it only
+  // shows its sealed line (K1), `target` = its sub-dungeon, `enterable` = the interact action goes in, `cleansed` =
+  // that sub-dungeon's cleansed flag is set.
+  SubDungeonEntrance,
 };
 ABYSS_ENUM_STRINGS(MarkerKind, "gatherNode", "clue", "questItemPickup", "lorePickup", "hiddenReward", "soulEcho",
-                   "escortNpc", "defendTarget", "eventProp", "storyDecoration", "exit", "camp")
+                   "escortNpc", "defendTarget", "eventProp", "storyDecoration", "exit", "camp", "subDungeonEntrance")
 
 struct WorldMarkerView {
-  EntityId id = kNoEntity;  // kNoEntity for static markers (exits, camps, story decor)
+  EntityId id = kNoEntity;  // kNoEntity for static markers (exits, camps, story decor, sub-dungeon entrances)
   MarkerKind kind = MarkerKind::GatherNode;
   Vec2 pos;
-  std::string key;          // item kind / lore id / area id / exit target map / decor id
-  bool sealed = false;      // exits (W7)
+  std::string key;          // item kind / lore id / area id / exit target map / decor id / entrance id
+  bool sealed = false;      // exits (W7), sub-dungeon entrances (K1)
   bool armed = true;        // exits (W8)
   double hp = 0, maxHp = 0; // escort / defend
+  // K7 sub-dungeon entrances.
+  std::string target;       // the entrance's sub-dungeon id
+  bool enterable = false;
+  bool cleansed = false;
+};
+
+// K7: the sub-dungeon the hero is in (ZoneView::subDungeon; `inside` false in every other zone). The exit tile is also
+// a MarkerKind::Exit marker (key = the parent zone).
+struct SubDungeonView {
+  bool inside = false;
+  std::string id;            // == ZoneView::mapId
+  std::string parentZone;
+  std::string parentNameKey; // the parent zone's name key (the exit's label)
+  std::string entranceId;    // the parent's entrance the hero came through ("" = entered some other way)
+  Vec2 entrancePos;          // that entrance's tile in the parent zone
+  Vec2 returnPos;            // where the exit puts the hero in the parent zone
+  Vec2 exitPos;              // the exit tile here
+  std::string miniBossId;    // the guardian's monster id
+  bool guardianAlive = false;  // its sub-dungeon mini-boss stands (alive) in the zone
+  int32_t hostiles = 0;      // monsters alive in the zone (what a clear_area counts)
+  std::string cleansedFlag;  // "" = it cannot be cleansed
+  bool cleansed = false;     // the flag is set (EvAreaCleansed marks the moment)
 };
 
 struct ZoneView {
@@ -302,6 +331,9 @@ struct ZoneView {
   double safeZoneRadius = 9;
   std::vector<Vec2> camps;
   const ZoneGrid* grid = nullptr;  // tiles + walkability + decorations (render data)
+  // K7: the sub-dungeon the hero is in (`inside` false elsewhere). Its MapDef (presentation theme, regions, tiles) is
+  // DataStore::FindMap(mapId), like any zone's.
+  SubDungeonView subDungeon;
 };
 
 struct BossBarView {

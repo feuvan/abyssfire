@@ -123,7 +123,18 @@ the export is byte-identical to the web's).
   gate level `hunts[]`: `monsters.ts` writes them on the `quest_hunts.json` hunt row, where the core's
   `MakeHuntDefinition` appends them to the base's, merges them after the base's into `defsNormal` and checks them with
   `checkK2Monster` (an id the base already has fails; a summon names a known monster); `quests.ts` keeps `quests.json`'s
-  hunts web-only); `quests.ts`, `maps.ts` and
+  hunts web-only); K7 (package 3A) enabled `subDungeon.map`, `subDungeon.cleansedFlag`, `quest.objectiveZone`,
+  `quest.clearArea` and `map.spawnDormant` (record kind `subDungeon`, key-gate levels `subDungeon` / `subDungeonSpawn`;
+  `src/subdungeons.ts` holds the shared helpers; `maps.ts` `checkSubDungeon`: a hand-authored record's grid, walkable
+  anchors, exit and return tile, its `data.subDungeon.<id>.name` key (`noteRequiredKey`), `cleansedFlag` unique and not
+  in any `setsFlags`, tiles / collisions written as digit rows; `checkSpawns` is shared by maps and sub-dungeons and
+  checks a `dormant` block (in a hand-authored grid every member tile of its `line` is walkable, counted over the
+  entry's count and its variants'); a map exit's target and a `random_events.json` zone are zones proper, never a
+  sub-dungeon; `quests.ts` `checkK7Quest` / `checkCleanseOrder`: an objective zone that is a hand-authored
+  sub-dungeon of the quest's zone, a `clear_area`'s `targetId` / `required` / `maxRemaining` / `after`, one cleanse per
+  sub-dungeon, no escort / defend target on the cleansing quest, a kill or drop inside a cleansable sub-dungeon being
+  the `after` objective or a prerequisite quest's; `world.ts`: the visibility validator and the "no quest sets flag"
+  warnings count a cleanse flag); `quests.ts`, `maps.ts` and
   `story.ts` check their shapes (one label per choice slot, one composition per wave with counts ≥ 1, `sealed` with
   `sealedTextKey`, `anim` only on a `{monster}` focus step) before the core loader would refuse them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.

@@ -29,8 +29,9 @@ void ReadSpawnCheckKeys(const JNode& n, std::initializer_list<std::string_view> 
   }
 }
 
-// `packs`: a map's spawns (K5 mix / leader); a sub-dungeon's spawn has no pack until K7 (nothing spawns it yet, and
-// DataStore's pack checks read the maps only), so mix / leader are refused there.
+// `packs`: a map's spawns and (K7) those of a hand-authored sub-dungeon read the K5 mix / leader, the K6 variants and
+// the K7 dormant block (DataStore's checks run on the zone's MapDef). A generated sub-dungeon (the web's: nothing
+// enters or spawns it) refuses them.
 std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
   std::vector<MapSpawnDef> out;
   for (const JNode& s : n.Items("spawns", true)) {
@@ -39,10 +40,12 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
     sp.monsterId = s.Str("monsterId");
     sp.count = s.Int("count");
     if (!packs) {
-      for (const char* key : {"mix", "leader"}) {
-        if (s.Has(key)) s.Child(key).Error("a sub-dungeon spawn has no pack (mix / leader) until K7");
+      for (const char* key : {"mix", "leader", "variants", "dormant"}) {
+        if (s.Has(key)) {
+          s.Child(key).Error(std::string("a generated sub-dungeon's spawn has no '") + key +
+                             "' (only a hand-authored sub-dungeon, one with tiles, is entered)");
+        }
       }
-      if (s.Has("variants")) s.Child("variants").Error("a sub-dungeon spawn has no variants until K7");
       out.push_back(std::move(sp));
       continue;
     }
@@ -85,9 +88,84 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
       sp.variants.push_back(std::move(d));
     }
     if (s.Has("variants") && sp.variants.empty()) s.Child("variants").Error("an empty variants list (omit it)");
+    // Dark remake K7 (remake schema map.spawnDormant): the entry's members stand dormant until the hero is within
+    // wakeRange (MapData.h MapSpawnDormantDef).
+    if (s.Has("dormant")) {
+      const JNode d = s.Child("dormant");
+      ReadSpawnCheckKeys(d, {"wakeRange", "rise", "line", "faceDeg"}, "spawn dormant");
+      sp.dormant.present = true;
+      sp.dormant.wakeRange = d.Num("wakeRange");
+      sp.dormant.rise = d.Bool("rise", true);
+      if (!(sp.dormant.wakeRange > 0) || sp.dormant.wakeRange > kDormantWakeRangeMax) {
+        d.Child("wakeRange").Error("expected > 0 and <= " + std::to_string(static_cast<int32_t>(kDormantWakeRangeMax)));
+      }
+      if (d.Has("line")) {
+        const JNode l = d.Child("line");
+        ReadSpawnCheckKeys(l, {"dCol", "dRow"}, "dormant line");
+        sp.dormant.hasLine = true;
+        sp.dormant.lineStep = TilePos{l.Int("dCol"), l.Int("dRow")};
+        for (const char* key : {"dCol", "dRow"}) {
+          const int32_t v = l.Int(key);
+          if (v < -kDormantLineStepMax || v > kDormantLineStepMax) {
+            l.Child(key).Error("expected -" + std::to_string(kDormantLineStepMax) + ".." +
+                               std::to_string(kDormantLineStepMax));
+          }
+        }
+      }
+      if (d.Has("faceDeg")) {
+        sp.dormant.hasFace = true;
+        sp.dormant.faceDeg = d.Num("faceDeg");
+        if (!(sp.dormant.faceDeg >= -360 && sp.dormant.faceDeg <= 360)) d.Child("faceDeg").Error("expected -360..360");
+      }
+    }
     out.push_back(std::move(sp));
   }
   return out;
+}
+
+// Dark remake presentation and K3 fields shared by a map and a hand-authored sub-dungeon (remake schema
+// map.presentationTheme / map.regions / map.corpseSeeds): render-only moods and the bodies seeded at zone entry.
+void ReadPresentation(const JNode& n, MapDef& m) {
+  for (const JNode& s : n.Items("storyDecorations", true)) {
+    m.storyDecorations.push_back(StoryDecorationDef{s.Str("id"), s.Str("name"), s.Str("description", ""),
+                                                    TilePos{s.Int("col"), s.Int("row")}, s.Str("spriteType")});
+  }
+  // Dark remake presentation (remake schema map.presentationTheme / map.regions): mood themes, render-only.
+  if (n.Has("presentationTheme")) {
+    m.hasPresentationTheme = true;
+    m.presentationTheme = n.Enum<MapTheme>("presentationTheme");
+  }
+  for (const JNode& g : n.Items("regions", true)) {
+    MapRegionDef rg;
+    rg.id = g.Str("id");
+    rg.center = TilePos{g.Int("col"), g.Int("row")};
+    rg.radius = g.Num("radius");
+    rg.mood = g.Enum<MapTheme>("mood");
+    if (rg.id.empty()) g.Child("id").Error("a mood region needs an id");
+    if (!(rg.radius > 0)) g.Child("radius").Error("expected > 0");
+    m.regions.push_back(std::move(rg));
+  }
+  // Dark remake K3 (remake schema map.corpseSeeds): bodies in the corpse registry at zone entry (DataStore checks the
+  // monster ids and the tiles).
+  for (const JNode& c : n.Items("corpseSeeds", true)) {
+    for (const auto& [key, child] : c.SelfMembers(true)) {
+      if (key != "col" && key != "row" && key != "monsterId") child.Error("unknown corpse seed field '" + key + "'");
+    }
+    MapCorpseSeedDef seed;
+    seed.pos = TilePos{c.Int("col"), c.Int("row")};
+    seed.monsterId = c.Str("monsterId");
+    if (seed.monsterId.empty()) c.Child("monsterId").Error("empty monster id");
+    m.corpseSeeds.push_back(std::move(seed));
+  }
+}
+
+// A hand-built grid (ember_tower, a hand-authored sub-dungeon): digit rows, '1' = walkable rows, decorations.
+void ReadHandBuiltGrid(const JNode& n, MapDef& m) {
+  m.tiles = n.StrList("tiles", true);
+  m.collisions = n.StrList("collisions", true);
+  for (const JNode& d : n.Items("decorations", true)) {
+    m.decorations.push_back(DecorationDef{TilePos{d.Int("col"), d.Int("row")}, d.Str("type")});
+  }
 }
 
 std::vector<WeightedDecor> ReadWeighted(const JNode& n) {
@@ -180,37 +258,7 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
       }
       m.subDungeonEntrances.push_back(std::move(e));
     }
-    for (const JNode& s : n.Items("storyDecorations", true)) {
-      m.storyDecorations.push_back(StoryDecorationDef{s.Str("id"), s.Str("name"), s.Str("description", ""),
-                                                      TilePos{s.Int("col"), s.Int("row")}, s.Str("spriteType")});
-    }
-    // Dark remake presentation (remake schema map.presentationTheme / map.regions): mood themes, render-only.
-    if (n.Has("presentationTheme")) {
-      m.hasPresentationTheme = true;
-      m.presentationTheme = n.Enum<MapTheme>("presentationTheme");
-    }
-    for (const JNode& g : n.Items("regions", true)) {
-      MapRegionDef rg;
-      rg.id = g.Str("id");
-      rg.center = TilePos{g.Int("col"), g.Int("row")};
-      rg.radius = g.Num("radius");
-      rg.mood = g.Enum<MapTheme>("mood");
-      if (rg.id.empty()) g.Child("id").Error("a mood region needs an id");
-      if (!(rg.radius > 0)) g.Child("radius").Error("expected > 0");
-      m.regions.push_back(std::move(rg));
-    }
-    // Dark remake K3 (remake schema map.corpseSeeds): bodies in the corpse registry at zone entry (DataStore checks the
-    // monster ids and the tiles).
-    for (const JNode& c : n.Items("corpseSeeds", true)) {
-      for (const auto& [key, child] : c.SelfMembers(true)) {
-        if (key != "col" && key != "row" && key != "monsterId") child.Error("unknown corpse seed field '" + key + "'");
-      }
-      MapCorpseSeedDef seed;
-      seed.pos = TilePos{c.Int("col"), c.Int("row")};
-      seed.monsterId = c.Str("monsterId");
-      if (seed.monsterId.empty()) c.Child("monsterId").Error("empty monster id");
-      m.corpseSeeds.push_back(std::move(seed));
-    }
+    ReadPresentation(n, m);
     m.generated = n.Bool("generated");
     if (n.Has("generator")) {
       const JNode g = n.Child("generator");
@@ -229,11 +277,7 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
     } else if (m.generated) {
       n.Error("generated map without generator inputs");
     }
-    m.tiles = n.StrList("tiles", true);
-    m.collisions = n.StrList("collisions", true);
-    for (const JNode& d : n.Items("decorations", true)) {
-      m.decorations.push_back(DecorationDef{TilePos{d.Int("col"), d.Int("row")}, d.Str("type")});
-    }
+    ReadHandBuiltGrid(n, m);
     for (size_t i = 0; i < out.mapOrder.size(); ++i) {
       if (out.mapOrder[i] == m.id) m.orderIndex = static_cast<int32_t>(i);
     }
@@ -249,7 +293,9 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
     s.rows = n.Int("rows");
     s.theme = n.Enum<MapTheme>("theme");
     s.seed = n.Int("seed");
-    s.spawns = ReadSpawns(n, /*packs=*/false);
+    // K7 (remake schema subDungeon.map): a sub-dungeon with `tiles` is hand-authored - the zone ZoneRuntime enters.
+    s.hasMap = n.Has("tiles");
+    s.spawns = ReadSpawns(n, /*packs=*/s.hasMap);
     s.miniBossPos = n.Tile("miniBoss");
     s.miniBossId = n.Child("miniBoss").Str("monsterId");
     s.playerStart = n.Tile("playerStart");
@@ -258,6 +304,41 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
     s.returnPos = TilePos{e.Int("returnCol"), e.Int("returnRow")};
     ReadRange(n, "levelRange", s.levelMin, s.levelMax);
     s.bgColor = n.Str("bgColor", "");
+    s.nameKey = "data.subDungeon." + s.id + ".name";
+    s.cleansedFlag = n.Str("cleansedFlag", "");
+    if (n.Has("cleansedFlag") && s.cleansedFlag.empty()) n.Child("cleansedFlag").Error("empty flag id (omit it)");
+    if (s.hasMap) {
+      MapDef& m = s.map;
+      m.id = s.id;
+      m.name = s.name;
+      m.nameKey = s.nameKey;
+      m.cols = s.cols;
+      m.rows = s.rows;
+      m.hasTheme = true;
+      m.theme = s.theme;
+      m.seed = s.seed;
+      m.bgColor = s.bgColor;
+      m.spawns = s.spawns;
+      m.playerStart = s.playerStart;
+      m.exits.push_back(MapExitDef{s.exitPos, s.parentZone, s.returnPos});
+      m.levelMin = s.levelMin;
+      m.levelMax = s.levelMax;
+      ReadPresentation(n, m);
+      m.generated = false;
+      m.generatorTheme = s.theme;
+      m.generatorSeed = s.seed;
+      ReadHandBuiltGrid(n, m);
+      if (m.tiles.empty()) n.Child("tiles").Error("a hand-authored sub-dungeon needs its tile rows");
+    } else {
+      // Only a hand-authored sub-dungeon is a zone: these would be dropped silently on a generated one.
+      for (const char* key : {"collisions", "decorations", "presentationTheme", "regions", "corpseSeeds",
+                              "storyDecorations", "cleansedFlag"}) {
+        if (n.Has(key)) {
+          n.Child(key).Error(std::string("'") + key + "' on a generated sub-dungeon (it needs `tiles`: K7 enters " +
+                             "hand-authored sub-dungeons only)");
+        }
+      }
+    }
     out.subDungeons.push_back(std::move(s));
   }
   const JNode t = r.Child("emberTower");

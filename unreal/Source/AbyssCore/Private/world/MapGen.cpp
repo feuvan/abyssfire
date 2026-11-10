@@ -678,7 +678,16 @@ void CollectAnchors(const MapDef& map, const DataStore& data, std::vector<TilePo
   for (const StoryDecorationDef& d : map.storyDecorations) out.push_back(d.pos);
   for (const SubDungeonEntranceDef& e : map.subDungeonEntrances) out.push_back(e.pos);
   for (const AvoidPointDef& a : map.generatorAvoid) out.push_back(a.pos);
-  (void)data;
+  // K7: the members of a dormant line stand on tiles of their own (member 0 on the entry's anchor above), and the
+  // guardian of a hand-authored sub-dungeon on the record's miniBossPos (not a spawn entry of its map): a blocking
+  // decoration walls none of them in. No shipped map has either before the Pit, so no built grid moves.
+  for (const MapSpawnDef& s : map.spawns) {
+    if (!s.dormant.present || !s.dormant.hasLine) continue;
+    for (int32_t k = 1; k < SpawnMaxMembers(s); ++k) out.push_back(DormantLineTile(s, k));
+  }
+  if (const SubDungeonDef* sd = data.World().FindSubDungeon(map.id); sd != nullptr && sd->hasMap && &sd->map == &map) {
+    out.push_back(sd->miniBossPos);
+  }
 }
 
 }  // namespace mapgen_impl

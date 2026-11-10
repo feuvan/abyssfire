@@ -89,6 +89,9 @@ class ABYSS_API ZoneRuntime {
   void ExitZone();
   // The transition requested by RequestZoneChange once its timer fired (GameSim polls it).
   bool TakePendingTransition(std::string& mapId, Vec2& target);
+  // The zone change under way (from RequestZoneChange until GameSim takes it): where it leads. False when none is.
+  // BuildSave reads it for a hero leaving a sub-dungeon (K7: the exit's return tile, or the parent's camp after a death).
+  bool PendingZoneChange(std::string& mapId, Vec2& target) const;
   bool HasZone() const { return map_ != nullptr; }
 
   // ---- per step ----
@@ -103,8 +106,8 @@ class ABYSS_API ZoneRuntime {
 
   // ---- input ----
   // Pointer press on a world tile (7.1 chain with the port fixes): Secondary = town portal; then (alive hero only)
-  // loot, NPC, sealed sub-dungeon entrance (K1), hidden reward, event prop, monster, exit, ground (path + hold-to-move
-  // start with `pointerId`). Out-of-range loot / NPCs / sealed entrances / hidden rewards / event props are walked to
+  // loot, NPC, sub-dungeon entrance (K1 sealed / K7 enterable), hidden reward, event prop, monster, exit, ground (path +
+  // hold-to-move start with `pointerId`). Out-of-range loot / NPCs / entrances / hidden rewards / event props are walked to
   // and used on arrival (W5 / W8 / Q6 / Q22); an exit is walked to and fires by proximity (W6 / W8).
   void OnPointerPress(Vec2 tile, PointerButton button, int32_t pointerId = 0);
   // Interact action (7.4): nearest in-range target, then its handler.
@@ -113,10 +116,18 @@ class ABYSS_API ZoneRuntime {
   // walk-then-act when out of range (W8 / Q6 / Q22).
   bool InteractWith(EntityId target);
   // FindInteractTarget (7.4): the in-range candidate with the smallest distSq from the hero; ties go to the lower order
-  // (loot, NPC, sealed sub-dungeon entrance, hidden reward, event puzzle prop), then list order. Kind None when nothing
-  // is in range. K1: a sealed entrance (distSq <= 9, no entity: `key` = its id) logs its sealedTextKey as a toast and
-  // does nothing else; unsealed entrances are not targets until sub-dungeon travel (implementation-plan.md K7).
+  // (loot, NPC, sub-dungeon entrance, hidden reward, event puzzle prop), then list order. Kind None when nothing is in
+  // range. An entrance is in reach within distSq <= 9 (no entity: `key` = its id). K1: a sealed one logs its
+  // sealedTextKey as a toast and does nothing else. K7: an unsealed one whose sub-dungeon is hand-authored
+  // (SubDungeonDef::hasMap) is the way in (EnterSubDungeon); one of a generated sub-dungeon is no target.
   InteractTarget FindInteractTarget() const;
+  // Dark remake K7 sub-dungeon travel (implementation-plan.md 3 K7). Notes the visit in the session (parent zone,
+  // entrance, return tile: SessionState::subDungeon), logs zone.subDungeon.enter and requests the zone change to the
+  // sub-dungeon's player start. False when the entrance is sealed or its sub-dungeon cannot be entered, or a zone change
+  // is under way. Inside: the map's one exit (SubDungeonDef::exitPos, armed like any exit: W8) returns to the parent at
+  // returnPos (zone.subDungeon.exit); the town portal ends on that exit tile (world 9.4) and so leaves too; a death
+  // restarts the parent zone at its camps[0] (CombatSystem::Respawn).
+  bool EnterSubDungeon(const SubDungeonEntranceDef& e);
   // Town portal (9.4 + W3).
   PortalRefusal CanUseTownPortal() const;
   bool UseTownPortal();
@@ -162,6 +173,8 @@ class ABYSS_API ZoneRuntime {
   void TickExits();
   void TickPending();
   void TickPrompt();
+  // K7: the zone is a sub-dungeon (no camp): the town portal leads to its exit tile.
+  bool PortalToExit() const;
   SimContext& ctx_;
   const MapDef* map_ = nullptr;
   ZoneGrid grid_;

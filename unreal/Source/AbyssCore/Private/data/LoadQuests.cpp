@@ -47,6 +47,30 @@ QuestObjectiveDef ReadObjective(const JNode& n) {
   }
   o.itemKind = n.Str("itemKind", "");
   o.labelKey = n.Str("labelKey", "");
+  // Dark remake K7 (remake schema quest.objectiveZone / quest.clearArea; QuestData.h): the objective's own zone, and a
+  // clear_area's threshold and the objective it waits for. DataStore::Finalize checks the zone and the index.
+  o.zone = n.Str("zone", "");
+  if (n.Has("zone") && o.zone.empty()) n.Child("zone").Error("empty zone id (omit it for the quest's zone)");
+  const bool clear = o.type == ObjectiveType::ClearArea;
+  for (const char* key : {"maxRemaining", "after"}) {
+    if (!clear && n.Has(key)) n.Child(key).Error(std::string("'") + key + "' on an objective that is not clear_area");
+  }
+  if (clear) {
+    // The area is the objective's target: targetId names the sub-dungeon (its label is data.questTarget.<id> like any
+    // target), so one (type, targetId) pair is one objective; `zone` may repeat it.
+    if (o.zone.empty()) o.zone = o.targetId;
+    if (o.zone != o.targetId) n.Child("zone").Error("a clear_area's zone is its targetId ('" + o.targetId + "')");
+    if (o.targetId.empty()) n.Child("targetId").Error("a clear_area objective names the sub-dungeon to cleanse");
+    if (o.required != 1) n.Child("required").Error("a clear_area objective has required 1");
+    o.maxRemaining = n.Int("maxRemaining", 0);
+    if (o.maxRemaining < 0 || o.maxRemaining > kClearAreaMaxRemaining) {
+      n.Child("maxRemaining").Error("expected 0.." + std::to_string(kClearAreaMaxRemaining));
+    }
+    if (n.Has("after")) {
+      o.after = n.Int("after");
+      if (o.after < 0) n.Child("after").Error("expected an objective index >= 0 (omit it for none)");
+    }
+  }
   return o;
 }
 

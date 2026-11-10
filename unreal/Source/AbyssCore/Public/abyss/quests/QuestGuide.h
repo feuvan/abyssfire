@@ -22,9 +22,13 @@ namespace abyss {
 struct QuestProgress;
 
 // What the guide points at (render hint: the minimap star and the arrow tint follow `reason`).
-enum class GuideTargetKind : uint8_t { None, Monster, Spawn, Npc, Area, Point, GatherNode, Clue, Escort, Defend };
+// K7 (appended): Entrance = the sub-dungeon entrance of this zone that leads to the objective's zone; Exit = this
+// sub-dungeon's exit tile (the objective, or the quest's giver, is back in the parent zone).
+enum class GuideTargetKind : uint8_t {
+  None, Monster, Spawn, Npc, Area, Point, GatherNode, Clue, Escort, Defend, Entrance, Exit
+};
 ABYSS_ENUM_STRINGS(GuideTargetKind, "none", "monster", "spawn", "npc", "area", "point", "gatherNode", "clue", "escort",
-                   "defend")
+                   "defend", "entrance", "exit")
 
 enum class GuideReason : uint8_t { TurnIn, Objective };
 ABYSS_ENUM_STRINGS(GuideReason, "turn_in", "objective")
@@ -58,11 +62,27 @@ struct GuideWorld {
   std::function<bool(std::string_view questId, int32_t objectiveIndex, Vec2& out)> clueTile;
   // The tile of a quest hunt (hunt data; false for an unknown hunt id).
   std::function<bool(std::string_view huntId, Vec2& out)> huntTile;
+  // ---- dark remake K7 (sub-dungeon travel) ----
+  // The live zone's id. "" (pure tests, a world without zones) = every objective is local, as before K7.
+  std::string zoneId;
+  // Where the way to another zone starts in this one: the entrance that leads into `zone` when it is a sub-dungeon of
+  // this zone (kind Entrance), this sub-dungeon's exit tile when `zone` is its parent (kind Exit). False when there
+  // is no such way (an unrelated zone).
+  std::function<bool(std::string_view zone, GuideTargetKind& kind, Vec2& out)> wayTo;
+  // Every living monster of the zone, in monster-list order (a clear_area objective points at the nearest).
+  std::function<void(std::vector<Vec2>& out)> hostiles;
 };
 
 // computeGuideTarget (5.1): completed -> the giver's tile (none when the giver is not in this zone); active -> the first
 // unfinished objective with a known target (later objectives are tried when one has none); else none.
+// K7 (GuideWorld::zoneId set): an objective done in another zone (its `zone`, else the quest's) points at the way there
+// (wayTo: the entrance from the parent, the exit from inside), and has no target when there is none; a completed quest
+// whose giver is not in this zone points at the way to the quest's zone (the exit of the sub-dungeon); a clear_area
+// objective in its zone points at the nearest living monster.
 ABYSS_API GuideTarget ComputeGuideTarget(const QuestDef& quest, const QuestProgress& progress, const GuideWorld& world);
+
+// K7: the zone objective `obj` of `quest` is done in (its own `zone`, else the quest's).
+ABYSS_API const std::string& ObjectiveZone(const QuestDef& quest, const QuestObjectiveDef& obj);
 
 // objectiveMonsters (5.1): kill -> [targetId]; collect / craft_collect with a drop source -> its monsters; else none.
 ABYSS_API std::vector<std::string> ObjectiveMonsters(const QuestObjectiveDef& obj);

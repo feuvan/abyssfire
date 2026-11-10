@@ -85,6 +85,8 @@ class ABYSS_API QuestSystem {
   // Tracking (2.6; not saved).
   void SetTracked(std::string_view questId);  // "" = none; QuestTrackedChangedMsg when changed
   const std::string& Tracked() const { return tracked_; }
+  // getGuidedQuest (2.6) for the zone. K7: inside a sub-dungeon the parent zone's open quests count as the zone's, and
+  // (after the pinned one) an active quest with an unfinished objective in that sub-dungeon leads.
   const QuestDef* GuidedQuest(std::string_view zoneId) const;
   // Craft phase label key (2.4): sys.quest.phase.collect / .craft / .deliver; "" for non-craft quests.
   std::string_view CraftPhaseKey(const QuestDef& q, const QuestProgress& p) const;

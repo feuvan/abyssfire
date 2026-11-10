@@ -560,6 +560,11 @@ Epilogue hook: step 13 seeds Chapter 2 (Aldwin follows the voice east). The east
 spawn and at every respawn. `rf_pit_cleansed` (set by a clear, not a turn-in) is K7's (implementation-plan.md *2E
 outcomes*).
 
+*K7 as built (3A, pending review):* the flag is the sub-dungeon record's `cleansedFlag` (`sub_rf_pit.cleansedFlag:
+'rf_pit_cleansed'`), set by S7's `clear_area` the moment the Pit is clear (with `EvAreaCleansed`), not listed in
+`setsFlags`. "No respawn inside" is every sub-dungeon's rule, cleansed or not; what the flag adds is that later visits
+find the Pit **empty** (no population, no Pitwarden).
+
 ## 9. Sub-areas
 
 ### 9.1 The Breach Rim (surface region, [W1])
@@ -573,8 +578,9 @@ Dead Ranks approach.
 ### 9.2 信者之坑 / The Pit of the Faithful (`sub_rf_pit`, [W3])
 
 Hand-authored 40 × 40 map (tiles present, so the generator is skipped, as for `ember_tower`); entrance at (17,26), four
-tiles below where the hero woke, outside the camp's safe radius. Lv 8-9. No respawn inside; the hero's light radius is
-the main light; death returns the hero to Knellwatch.
+tiles below where the hero woke, outside the camp's safe radius. Lv 5-8 (the label on the banner: S7's level to the
+Pitwarden's; *amended in the 3A review from "Lv 8-9", see the as-built note below*). No respawn inside; the hero's
+light radius is the main light; death returns the hero to Knellwatch.
 
 | Room | zh | Where | Contents |
 |---|---|---|---|
@@ -587,6 +593,25 @@ the main light; death returns the hero to Knellwatch.
 **Cleanse.** When the Pitwarden is dead and 5 or fewer hostiles remain, `clear_area` completes, `EvAreaCleansed` fires:
 embers rise from the floor, the grade warms, the niche lamps light one by one. The Pit kit is reused for the Labyrinth's
 crypt floor.
+
+*K7 as built (3A, pending review; implementation-plan.md 3A outcomes).* The Pit is a `subDungeons` record with `tiles`
+(not a `maps` entry). S7 is written `[{type: kill, targetId: sub_pitwarden, zone: sub_rf_pit}, {type: clear_area,
+targetId: sub_rf_pit, required: 1, maxRemaining: 5, after: 0}]`: the cleanse waits for the kill objective, so a hero who
+killed the Pitwarden before taking the quest kills him again on a later visit (an uncleansed Pit is rebuilt on every
+entry). The Helm Wall is one spawn entry with `dormant {wakeRange: 3, line, faceDeg}`: six footmen in a row, still until
+the hero comes within 3 tiles of one or one of them is hit - then **the whole wall wakes**, each man with his Rise, and
+comes (a dormant entry wakes as one; `risen_footman` needs no `packAggro` for it and gets none: on the surface a
+footman still keeps to himself). Also true inside: no random events (no ambush, no chest), the town portal ends on the
+Ash Steps' stair, a save made in the Pit loads at the pit mouth on the surface, death returns to Knellwatch with the
+penalty permanent (no echo) - also when the game is sent to the background or quit while the hero lies dead.
+
+*Levels (3A review).* The Pit's monsters are the roster of §2.0 at their own levels (breach clot 1, footman 2,
+gravegnawer 3, arbalest 5, shieldbearer 7) and the Pitwarden at 8; the core raises nobody (a sub-dungeon's level range
+is a label, as a zone's is). "Lv 8-9" promised levels that roster does not have, and raising it would stand six Lv 8
+footmen in front of an L5 quest and move the exp totals DECISIONS DR9 pins. The record's `levelRange` is `[5, 8]`. What
+makes the Pit harder than the field above it is what is in it and how it is met: the wall that wakes as one, the
+feeders in the Tag Cellar, the Pitwarden behind two shields, the dark, nothing respawning to farm and a death that
+costs for good.
 
 ## 10. Mini-boss: 尸牧婆 / the Corpseherd (`miniboss_corpseherd`, the Sheepfold (60,55))
 

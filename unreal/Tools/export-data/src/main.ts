@@ -71,6 +71,14 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * tables/world.ts; RandomEventSystem picks the ambush list and the champion draw by world flag). The ability fields the
  * review added inside `abilities[]` (an optional clip for a hazard / call, `dash`, a status-only dmgMul 0) ride on
  * `monster.abilities` (checked by tables/monsters.ts; the core reads them in the same change).
+ *
+ * K7 sub-dungeon travel and the cleanse (package 3A): a quest objective's `zone` (LoadQuests.cpp ->
+ * QuestObjectiveDef::zone: the guide's way there, its nodes / marks / explore spot in that zone), the `clear_area`
+ * objective with `maxRemaining` / `after` (QuestWorld::CheckClearArea: the sub-dungeon's cleansedFlag, EvAreaCleansed),
+ * a hand-authored sub-dungeon's map (`tiles`, `collisions`, `decorations`, the presentation fields and the K5 / K6 / K7
+ * spawn fields: LoadWorld.cpp -> SubDungeonDef::map, the zone ZoneRuntime enters) and its `cleansedFlag`, and the map
+ * spawn `dormant` block (MonsterSystem: no patrol, the wake range, the Rise on waking). Shapes are checked first by
+ * tables/quests.ts (checkK7Quest) and tables/maps.ts (checkSubDungeon).
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
@@ -86,6 +94,7 @@ export const REMAKE_SCHEMA: readonly string[] = [
   'quest.setsFlags', 'quest.permanentRewards', 'map.spawnVariants', 'npc.lines', 'npc.visibleWhen', 'status.ashnumb',
   'events.ambushChampion', 'quest.huntAbilities',
   'events.ambushVariants',
+  'quest.objectiveZone', 'quest.clearArea', 'subDungeon.map', 'subDungeon.cleansedFlag', 'map.spawnDormant',
 ];
 
 export interface RunOptions {

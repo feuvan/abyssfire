@@ -59,6 +59,13 @@ struct MonsterSpawnParams {
   bool packLeader = false;              // K5: it leads that pack
   int32_t spawnEntry = -1;              // K6: the map spawn entry and member slot (MonsterInstance::spawnEntry)
   int32_t spawnMember = -1;
+  // K7: it spawns dormant (MapSpawnDormantDef: MonsterInstance::dormant / dormantWakeRange / dormantRise) and, with
+  // hasFacing, heading `facing` (a unit vector) until it wakes.
+  bool dormant = false;
+  double dormantWakeRange = 0;
+  bool dormantRise = true;
+  bool hasFacing = false;
+  Vec2 facing{1, 0};
   // K6: affixes given instead of a roll (a champion pack's shared roll); it keeps those its family may roll
   // (EliteAffixTable::RollableFor) and is elite when it keeps one. Ignored when rollAffixes.
   const std::vector<EliteAffixType>* givenAffixes = nullptr;
@@ -99,7 +106,10 @@ class ABYSS_API MonsterSystem {
   // roll their affixes right after their placement (web draw order).
   void SpawnZonePopulation();
   // M7: once per visit at its fixed tile (bounds check only), always rolls affixes. In a sub-dungeon (the zone id is a
-  // world SubDungeonDef id) it spawns that sub-dungeon's boss instead (8.5, later milestone).
+  // world SubDungeonDef id) it spawns that sub-dungeon's boss instead (8.5).
+  // K7 sub-dungeon zones (implementation-plan.md 3 K7; MapData.h SubDungeonDef): nothing respawns inside (every role:
+  // RoleNeverRespawns), its elites roll the PARENT zone's affix count, and once its cleansedFlag is set the zone spawns
+  // nothing on entry - SpawnZonePopulation and SpawnMiniBoss both return at once (its corpse seeds still lie there).
   void SpawnMiniBoss();
   // A zone mini-boss that an open quest of this zone still needs (an unfinished Kill objective on its def id) comes back
   // when it is not alive, past once-per-visit: M7 keeps a zone from being farmed, never a quest from being finished (a
@@ -284,7 +294,9 @@ class ABYSS_API MonsterSystem {
   // Pack aggro (MonsterDef::packAggro): when a pack member is provoked by a hit (M2, ApplyDamage), enters Chase from
   // Idle / Patrol / Returning (TickAI) or is forced to (ForceChase), every other living member of its pack with
   // packAggro, standing within its packAggro of that member, is provoked (ProvokeMonster; MonsterAggroMsg when it leaves
-  // Idle / Patrol), once: a member provoked so does not pass the alarm on, and neither does a call.
+  // Idle / Patrol), once: a member provoked so does not pass the alarm on, and neither does a call. K7: a member that
+  // is still dormant is always provoked by its pack's alarm, whatever its packAggro and distance - a dormant entry
+  // wakes as one (the first to wake alarms the rest; each then wakes with its own Rise at its next AI step).
   // Morale (kill pipeline K5 step, OnMonsterDied, after the dead monster's buffs ended): a pack leader's death breaks
   // its pack: each living member with `morale` (in list order; not one walking home, not one already fleeing: its flee
   // runs on unchanged), within fleeRadius of the body (0 = any), neither fearImmune (MonsterFearImmune) nor steadied by
@@ -342,6 +354,14 @@ class ABYSS_API MonsterSystem {
   MonsterInstance* Find(EntityId id);
   const MonsterInstance* Find(EntityId id) const;
   std::span<const MonsterInstance> All() const { return monsters_; }  // includes dead entries until respawn/unload
+  // K7 (what a clear_area objective reads; ZoneView::subDungeon): the monsters alive in the zone (every role), and
+  // whether the zone's guardian - a MonsterRole::SubDungeonMiniBoss - is one of them.
+  int32_t AliveCount() const;
+  bool GuardianAlive() const;
+  // K7: the live zone when it is a sub-dungeon (CurrentZoneId is a world SubDungeonDef id), else nullptr; and whether
+  // that sub-dungeon's cleansedFlag is set (it then spawns nothing on entry: neither its spawns nor its boss).
+  const SubDungeonDef* ZoneSubDungeon() const;
+  bool ZoneCleansed() const;
   // Alive monsters within radius of a point, grid order (12).
   void QueryAlive(Vec2 centre, double radius, std::vector<EntityId>& out) const;
   EntityId NearestAlive(Vec2 from, double maxRange) const;
@@ -436,6 +456,9 @@ class ABYSS_API MonsterSystem {
   void EnsureZoneGrid();   // lazily sizes the grid / world for the live zone (spawns before SpawnZonePopulation)
   void BuildWorld();
   bool RoleNeverRespawns(MonsterRole role) const;
+  // K7: a dormant monster left Idle (the hero inside its wake range, a hit, its pack's alarm): it is awake for good;
+  // with dormantRise it plays its Rise clip, rooted while it plays (RiseMsFor; EvPlayAnim{Rise}).
+  void WakeDormant(MonsterInstance& m);
   bool StoryBossBlocked() const;  // M7: the story boss stays away after its quest (until the chapter is done)
   // An Active quest of the current zone has an unfinished Kill objective on `defId`.
   bool OpenQuestNeedsKill(std::string_view defId) const;

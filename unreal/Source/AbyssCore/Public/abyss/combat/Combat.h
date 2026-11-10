@@ -316,7 +316,9 @@ class ABYSS_API CombatSystem {
   // reset, soul echo / penalty (RewardService: GoldReason::DeathPenalty, ExpSource::DeathPenalty), EvHeroDied,
   // HeroDiedMsg (GameSim wiring closes every core-owned modal and cancels the town portal), respawn timer (T12, 1100 ms).
   void KillHero(HeroDeathCause cause);
-  // save-ui-input 3.4 rule 3: finish a Dying hero's respawn now (menu / quit / background), no second penalty.
+  // save-ui-input 3.4 rule 3: finish a Dying hero's respawn now (menu / quit / background), no second penalty. The
+  // effects are the T12 timer's: the zone's camps[0], or in a sub-dungeon / labyrinth floor the parent zone restarted
+  // at its camps[0] (a zone change is requested; the save written meanwhile names that camp, SimSave).
   void ResolvePendingDeath();
 
   // ---- queries ----
@@ -585,6 +587,7 @@ class ABYSS_API CombatSystem {
   void UpdateIndicator();
   void ClearIndicator();  // indicator -> none, EvTargetChanged{kNoEntity} when it showed one (zone change)
   void Respawn(bool parentZoneRestart);
+  void ResolvePendingDeathInZone();  // OnZoneExit: stands the hero up in the zone being left, no zone request
   void CancelPendingStrikes(bool emitCancelled);
   bool HeroImmobilized() const;
   bool HeroAlive() const;

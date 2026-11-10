@@ -128,13 +128,38 @@ bool MonsterSystem::InSafeZone(Vec2 p) const {
   return zone != nullptr && zone->HasZone() && zone->InSafeZone(p);  // any camp: distSq < safeR^2 (strict)
 }
 
+const SubDungeonDef* MonsterSystem::ZoneSubDungeon() const {
+  const std::string id = CurrentZoneId();
+  return id.empty() ? nullptr : ctx_.data.World().FindSubDungeon(id);
+}
+
+bool MonsterSystem::ZoneCleansed() const {
+  const SubDungeonDef* sd = ZoneSubDungeon();
+  return sd != nullptr && !sd->cleansedFlag.empty() && ctx_.session.HasFlag(sd->cleansedFlag);
+}
+
+int32_t MonsterSystem::AliveCount() const {
+  int32_t n = 0;
+  for (const MonsterInstance& m : monsters_) n += m.IsAlive() ? 1 : 0;
+  return n;
+}
+
+bool MonsterSystem::GuardianAlive() const {
+  for (const MonsterInstance& m : monsters_) {
+    if (m.role == MonsterRole::SubDungeonMiniBoss && m.IsAlive()) return true;
+  }
+  return false;
+}
+
 bool MonsterSystem::RoleNeverRespawns(MonsterRole role) const {
   // Mini-bosses (zone / sub-dungeon) and seal keepers never respawn in the web; the rest is data (M4 / W9 / M7). K3: a
-  // Raised body never respawns (monsters.md 1.3).
+  // Raised body never respawns (monsters.md 1.3). K7: nothing respawns inside a sub-dungeon (implementation-plan.md 3
+  // K7 "no respawn inside"; the web's regular sub-dungeon monsters did).
   if (role == MonsterRole::ZoneMiniBoss || role == MonsterRole::SubDungeonMiniBoss || role == MonsterRole::SealKeeper ||
       role == MonsterRole::Raised) {
     return true;
   }
+  if (ZoneSubDungeon() != nullptr) return true;
   const std::string_view name = EnumName(role);
   for (const std::string& r : ctx_.data.Monsters().ai.noRespawnRoles) {
     if (r == name) return true;
@@ -164,6 +189,12 @@ void MonsterSystem::SpawnZonePopulation() {
   const int32_t cols = world_.cols > 0 ? world_.cols : map.cols;
   const int32_t rows = world_.rows > 0 ? world_.rows : map.rows;
   const bool storyBlocked = StoryBossBlocked();
+  // K7: a cleansed sub-dungeon stays empty (no draw); in a sub-dungeon the elites roll the parent zone's affix count.
+  const SubDungeonDef* subDungeon = ZoneSubDungeon();
+  if (ZoneCleansed()) {
+    SeedCorpses();
+    return;
+  }
   for (size_t entry = 0; entry < map.spawns.size(); ++entry) {  // data order
     const MapSpawnDef& spawn = map.spawns[entry];
     // K5: the entry is one pack; its members in mix order (else count x monsterId), the leader the first of its id. A
@@ -191,10 +222,19 @@ void MonsterSystem::SpawnZonePopulation() {
       }
       if (base == nullptr) continue;
       // M10 (FIX Q16): up to placementTries jittered tiles (2 draws each, col first; walkable, outside safe zones),
-      // then the anchor itself.
+      // then the anchor itself. K7: a dormant entry with a `line` stands in formation instead - member i on the
+      // anchor + i x the step (no draw; the anchor when that tile is not walkable).
       bool placed = false;
       TilePos tile = spawn.pos;
-      for (int32_t attempt = 0; attempt < ai.placementTries; ++attempt) {
+      const bool formation = spawn.dormant.present && spawn.dormant.hasLine;
+      if (formation) {
+        const TilePos at = DormantLineTile(spawn, static_cast<int32_t>(i));
+        if (Walkable(at.col, at.row)) {
+          tile = at;
+          placed = true;
+        }
+      }
+      for (int32_t attempt = 0; !formation && attempt < ai.placementTries; ++attempt) {
         const int32_t c = Clamp(spawn.pos.col + rng.RandomInt(-ai.spawnJitter, ai.spawnJitter), 1, cols - 2);
         const int32_t r = Clamp(spawn.pos.row + rng.RandomInt(-ai.spawnJitter, ai.spawnJitter), 1, rows - 2);
         if (!Walkable(c, r)) continue;
@@ -219,6 +259,17 @@ void MonsterSystem::SpawnZonePopulation() {
       p.packLeader = members[i].leader;
       p.spawnEntry = static_cast<int32_t>(entry);  // K6
       p.spawnMember = static_cast<int32_t>(i);
+      if (subDungeon != nullptr) p.affixZone = subDungeon->parentZone;  // K7
+      if (spawn.dormant.present) {  // K7
+        p.dormant = true;
+        p.dormantWakeRange = spawn.dormant.wakeRange;
+        p.dormantRise = spawn.dormant.rise;
+        if (spawn.dormant.hasFace) {
+          const double a = spawn.dormant.faceDeg * (kPi / 180.0);
+          p.hasFacing = true;
+          p.facing = Vec2(DetCos(a), DetSin(a));  // Det*: bit-identical on every platform
+        }
+      }
       MonsterDef leaderDef;
       if (members[i].leader && spawn.leader.elite && !def.elite) {  // K5: an elite leader rolls the zone's affixes
         leaderDef = def;
@@ -240,6 +291,7 @@ void MonsterSystem::SpawnMiniBoss() {
   if (zone == nullptr || !zone->HasZone()) return;
   EnsureZoneGrid();
   if (const SubDungeonDef* sd = ctx_.data.World().FindSubDungeon(zone->MapId())) {
+    if (ZoneCleansed()) return;    // K7: a cleansed sub-dungeon has no guardian
     SpawnSubDungeonMiniBoss(*sd);  // 8.5: the sub-dungeon's boss replaces the zone mini-boss
     return;
   }
@@ -465,6 +517,10 @@ EntityId MonsterSystem::Spawn(const MonsterSpawnParams& p) {
   m.packLeader = p.packLeader;
   m.spawnEntry = p.spawnEntry;  // K6
   m.spawnMember = p.spawnMember;
+  m.dormant = p.dormant;  // K7
+  m.dormantWakeRange = p.dormantWakeRange;
+  m.dormantRise = p.dormantRise;
+  if (p.hasFacing) m.heading = p.facing;
   m.guaranteedLoot = p.guaranteedLoot;
   m.huntId = p.huntId;
   m.visualScale = p.visualScale;
@@ -890,6 +946,9 @@ void MonsterSystem::TickAI(double dtMs) {
     if (m == nullptr || !m->IsAlive()) continue;
     if (!m->affixesPinned && m->IsAggro()) PinAffixesInFight(*m);  // 2F review: a named boss's roll, from its fight
     if (miniBossDialogueActive_ && id == miniBossDialogueMonster_) continue;  // frozen during its dialogue
+    // K7: a dormant monster a hit or its pack's alarm took out of Idle since its last step wakes now (rooted below
+    // while its Rise clip plays).
+    if (m->dormant && m->state != MonsterState::Idle) WakeDormant(*m);
     if (status != nullptr && status->IsImmobilized(id)) continue;           // no AI, safe-zone check or grid update
     if (now < m->abilityRootedUntilMs) continue;                            // K2: rooted while an ability winds up
                                                                             // (K3: a consume channel, a Rise clip)
@@ -943,6 +1002,8 @@ void MonsterSystem::TickAI(double dtMs) {
     }
     if (dtMs > 0) m->groundSpeed = Dist(m->pos, m->prevPos) * 1000.0 / dtMs;
     grid_.Update(id, m->pos);
+    // K7: the hero came inside a dormant monster's wake range (its AI step left Idle): it wakes.
+    if (m->dormant && m->state != MonsterState::Idle) WakeDormant(*m);
     if (m->state == MonsterState::Chase &&
         (before == MonsterState::Idle || before == MonsterState::Patrol || before == MonsterState::Returning)) {
       PublishAggro(*m, before);
@@ -950,6 +1011,22 @@ void MonsterSystem::TickAI(double dtMs) {
     }
   }
   AlignShieldWalls();  // K5: after every monster moved and turned this step
+}
+
+void MonsterSystem::WakeDormant(MonsterInstance& m) {
+  if (!m.dormant) return;
+  m.dormant = false;
+  if (!m.dormantRise || !m.IsAlive()) return;
+  const double now = ctx_.Now();
+  const double riseMs = RiseMsFor(m.def);
+  m.abilityRootedUntilMs = (std::max)(m.abilityRootedUntilMs, now + riseMs);  // rooted while its Rise clip plays
+  EvPlayAnim anim;
+  anim.entity = m.id;
+  anim.action = AnimAction::Rise;
+  anim.clip = "Rise";
+  anim.startMs = now;
+  anim.durationMs = riseMs;
+  ctx_.events.Emit(anim);
 }
 
 void MonsterSystem::TickEliteBehaviours() {
@@ -1783,6 +1860,7 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     v.blockArcDeg = m.def.block.present ? m.def.block.arcDeg : 0;
     v.leashCentre = MonsterLeashCentre(m);
     v.leashRange = MonsterLeashRange(m, ctx_.data.Monsters().ai);
+    v.dormant = m.dormant && m.IsAlive();  // K7
   }
   // K4: the arenas the monsters' phases lit (list order).
   for (const MonsterInstance& m : monsters_) {

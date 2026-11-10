@@ -283,10 +283,23 @@ struct EvMonsterBuffCast {
 };
 // Dark remake K6 (world/WorldState.h): a world flag was set (a quest's setsFlags on its turn-in; flags are never
 // cleared). Emitted once per flag, in the quest's data order, before the turn-in's other events. UE re-reads moods /
-// audio emitters from Snapshot::worldFlags.
+// audio emitters from Snapshot::worldFlags. K7: also a sub-dungeon's cleansedFlag when a clear_area objective
+// completes (EvAreaCleansed follows).
 struct EvWorldFlag {
   std::string flag;
-  std::string questId;  // the quest whose turn-in set it
+  std::string questId;  // the quest whose turn-in (K7: whose clear_area objective) set it
+};
+// Dark remake K7 (implementation-plan.md 3 K7; chapter1.md 9.2 "Cleanse"): a sub-dungeon was cleansed - a clear_area
+// objective completed (its guardian dead, at most its maxRemaining monsters left). Emitted once per sub-dungeon and
+// save, after the EvWorldFlag of `flag` and before the objective's EvQuestUpdate. UE plays the cleanse from `pos` (the
+// hero's tile: the lamps light nearest first); the state afterwards is ZoneView::subDungeon.cleansed.
+struct EvAreaCleansed {
+  std::string zoneId;           // the sub-dungeon
+  std::string questId;          // the quest whose objective completed
+  int32_t objectiveIndex = -1;
+  std::string flag;             // the world flag it set (SubDungeonDef::cleansedFlag)
+  int32_t remaining = 0;        // monsters still alive in the zone
+  Vec2 pos;
 };
 // Dark remake K6: a quest's permanent reward was granted (once per quest and difficulty; QuestWorld::TurnIn, after the
 // items): the amounts this grant added (the running totals are Snapshot::permanentRewards).
@@ -702,7 +715,7 @@ using Event = std::variant<EvEntitySpawned, EvEntityDespawned, EvEntityTeleporte
                            EvPanelRequest, EvSaveRequested, EvMusic, EvSfx, EvCameraShake, EvCameraFlash, EvSlowMotion,
                            EvTelegraph, EvHazard, EvCorpseAdded, EvCorpseRemoved, EvMonsterRaised,
                            EvMonsterCollapsed, EvMonsterPhase, EvArena, EvMonsterFeed, EvBlock, EvMonsterFlee,
-                           EvMonsterBuffCast, EvWorldFlag, EvPermanentReward>;
+                           EvMonsterBuffCast, EvWorldFlag, EvPermanentReward, EvAreaCleansed>;
 
 // Append-only event list shared by every subsystem of one GameSim.
 class EventSink {

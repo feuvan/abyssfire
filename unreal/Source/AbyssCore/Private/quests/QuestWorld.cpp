@@ -425,15 +425,19 @@ void QuestWorld::OnMonsterKilled(const MonsterKilledMsg& m) {
 
 // rollQuestDrops (3.3): active quests of this zone, unfinished collect objectives; gather sources never drop;
 // source-less craft_collect never drops; source-less collect objectives use the fallback chance, one per quest.
+// K7: inside a sub-dungeon the parent zone's quests are the zone's (a monster of the quest's roster drops its item
+// down there as it does above; the kill hook was never zone-filtered).
 void QuestWorld::RollQuestDrops(const MonsterKilledMsg& m) {
   QuestSystem* qs = ctx_.sys.quests;
   if (qs == nullptr || ctx_.sys.zone == nullptr || !ctx_.sys.zone->HasZone()) return;
   const std::string& mapId = ctx_.sys.zone->MapId();
+  const SubDungeonDef* sub = ctx_.data.World().FindSubDungeon(mapId);
   const double fallback = ctx_.data.Quests().tuning.fallbackCollectChance;
   for (const std::string& qid : QwOpenQuestIds(*qs)) {
     const QuestDef* q = ctx_.data.FindQuest(qid);
     const QuestProgress* p0 = qs->Progress(qid);
-    if (q == nullptr || p0 == nullptr || p0->status != QuestStatus::Active || q->zone != mapId) continue;
+    if (q == nullptr || p0 == nullptr || p0->status != QuestStatus::Active) continue;
+    if (q->zone != mapId && (sub == nullptr || q->zone != sub->parentZone)) continue;
     bool legacyRolled = false;
     for (size_t i = 0; i < q->objectives.size(); ++i) {
       const QuestObjectiveDef& obj = q->objectives[i];
@@ -540,11 +544,12 @@ void QuestWorld::Sync() {
     nodes_.push_back(std::move(n));
     return nodes_.back().id;
   };
-  // Gather nodes.
+  // Gather nodes. K7: an objective lives in its own zone (QuestObjectiveDef::zone, else the quest's).
   for (const auto& [q, p] : qs->OpenQuests()) {
-    if (p->status != QuestStatus::Active || q->zone != mapId) continue;
+    if (p->status != QuestStatus::Active) continue;
     for (size_t i = 0; i < q->objectives.size(); ++i) {
       const QuestObjectiveDef& obj = q->objectives[i];
+      if (ObjectiveZone(*q, obj) != mapId) continue;
       if (!QwIsCollect(obj.type) || obj.sourceKind != ItemSourceKind::Gather) continue;
       if (QwCurrent(*p, i) >= obj.required) continue;
       const int32_t oi = static_cast<int32_t>(i);
@@ -568,9 +573,10 @@ void QuestWorld::Sync() {
   }
   // Clue marks.
   for (const auto& [q, p] : qs->OpenQuests()) {
-    if (p->status != QuestStatus::Active || q->zone != mapId) continue;
+    if (p->status != QuestStatus::Active) continue;
     for (size_t i = 0; i < q->objectives.size(); ++i) {
       const QuestObjectiveDef& obj = q->objectives[i];
+      if (ObjectiveZone(*q, obj) != mapId) continue;
       if (obj.type != ObjectiveType::InvestigateClue || !obj.hasLocation) continue;
       if (QwCurrent(*p, i) >= obj.required) continue;
       const int32_t oi = static_cast<int32_t>(i);
@@ -689,17 +695,66 @@ void QuestWorld::CheckExplore() {
   for (const std::string& qid : QwOpenQuestIds(*qs)) {
     const QuestDef* q = ctx_.data.FindQuest(qid);
     const QuestProgress* p0 = qs->Progress(qid);
-    if (q == nullptr || p0 == nullptr || p0->status != QuestStatus::Active || q->zone != mapId) continue;
+    if (q == nullptr || p0 == nullptr || p0->status != QuestStatus::Active) continue;
     for (size_t i = 0; i < q->objectives.size(); ++i) {
       const QuestObjectiveDef& obj = q->objectives[i];
       const QuestProgress* p = qs->Progress(qid);
       if (p == nullptr) break;
+      if (ObjectiveZone(*q, obj) != mapId) continue;  // K7: an objective lives in its own zone
       if (obj.type != ObjectiveType::Explore || !obj.hasLocation || QwCurrent(*p, i) >= obj.required) continue;
       const double dx = hp.x - obj.location.col;
       const double dy = hp.y - obj.location.row;
       if (std::sqrt(dx * dx + dy * dy) > obj.location.radius) continue;
       qs->UpdateProgress(ObjectiveType::Explore, obj.targetId);
       ctx_.events.Log(MakeLoc("zone.quest.exploreFound", {QwTargetNameArg(ctx_.data, obj)}), LogType::System);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Clear area (dark remake K7; implementation-plan.md 3 K7, chapter1.md 9.2 "Cleanse")
+// ---------------------------------------------------------------------------------------------------------------------
+
+// Every step: an active quest's unfinished clear_area objective of the live zone completes when the objective it waits
+// for (`after`) is done, the zone's guardian is not alive and at most maxRemaining monsters are. The zone's cleansedFlag
+// joins the world flags first (EvWorldFlag), then EvAreaCleansed, then the objective's progress (EvQuestUpdate; the
+// quest completes when it was the last one).
+void QuestWorld::CheckClearArea() {
+  QuestSystem* qs = ctx_.sys.quests;
+  const MonsterSystem* monsters = ctx_.sys.monsters;
+  const Hero* hero = ctx_.sys.hero;
+  if (qs == nullptr || monsters == nullptr || hero == nullptr) return;
+  const std::string& mapId = ctx_.sys.zone->MapId();
+  const SubDungeonDef* sub = ctx_.data.World().FindSubDungeon(mapId);
+  if (sub == nullptr) return;  // only a sub-dungeon is cleansed (DataStore::Finalize)
+  if (hero->Life() != HeroLife::Alive || hero->Hp() <= 0) return;  // a fallen hero cleanses nothing
+  for (const std::string& qid : QwOpenQuestIds(*qs)) {
+    const QuestDef* q = ctx_.data.FindQuest(qid);
+    const QuestProgress* p = qs->Progress(qid);
+    if (q == nullptr || p == nullptr || p->status != QuestStatus::Active) continue;
+    for (size_t i = 0; i < q->objectives.size(); ++i) {
+      const QuestObjectiveDef& obj = q->objectives[i];
+      if (obj.type != ObjectiveType::ClearArea || obj.zone != mapId || QwCurrent(*p, i) >= obj.required) continue;
+      if (obj.after >= 0) {
+        const size_t a = static_cast<size_t>(obj.after);
+        if (a >= q->objectives.size() || QwCurrent(*p, a) < q->objectives[a].required) continue;
+      }
+      if (monsters->GuardianAlive()) continue;
+      const int32_t remaining = monsters->AliveCount();
+      if (remaining > obj.maxRemaining) continue;
+      if (!sub->cleansedFlag.empty() && ctx_.session.SetFlag(sub->cleansedFlag)) {
+        ctx_.events.Emit(EvWorldFlag{sub->cleansedFlag, q->id});
+      }
+      EvAreaCleansed ev;
+      ev.zoneId = mapId;
+      ev.questId = q->id;
+      ev.objectiveIndex = static_cast<int32_t>(i);
+      ev.flag = sub->cleansedFlag;
+      ev.remaining = remaining;
+      ev.pos = hero->Position();
+      ctx_.events.Emit(std::move(ev));
+      qs->UpdateProgress(ObjectiveType::ClearArea, obj.targetId);
+      return;  // one clear_area per sub-dungeon (DataStore::Finalize); the records may have moved
     }
   }
 }
@@ -1016,8 +1071,15 @@ GuideWorld QuestWorld::MakeGuideWorld() const {
     }
   };
   const std::vector<std::string>* flags = &ctx_.session.worldFlags;
-  w.spawns = [zone, flags](const std::vector<std::string>& ids, std::vector<Vec2>& out) {
-    if (zone == nullptr || !zone->HasZone()) return;
+  // K7: the sub-dungeon's boss stands on its own tile (not a spawn entry); a cleansed sub-dungeon spawns nothing.
+  const SubDungeonDef* sub =
+      zone != nullptr && zone->HasZone() ? data->World().FindSubDungeon(zone->MapId()) : nullptr;
+  const bool cleansed = sub != nullptr && !sub->cleansedFlag.empty() && ctx_.session.HasFlag(sub->cleansedFlag);
+  w.spawns = [zone, flags, sub, cleansed](const std::vector<std::string>& ids, std::vector<Vec2>& out) {
+    if (zone == nullptr || !zone->HasZone() || cleansed) return;
+    if (sub != nullptr && std::find(ids.begin(), ids.end(), sub->miniBossId) != ids.end()) {
+      out.push_back(sub->miniBossPos.Center());
+    }
     for (const MapSpawnDef& s : zone->Map().spawns) {
       bool match = false;
       if (const MapSpawnVariantDef* v = ActiveSpawnVariant(s, *flags)) {
@@ -1056,6 +1118,32 @@ GuideWorld QuestWorld::MakeGuideWorld() const {
     out = h->spawn.Center();
     return true;
   };
+  // K7 sub-dungeon travel: the live zone, the way to another zone (an entrance of this zone that leads into `target`,
+  // list order, a sealed one included: it marks where the way will open; or this sub-dungeon's exit when `target` is
+  // its parent), and the zone's living monsters.
+  if (zone != nullptr && zone->HasZone()) w.zoneId = zone->MapId();
+  w.wayTo = [zone, sub, data](std::string_view target, GuideTargetKind& kind, Vec2& out) {
+    if (zone == nullptr || !zone->HasZone()) return false;
+    for (const SubDungeonEntranceDef& e : zone->Map().subDungeonEntrances) {
+      if (e.targetSubDungeon != target) continue;
+      kind = GuideTargetKind::Entrance;
+      out = e.pos.Center();
+      return true;
+    }
+    if (sub == nullptr) return false;
+    // Out through the exit: to the parent, or to another sub-dungeon of the same parent.
+    const SubDungeonDef* other = data->World().FindSubDungeon(target);
+    if (sub->parentZone != target && (other == nullptr || other->parentZone != sub->parentZone)) return false;
+    kind = GuideTargetKind::Exit;
+    out = sub->exitPos.Center();
+    return true;
+  };
+  w.hostiles = [monsters](std::vector<Vec2>& out) {
+    if (monsters == nullptr) return;
+    for (const MonsterInstance& m : monsters->All()) {
+      if (m.IsAlive()) out.push_back(m.pos);
+    }
+  };
   return w;
 }
 
@@ -1089,6 +1177,7 @@ void QuestWorld::Tick(double dtMs) {
   TickEscort(dtMs);
   TickDefend();
   TickGatherAndClues();
+  CheckClearArea();  // K7 (before the guide: a completed quest's arrow turns to the way out at its next refresh)
   TickGuide(dtMs);
   const double now = ctx_.Now();
   if (now >= nextObserverMs_) {

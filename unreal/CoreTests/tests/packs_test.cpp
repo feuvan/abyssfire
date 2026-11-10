@@ -737,7 +737,8 @@ TEST_SUITE("monsters") {
       INFO(named.Summary());
       CHECK(named.Ok());
     }
-    // A sub-dungeon's spawns have no pack until K7: the loader refuses a mix or a leader there.
+    // A generated sub-dungeon's spawns have no pack (K7: only a hand-authored one, with tiles, is entered and reads
+    // them - subdungeon_test.cpp): the loader refuses a mix or a leader there.
     for (const char* key : {"mix", "leader"}) {
       INFO(key);
       DataLoadReport report;
@@ -759,7 +760,7 @@ TEST_SUITE("monsters") {
                                   }}},
                                 report);
       CHECK_FALSE(report.Ok());
-      CHECK(K5HasIssue(report.errors, "subDungeons", "a sub-dungeon spawn has no pack (mix / leader) until K7"));
+      CHECK(K5HasIssue(report.errors, "subDungeons", StrCat("a generated sub-dungeon's spawn has no '", key, "'")));
     }
   }
 

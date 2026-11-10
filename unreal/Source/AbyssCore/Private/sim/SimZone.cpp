@@ -22,6 +22,30 @@ bool SimImpl::EnterZone(std::string_view mapId, bool hasTarget, Vec2 target) {
   session.currentMap = id;
   const bool firstVisit = !session.HasVisited(id);
   if (firstVisit) session.visitedZones.push_back(id);
+  // Dark remake K7: the sub-dungeon visit (SessionState::subDungeon). ZoneRuntime::EnterSubDungeon noted the entrance;
+  // an entry by any other way (a test, a debug jump) names the parent's first entrance that leads here. Every other
+  // zone ends the visit.
+  if (const SubDungeonDef* sd = data.World().FindSubDungeon(id)) {
+    SubDungeonVisit& visit = session.subDungeon;
+    if (visit.subDungeonId != id) {
+      visit = SubDungeonVisit{};
+      visit.subDungeonId = id;
+      visit.entrancePos = sd->returnPos;
+      if (const MapDef* parent = data.World().FindMapProper(sd->parentZone)) {
+        for (const SubDungeonEntranceDef& e : parent->subDungeonEntrances) {
+          if (e.targetSubDungeon != id) continue;
+          visit.entranceId = e.id;
+          visit.entrancePos = e.pos;
+          break;
+        }
+      }
+    }
+    visit.active = true;
+    visit.parentZone = sd->parentZone;
+    visit.returnPos = sd->returnPos;
+  } else {
+    session.subDungeon = SubDungeonVisit{};
+  }
 
   // Per-zone runtime (world 9.1 steps 2-6, monsters 6.1 order). Hero state carries over (9.3).
   status->ClearAll();
@@ -62,6 +86,9 @@ void SimImpl::ExitZone() {
   if (!zone->HasZone()) return;
   const std::string id = zone->MapId();
   RequestSave(SaveReason::ZoneChange);
+  // K7: the next zone entry is an arrival from a sub-dungeon (ZoneRuntime::EnterZone keeps the hero off an unwalkable
+  // return tile).
+  session.arrivingFromSubDungeon = data.World().FindSubDungeon(id) != nullptr;
   // Every core-owned modal (dialogue, quest card, shop / forge, stash, mini-boss, lore text, puzzle) closes through its
   // owner before the systems drop their zone state; the modal diff emits EvPanelRequest{close}.
   CloseCoreModals();

@@ -189,6 +189,12 @@ struct ABYSS_API MonsterInstance {
   // spawn) and its slot among the entry's members; a respawn reads the entry's spawn variant again.
   int32_t spawnEntry = -1;
   int32_t spawnMember = -1;
+  // K7 (MapData.h MapSpawnDormantDef; MonsterSystem::WakeDormant): it stands dormant - no patrol (no draw), and it
+  // notices the hero only within dormantWakeRange (in place of def.aggroRange) - until it first leaves Idle. A respawn
+  // (never in a sub-dungeon) comes back awake.
+  bool dormant = false;
+  double dormantWakeRange = 0;
+  bool dormantRise = true;
   // K6: one more equipment item of this quality its kill drops after its regular loot (a champion pack's leader with
   // AmbushChampionDef::leaderLoot; Normal = none; MonsterKilledMsg::guaranteedLoot). Not carried over by a respawn.
   ItemQuality guaranteedLoot = ItemQuality::Normal;

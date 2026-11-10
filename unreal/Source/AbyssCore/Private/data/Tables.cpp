@@ -338,9 +338,20 @@ const ZoneWeatherDef* ZoneMoodTables::WeatherFor(std::string_view zoneId) const 
   return nullptr;
 }
 
+const MapDef* WorldTables::FindMapProper(std::string_view id) const {
+  for (const MapDef& m : maps) {
+    if (m.id == id) return &m;
+  }
+  return nullptr;
+}
+
 const MapDef* WorldTables::FindMap(std::string_view id) const {
   for (const MapDef& m : maps) {
     if (m.id == id) return &m;
+  }
+  // K7: a hand-authored sub-dungeon is a zone too (a map id wins: DataStore::Finalize refuses the clash).
+  for (const SubDungeonDef& s : subDungeons) {
+    if (s.hasMap && s.id == id) return &s.map;
   }
   return nullptr;
 }
@@ -350,6 +361,11 @@ const SubDungeonDef* WorldTables::FindSubDungeon(std::string_view id) const {
     if (s.id == id) return &s;
   }
   return nullptr;
+}
+
+const SubDungeonDef* WorldTables::FindEnterableSubDungeon(std::string_view id) const {
+  const SubDungeonDef* s = FindSubDungeon(id);
+  return s != nullptr && s->hasMap ? s : nullptr;
 }
 
 // ---- AudioData ----------------------------------------------------------------------------------------------------

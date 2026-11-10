@@ -90,6 +90,16 @@ bool QgObjectiveTarget(const QuestDef& quest, const QuestObjectiveDef& obj, int3
     out.pos = QgCentre(obj.location);
     return true;
   }
+  if (obj.type == ObjectiveType::ClearArea) {
+    // K7: the nearest monster still standing in the area (none left to point at: no target).
+    std::vector<Vec2> pts;
+    if (world.hostiles) world.hostiles(pts);
+    Vec2 n;
+    if (!QgNearest(world.player, pts, n)) return false;
+    out.kind = GuideTargetKind::Monster;
+    out.pos = n;
+    return true;
+  }
   switch (obj.type) {
     case ObjectiveType::Talk: {
       // Returned even when the NPC is elsewhere: no target, the loop moves on.
@@ -183,6 +193,10 @@ bool QgObjectiveTarget(const QuestDef& quest, const QuestObjectiveDef& obj, int3
 
 }  // namespace
 
+const std::string& ObjectiveZone(const QuestDef& quest, const QuestObjectiveDef& obj) {
+  return obj.zone.empty() ? quest.zone : obj.zone;
+}
+
 std::vector<std::string> ObjectiveMonsters(const QuestObjectiveDef& obj) {
   if (obj.type == ObjectiveType::Kill) return {obj.targetId};
   if ((obj.type == ObjectiveType::Collect || obj.type == ObjectiveType::CraftCollect) &&
@@ -195,12 +209,25 @@ std::vector<std::string> ObjectiveMonsters(const QuestObjectiveDef& obj) {
 GuideTarget ComputeGuideTarget(const QuestDef& quest, const QuestProgress& progress, const GuideWorld& world) {
   GuideTarget out;
   out.questId = quest.id;
+  // K7: the way from this zone to `zone` (false in a zone-less world, for this zone itself, or when there is none).
+  const auto wayTo = [&world](const std::string& zone, GuideTarget& t) {
+    if (world.zoneId.empty() || zone == world.zoneId || !world.wayTo) return false;
+    GuideTargetKind kind = GuideTargetKind::None;
+    Vec2 pos;
+    if (!world.wayTo(zone, kind, pos) || kind == GuideTargetKind::None) return false;
+    t.kind = kind;
+    t.pos = pos;
+    return true;
+  };
   if (progress.status == QuestStatus::Completed) {
     std::string giver;
     Vec2 tile;
     if (world.giverOf && world.giverOf(quest.id, giver) && world.npcTile && world.npcTile(giver, tile)) {
       out.kind = GuideTargetKind::Npc;
       out.pos = tile;
+      out.reason = GuideReason::TurnIn;
+      out.objectiveIndex = -1;
+    } else if (wayTo(quest.zone, out)) {  // K7: the giver waits in the quest's zone
       out.reason = GuideReason::TurnIn;
       out.objectiveIndex = -1;
     }
@@ -213,6 +240,14 @@ GuideTarget ComputeGuideTarget(const QuestDef& quest, const QuestProgress& progr
     if (current >= obj.required) continue;
     GuideTarget t;
     t.questId = quest.id;
+    // K7: an objective of another zone points at the way there, or has no target.
+    const std::string& zone = ObjectiveZone(quest, obj);
+    if (!world.zoneId.empty() && zone != world.zoneId) {
+      if (!wayTo(zone, t)) continue;
+      t.reason = GuideReason::Objective;
+      t.objectiveIndex = static_cast<int32_t>(i);
+      return t;
+    }
     if (QgObjectiveTarget(quest, obj, static_cast<int32_t>(i), world, t)) {
       t.reason = GuideReason::Objective;
       t.objectiveIndex = static_cast<int32_t>(i);

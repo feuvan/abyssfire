@@ -75,6 +75,19 @@ struct ABYSS_API PanelState {
   bool AnyHudPanelOpen() const;  // non-modal (pause on touch, U7)
 };
 
+// Dark remake K7 (implementation-plan.md 3 K7): the sub-dungeon visit under way. Set when the hero goes in through an
+// entrance (ZoneRuntime, before the zone change) and completed by the zone entry (SimZone); cleared by the entry of
+// any zone that is not a sub-dungeon. Not saved: a save made inside is written at the parent's return tile (SimSave),
+// so a load never lands inside.
+struct SubDungeonVisit {
+  bool active = false;          // the live zone is this sub-dungeon
+  std::string subDungeonId;
+  std::string parentZone;       // SubDungeonDef::parentZone
+  std::string entranceId;       // the parent's entrance the hero came through ("" = entered some other way)
+  TilePos entrancePos;          // that entrance's tile in the parent zone (the return tile when entranceId is "")
+  TilePos returnPos;            // where the exit puts the hero in the parent zone (SubDungeonDef::returnPos)
+};
+
 struct ABYSS_API SessionState {
   int32_t slot = 0;                       // U1 character slot (0..2), informational for the save id
   Difficulty difficulty = Difficulty::Normal;
@@ -95,6 +108,11 @@ struct ABYSS_API SessionState {
   // cleared; chapter1.md 8) and the permanent rewards granted.
   std::vector<std::string> worldFlags;
   PermanentRewardsState permanentRewards;
+  // Dark remake K7 (not saved).
+  SubDungeonVisit subDungeon;
+  // K7: the zone just left was a sub-dungeon and the hero is arriving at its return tile in the parent (set by the
+  // zone exit, read and cleared by the next zone entry: an unwalkable return tile moves to the nearest walkable one).
+  bool arrivingFromSubDungeon = false;
 
   bool HasVisited(std::string_view mapId) const;
   bool HasFlag(std::string_view flag) const;

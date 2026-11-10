@@ -99,44 +99,8 @@ TEST_SUITE("quests") {
 
   // ---- QuestContent.test.ts -----------------------------------------------------------------------------------------
   TEST_CASE("quest content: kill / talk / drop targets exist in the quest's zone, gather sources have enough nodes") {
-    const DataStore& data = test::RealData();
-    for (const QuestDef& q : data.Quests().quests) {
-      CAPTURE(q.id);
-      std::set<std::string> monsters = MonstersIn(data, q.zone);
-      for (const QuestHuntRef& hr : q.hunts) monsters.insert(hr.huntId);
-      const std::set<std::string> npcs = NpcsIn(data, q.zone);
-      for (size_t i = 0; i < q.objectives.size(); ++i) {
-        const QuestObjectiveDef& o = q.objectives[i];
-        CAPTURE(o.targetId);
-        if (o.type == ObjectiveType::Kill) CHECK(monsters.count(o.targetId) == 1);
-        if (o.type == ObjectiveType::Talk) CHECK(npcs.count(o.targetId) == 1);
-        if (o.type == ObjectiveType::Collect || o.type == ObjectiveType::CraftCollect) {
-          CHECK(o.sourceKind != ItemSourceKind::None);
-          if (o.sourceKind == ItemSourceKind::Drop) {
-            CHECK(o.dropChance > 0);
-            for (const std::string& m : o.dropMonsters) CHECK(monsters.count(m) == 1);
-          } else if (o.sourceKind == ItemSourceKind::Gather) {
-            CHECK(o.gatherCount >= o.required);
-            const MapDef* map = data.FindMap(q.zone);
-            REQUIRE(map != nullptr);
-            const ZoneGrid grid = BuildZoneGrid(data, *map);
-            const std::vector<TilePos> spots = ResolveGatherSpots(
-                o.gatherArea, o.gatherCount, [&grid](int32_t c, int32_t r) { return grid.Walkable(c, r); },
-                q.id + ":" + std::to_string(i));
-            CHECK(static_cast<int32_t>(spots.size()) == o.gatherCount);
-          }
-        }
-      }
-      for (const QuestHuntRef& hr : q.hunts) {
-        const HuntDef* hunt = data.Monsters().FindHunt(hr.huntId);
-        REQUIRE(hunt != nullptr);
-        CHECK(data.Monsters().Find(hunt->monsterId) != nullptr);
-        if (hunt->hasMinions) CHECK(data.Monsters().Find(hunt->minionMonsterId) != nullptr);
-        CHECK(std::any_of(q.objectives.begin(), q.objectives.end(), [&](const QuestObjectiveDef& o) {
-          return o.type == ObjectiveType::Kill && o.targetId == hr.huntId;
-        }));
-      }
-    }
+    // K7: "the quest's zone" is the objective's zone - the quest's own, or the sub-dungeon of it an objective names.
+    CheckQuestTargetsStandInTheirZones(test::RealData());
   }
 
   TEST_CASE("quest content: each zone's side quests play differently; every zone finale offers a gear choice") {

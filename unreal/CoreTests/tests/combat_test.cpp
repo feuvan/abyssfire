@@ -3177,16 +3177,39 @@ TEST_SUITE("combat") {
     const auto labZones = EventsOf<EvZone>(lab.h.events);
     REQUIRE(labZones.size() == 1);
     CHECK(labZones[0].mapId == "abyss_rift");
-    // Menu / quit / background (ResolvePendingDeath) respawn in place of the zone: no transition.
+    // Menu / quit / background (ResolvePendingDeath) has the timer's effects (save-ui-input 3.4 rule 3, scenario 17):
+    // the parent zone restarts at its camps[0]; the timer no longer fires.
     CombatRig q(ClassId::Warrior);
     q.h.session.currentMap = sd.id;
     q.hero->SetHp(0);
     q.combat.KillHero(HeroDeathCause::Other);
+    const Vec2 qFell = q.hero->Position();
     q.h.events.Clear();
     q.combat.ResolvePendingDeath();
     CHECK(q.hero->Life() == HeroLife::Alive);
-    CHECK_FALSE(q.h.session.transitioning);
-    CHECK(test::CountEvents<EvZone>(q.h.events) == 0);
+    CHECK(q.hero->Hp() == q.hero->MaxHp());
+    CHECK(Dist(q.hero->Position(), qFell) < 1e-9);
+    CHECK(q.h.session.transitioning);
+    const auto qZones = EventsOf<EvZone>(q.h.events);
+    REQUIRE(qZones.size() == 1);
+    CHECK(qZones[0].phase == EvZone::Phase::TransitionBegan);
+    CHECK(qZones[0].mapId == sd.parentZone);
+    CHECK(qZones[0].target.col == parent->camps[0].pos.col);
+    CHECK(qZones[0].target.row == parent->camps[0].pos.row);
+    CHECK(test::CountEvents<EvHeroRespawned>(q.h.events) == 1);
+    q.combat.ResolvePendingDeath();  // nothing pending: no second respawn
+    CHECK(test::CountEvents<EvHeroRespawned>(q.h.events) == 1);
+    // While a zone change is already under way the hero stands up in the zone that is being left (no second request).
+    CombatRig leaving(ClassId::Warrior);
+    leaving.h.session.currentMap = sd.id;
+    leaving.h.session.transitioning = true;
+    leaving.hero->SetHp(0);
+    leaving.combat.KillHero(HeroDeathCause::Other);
+    leaving.h.events.Clear();
+    leaving.combat.ResolvePendingDeath();
+    CHECK(leaving.hero->Life() == HeroLife::Alive);
+    CHECK(test::CountEvents<EvZone>(leaving.h.events) == 0);
+    CHECK(Dist(leaving.hero->Position(), leaving.zone.CampPosition(0)) < 1e-9);
     // The overworld keeps respawnAtCamp.
     CombatRig field(ClassId::Warrior);
     field.hero->SetHp(0);

@@ -313,15 +313,26 @@ void QuestSystem::SetTracked(std::string_view questId) {
 
 // getGuidedQuest (2.6): open quests of the zone (completed ones lead back to the giver); the pinned one, else the first
 // main quest, else the first open quest.
+// Dark remake K7: inside a sub-dungeon the open quests of its parent zone are the zone's (their givers wait outside), and
+// after the pinned one the first active quest with an unfinished objective in this sub-dungeon (QuestObjectiveDef::zone)
+// leads: it is what the hero came down for. Every other zone is as before.
 const QuestDef* QuestSystem::GuidedQuest(std::string_view zoneId) const {
+  const SubDungeonDef* sub = data_->World().FindSubDungeon(zoneId);
   const QuestDef* firstMain = nullptr;
   const QuestDef* first = nullptr;
+  const QuestDef* inside = nullptr;
   for (const auto& [q, p] : OpenQuests()) {
-    if (q->zone != zoneId) continue;
+    if (q->zone != zoneId && (sub == nullptr || q->zone != sub->parentZone)) continue;
     if (!tracked_.empty() && q->id == tracked_) return q;
     if (first == nullptr) first = q;
     if (firstMain == nullptr && q->category == QuestCategory::Main) firstMain = q;
+    if (sub != nullptr && inside == nullptr && p->status == QuestStatus::Active) {
+      for (size_t i = 0; i < q->objectives.size() && inside == nullptr; ++i) {
+        if (q->objectives[i].zone == zoneId && !QsObjectiveDone(*q, *p, i)) inside = q;
+      }
+    }
   }
+  if (inside != nullptr) return inside;
   return firstMain != nullptr ? firstMain : first;
 }
 

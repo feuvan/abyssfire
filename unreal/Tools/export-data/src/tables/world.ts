@@ -26,6 +26,7 @@ import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
 import { noteConfig, overrideById, overrideEntries, requireTableFeature, withholdRemakeFields } from '../remake';
 import { AllQuests } from '../../../../../src/data/quests/all_quests';
+import { cleanseFlagsOf, flagsSetByQuests, subDungeons } from '../subdungeons';
 import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
 
 const ZS = 'src/scenes/ZoneScene.ts';
@@ -147,13 +148,22 @@ function npcVisibilityIssues(npcs: Record<string, NpcLike>, quests: readonly Que
       type Phase = 'offered' | 'offered again after failing' | 'active' | 'completed';
       const evalAt = (phase: Phase, c: Condition = cond): Tri => {
         const flag = (f: string): Tri => {
-          let other = false;
+          let other = false, unknown = false;
           for (const s of quests) {
-            if (!(s.setsFlags ?? []).includes(f)) continue;
+            // K7 (WorldState.cpp WsFlagState): a flag a quest sets by cleansing (a clear_area objective) is set while
+            // that quest is open - for the quest itself: unset before it was ever accepted, set once completed, unknown
+            // while active or offered again after failing.
+            const turnIn = (s.setsFlags ?? []).includes(f), cleanse = cleanseFlagsOf(s).includes(f);
+            if (!turnIn && !cleanse) continue;
             if (pre.has(s.id)) return 'T';
+            if (cleanse && s.id === q.id) {
+              if (phase === 'completed') return 'T';
+              if (phase === 'active' || phase === 'offered again after failing') unknown = true;
+              continue;
+            }
             if (s.id !== q.id && !post.has(s.id)) other = true;
           }
-          return other ? 'U' : 'F';
+          return other || unknown ? 'U' : 'F';
         };
         const leaf = (l: Leaf): Tri => {
           if (l.kind === 'flag') return flag(l.id);
@@ -214,7 +224,7 @@ function npcVisibilityIssues(npcs: Record<string, NpcLike>, quests: readonly Que
 function checkK6Npcs(npcs: Record<string, NpcLike>, quests: readonly QuestLike[],
   trees: Record<string, DialogueTree>): void {
   const questIds = new Set(quests.map(q => q.id));
-  const setters = new Set(quests.flatMap(q => q.setsFlags ?? []));
+  const setters = flagsSetByQuests(quests);  // setsFlags (K6) or a cleanse (K7)
   const checkCond = (c: unknown, where: string) => {
     const cond = readCondition(c, where);
     for (const l of [...cond.all, ...cond.any]) {
@@ -279,7 +289,7 @@ function checkAmbushChampion(zone: string, c: Record<string, unknown>): void {
 // ── 2F review: ambush variants (LoadWorld.cpp; MapData.h ZoneEventDataDef::ambushVariants) ──
 /** DataStore::Finalize's warning: a flag no quest sets (setsFlags) never holds. */
 function warnUnsetFlag(flag: string, where: string): void {
-  const set = (AllQuests as unknown as { setsFlags?: string[] }[]).some(q => (q.setsFlags ?? []).includes(flag));
+  const set = flagsSetByQuests(AllQuests as unknown as QuestLike[]).has(flag);
   if (!set) console.warn(`  warning: ${where}: no quest sets flag '${flag}' (setsFlags)`);
 }
 function checkAmbushVariants(zone: string, list: unknown): void {
@@ -350,6 +360,10 @@ export function exportWorld(): TableResult[] {
   // RandomEventSystem ZONE_EVENT_DATA, with the remake's per-zone pools (GameData/world.ts) — feeds both files.
   const zoneEvents = overrideEntries('randomEvents', ['random_events.json', 'shops.json'], ZONE_EVENT_DATA);
   for (const [zone, z] of Object.entries(zoneEvents)) {
+    // DataStore::Finalize: a row names a zone proper. K7: no random event rolls inside a sub-dungeon, so a row for one
+    // would never be read.
+    assert(!subDungeons()[zone], `random_events.json zones.${zone}: a sub-dungeon rolls no random event (drop the row)`);
+    assert(AllMaps[zone], `random_events.json zones.${zone}: unknown zone`);
     const champion = (z as { ambushChampion?: Record<string, unknown> }).ambushChampion;
     if (champion !== undefined) checkAmbushChampion(zone, champion);  // K6
     const variants = (z as { ambushVariants?: unknown }).ambushVariants;

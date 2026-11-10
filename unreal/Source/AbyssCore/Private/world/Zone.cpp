@@ -41,16 +41,27 @@ bool ZoneHeroAlive(const SimContext& ctx) {
 
 // 7.1 row 7 / 7.4 order 4: a sub-dungeon entrance is in reach when distSq(hero, entrance) <= 9.
 constexpr double kZoneSubDungeonRangeSq = 9;
+// 9.4: in a sub-dungeon the portal is refused when the hero is within 3 tiles of the exit (distSq < 9).
+constexpr double kZonePortalExitNearSq = 9;
 
-// K1: the sealed entrance `id` of the map (nullptr when absent or not sealed). Unsealed entrances stay inert until
-// sub-dungeon travel (implementation-plan.md K7) handles them.
-const SubDungeonEntranceDef* ZoneSealedEntrance(const MapDef* map, std::string_view id) {
+// K7: the sub-dungeon an entrance leads into now: an unsealed entrance of a hand-authored sub-dungeon (nullptr for a
+// sealed entrance, K1, and for a generated sub-dungeon, which nothing enters).
+const SubDungeonDef* ZoneEnterable(const DataStore& data, const SubDungeonEntranceDef& e) {
+  return e.sealed ? nullptr : data.World().FindEnterableSubDungeon(e.targetSubDungeon);
+}
+
+// The entrance `id` of the map the interact action uses: a sealed one (K1: its toast) or an enterable one (K7: the way
+// in); nullptr when absent or inert.
+const SubDungeonEntranceDef* ZoneUsableEntrance(const DataStore& data, const MapDef* map, std::string_view id) {
   if (map == nullptr) return nullptr;
   for (const SubDungeonEntranceDef& e : map->subDungeonEntrances) {
-    if (e.sealed && e.id == id) return &e;
+    if (e.id == id && (e.sealed || ZoneEnterable(data, e) != nullptr)) return &e;
   }
   return nullptr;
 }
+
+// K7: how far from its return tile a hero leaving a sub-dungeon may be put down when that tile is not walkable.
+constexpr int32_t kZoneReturnSearchRadius = 8;
 
 // The inner tile of a border exit (4.3 g): the walkable pad the hero stands on.
 TilePos ZoneExitInner(const MapExitDef& e, int32_t cols, int32_t rows) {
@@ -113,7 +124,17 @@ bool ZoneRuntime::EnterZone(std::string_view mapId, bool hasTarget, Vec2 target)
   transitionReady_ = false;
   pendingZone_.clear();
 
-  const Vec2 start = hasTarget ? target : Vec2(map->playerStart.col, map->playerStart.row);
+  Vec2 start = hasTarget ? target : Vec2(map->playerStart.col, map->playerStart.row);
+  if (hasTarget && ctx_.session.arrivingFromSubDungeon) {
+    // K7: a sub-dungeon's return tile is authored against its parent's generated grid; when a prop or a wall stands on
+    // it the hero is put down on the nearest walkable tile (the tile itself when none is near).
+    const TilePos want = RoundToTile(target);
+    TilePos near;
+    if (!grid_.Walkable(want.col, want.row) && pathfinder_->FindWalkableTile(want, kZoneReturnSearchRadius, near)) {
+      start = near.Center();
+    }
+  }
+  ctx_.session.arrivingFromSubDungeon = false;
   ctx_.sys.hero->SetPosition(start);
   return true;
 }
@@ -144,6 +165,13 @@ void ZoneRuntime::ExitZone() {
   pathfinder_.reset();
   grid_ = ZoneGrid();
   map_ = nullptr;
+}
+
+bool ZoneRuntime::PendingZoneChange(std::string& mapId, Vec2& target) const {
+  if (map_ == nullptr || !ctx_.session.transitioning || pendingZone_.empty()) return false;
+  mapId = pendingZone_;
+  target = pendingTarget_;
+  return true;
 }
 
 bool ZoneRuntime::TakePendingTransition(std::string& mapId, Vec2& target) {
@@ -205,6 +233,10 @@ void ZoneRuntime::TickExits() {
       ctx_.events.Emit(EvBanner{BannerKind::ComingSoon, MakeLoc(wc.sealedGateMessageKey), LocText{}});
       ctx_.events.Log(MakeLoc(wc.sealedGateMessageKey), LogType::System);
     } else {
+      // K7: the exit of a sub-dungeon returns to its parent (world 9.2 "sub-dungeon: exit"; the web's exit line).
+      if (ctx_.data.World().FindSubDungeon(map_->id) != nullptr) {
+        ctx_.events.Log(MakeLoc("zone.subDungeon.exit"), LogType::System);
+      }
       RequestZoneChange(e.def.targetMap, e.def.target.Center());
     }
     break;  // stop after the first
@@ -244,7 +276,7 @@ bool ZoneRuntime::ResolveTarget(const InteractTarget& t, Vec2& pos, double& rang
       return true;
     }
     case InteractKind::SubDungeon: {
-      const SubDungeonEntranceDef* e = zone_impl::ZoneSealedEntrance(map_, t.key);
+      const SubDungeonEntranceDef* e = zone_impl::ZoneUsableEntrance(ctx_.data, map_, t.key);
       if (e == nullptr) return false;
       pos = e->pos.Center();
       range = std::sqrt(zone_impl::kZoneSubDungeonRangeSq);
@@ -299,7 +331,9 @@ void ZoneRuntime::OnTimer(const Timer& t) {
       } else {
         ctx_.sys.hero->SetPosition(portalDestination_);
       }
-      ctx_.events.Log(MakeLoc("zone.teleport.toCamp"), LogType::System);
+      // K7: in a sub-dungeon the portal ends on the exit tile (world 9.4), whose trigger then leaves the zone.
+      ctx_.events.Log(MakeLoc(PortalToExit() ? "zone.teleport.toSubDungeonEntrance" : "zone.teleport.toCamp"),
+                      LogType::System);
       ctx_.events.Emit(EvTownPortal{EvTownPortal::Phase::Completed, ctx_.data.World().constants.townPortalChannelMs,
                                     portalDestination_});
       break;
@@ -339,9 +373,10 @@ InteractTarget ZoneRuntime::FindInteractTarget() const {
   for (const NpcPlacement& n : npcs_) {
     if (n.visible) consider(InteractKind::Npc, n.id, n.pos, wc.npcRange * wc.npcRange, n.npcId);
   }
-  // 7.4 order 4 (K1): sealed sub-dungeon entrances (no entity: the key is the entrance id).
+  // 7.4 order 4: sub-dungeon entrances (no entity: the key is the entrance id) - a sealed one (K1) or one that leads
+  // into a hand-authored sub-dungeon (K7).
   for (const SubDungeonEntranceDef& e : map_->subDungeonEntrances) {
-    if (!e.sealed) continue;
+    if (!e.sealed && zone_impl::ZoneEnterable(ctx_.data, e) == nullptr) continue;
     consider(InteractKind::SubDungeon, kNoEntity, e.pos.Center(), zone_impl::kZoneSubDungeonRangeSq, e.id);
   }
   if (ctx_.sys.lore != nullptr) {
@@ -374,16 +409,40 @@ bool ZoneRuntime::ActOn(const InteractTarget& t) {
     case InteractKind::EventPuzzle:
       return ctx_.sys.randomEvents != nullptr && ctx_.sys.randomEvents->InteractProp(t.id);
     case InteractKind::SubDungeon: {
-      // K1: a sealed entrance only says why it is closed (toast + log); no zone change, no other side effect.
-      const SubDungeonEntranceDef* e = zone_impl::ZoneSealedEntrance(map_, t.key);
+      const SubDungeonEntranceDef* e = zone_impl::ZoneUsableEntrance(ctx_.data, map_, t.key);
       if (e == nullptr) return false;
-      ctx_.events.Emit(EvBanner{BannerKind::Toast, MakeLoc(e->sealedTextKey), LocText{}});
-      ctx_.events.Log(MakeLoc(e->sealedTextKey), LogType::System);
-      return true;
+      if (e->sealed) {
+        // K1: a sealed entrance only says why it is closed (toast + log); no zone change, no other side effect.
+        ctx_.events.Emit(EvBanner{BannerKind::Toast, MakeLoc(e->sealedTextKey), LocText{}});
+        ctx_.events.Log(MakeLoc(e->sealedTextKey), LogType::System);
+        return true;
+      }
+      return EnterSubDungeon(*e);
     }
     default:
       return false;
   }
+}
+
+// K7 (world 16 "Sub-dungeons: entered from subDungeonEntrances"; implementation-plan.md 3 K7): the visit is noted in
+// the session (the entrance to come back to), the web's enter line is logged and the zone changes like any other
+// (RequestZoneChange: autosave in the parent, fade, exit + entry sequences). The entry sequence (SimZone) completes
+// the visit and fires zone_entered.
+bool ZoneRuntime::EnterSubDungeon(const SubDungeonEntranceDef& e) {
+  const SubDungeonDef* sd = zone_impl::ZoneEnterable(ctx_.data, e);
+  if (sd == nullptr || map_ == nullptr || ctx_.session.transitioning) return false;
+  SubDungeonVisit visit;
+  visit.subDungeonId = sd->id;
+  visit.parentZone = map_->id;
+  visit.entranceId = e.id;
+  visit.entrancePos = e.pos;
+  visit.returnPos = sd->returnPos;
+  ctx_.session.subDungeon = std::move(visit);
+  if (ctx_.sys.locomotion != nullptr) ctx_.sys.locomotion->Stop();
+  if (ctx_.sys.combat != nullptr) ctx_.sys.combat->ClearAttackTarget();
+  ctx_.events.Log(MakeLoc("zone.subDungeon.enter", {KeyArg("name", sd->nameKey)}), LogType::System);
+  RequestZoneChange(sd->id, sd->playerStart.Center());
+  return true;
 }
 
 bool ZoneRuntime::ActOrWalk(const InteractTarget& t) {
@@ -473,10 +532,10 @@ void ZoneRuntime::OnPointerPress(Vec2 tile, PointerButton button, int32_t pointe
     }
   }
   // rows 6 and 8 (Ember Tower, labyrinth portal) are later milestones.
-  // row 7 (K1): a sealed sub-dungeon entrance within the 1.5 box (W8: walk within 3 tiles, then its toast). Unsealed
-  // entrances are inert until sub-dungeon travel (K7).
+  // row 7: a sub-dungeon entrance within the 1.5 box (W8: walk within 3 tiles, then K1 a sealed one's toast, K7 the
+  // way in). An unsealed entrance of a generated sub-dungeon is inert.
   for (const SubDungeonEntranceDef& e : map_->subDungeonEntrances) {
-    if (!e.sealed || !inBox(e.pos.Center())) continue;
+    if (!inBox(e.pos.Center()) || (!e.sealed && ZoneEnterable(ctx_.data, e) == nullptr)) continue;
     InteractTarget t;
     t.kind = InteractKind::SubDungeon;
     t.pos = e.pos.Center();
@@ -539,9 +598,21 @@ void ZoneRuntime::OnPointerPress(Vec2 tile, PointerButton button, int32_t pointe
 // ---------------------------------------------------------------------------------------------------------------------
 // Town portal (9.4 + W3)
 // ---------------------------------------------------------------------------------------------------------------------
+// K7 (world 9.4 "in sub-dungeon: dest = exits[0]"): a sub-dungeon has no camp; its portal leads to its exit tile.
+bool ZoneRuntime::PortalToExit() const {
+  return map_ != nullptr && map_->camps.empty() && !exits_.empty() &&
+         ctx_.data.World().FindSubDungeon(map_->id) != nullptr;
+}
+
 PortalRefusal ZoneRuntime::CanUseTownPortal() const {
   if (!zone_impl::ZoneHeroAlive(ctx_)) return PortalRefusal::Dead;
   if (IsPortaling() || ctx_.session.transitioning) return PortalRefusal::Busy;
+  if (PortalToExit()) {
+    // 9.4: refused within 3 tiles of the exit (AlreadyAtCamp is the refusal's "already there"; the line differs).
+    const Vec2 exit = exits_[0].def.pos.Center();
+    return DistSq(ctx_.sys.hero->Position(), exit) < zone_impl::kZonePortalExitNearSq ? PortalRefusal::AlreadyAtCamp
+                                                                                       : PortalRefusal::None;
+  }
   if (map_ == nullptr || map_->camps.empty()) return PortalRefusal::NoDestination;
   const Vec2 hero = ctx_.sys.hero->Position();
   const Vec2 dest = NearestCamp(hero);
@@ -552,12 +623,14 @@ PortalRefusal ZoneRuntime::CanUseTownPortal() const {
 
 bool ZoneRuntime::UseTownPortal() {
   const PortalRefusal refusal = CanUseTownPortal();
+  const bool toExit = PortalToExit();
   if (refusal == PortalRefusal::AlreadyAtCamp) {
-    ctx_.events.Log(MakeLoc("zone.teleport.alreadyAtCamp"), LogType::System);
+    ctx_.events.Log(MakeLoc(toExit ? "zone.teleport.alreadyAtExit" : "zone.teleport.alreadyAtCamp"), LogType::System);
     return false;
   }
   if (refusal != PortalRefusal::None) return false;
-  portalDestination_ = NearestCamp(ctx_.sys.hero->Position());  // W3: the nearest camp of the zone
+  // W3: the nearest camp of the zone; K7: a sub-dungeon's exit tile.
+  portalDestination_ = toExit ? exits_[0].def.pos.Center() : NearestCamp(ctx_.sys.hero->Position());
   if (ctx_.sys.locomotion != nullptr) ctx_.sys.locomotion->Stop();
   if (ctx_.sys.combat != nullptr) ctx_.sys.combat->ClearAttackTarget();
   pending_ = PendingInteraction{};
@@ -715,6 +788,41 @@ void ZoneRuntime::FillSnapshot(Snapshot& out) const {
     v.sealed = e.sealed;
     v.armed = e.armed;
     out.markers.push_back(std::move(v));
+  }
+  // K7: the zone's sub-dungeon entrances (static markers) and the sub-dungeon the hero is in.
+  const WorldTables& world = ctx_.data.World();
+  for (const SubDungeonEntranceDef& e : map_->subDungeonEntrances) {
+    WorldMarkerView v;
+    v.kind = MarkerKind::SubDungeonEntrance;
+    v.pos = e.pos.Center();
+    v.key = e.id;
+    v.sealed = e.sealed;
+    v.target = e.targetSubDungeon;
+    const SubDungeonDef* target = world.FindSubDungeon(e.targetSubDungeon);
+    v.enterable = zone_impl::ZoneEnterable(ctx_.data, e) != nullptr;
+    v.cleansed = target != nullptr && !target->cleansedFlag.empty() && ctx_.session.HasFlag(target->cleansedFlag);
+    out.markers.push_back(std::move(v));
+  }
+  SubDungeonView& sub = out.zone.subDungeon;
+  sub = SubDungeonView{};
+  if (const SubDungeonDef* sd = world.FindSubDungeon(map_->id)) {
+    const SubDungeonVisit& visit = ctx_.session.subDungeon;
+    const bool noted = visit.subDungeonId == sd->id;
+    sub.inside = true;
+    sub.id = sd->id;
+    sub.parentZone = sd->parentZone;
+    if (const MapDef* parent = world.FindMapProper(sd->parentZone)) sub.parentNameKey = parent->nameKey;
+    sub.entranceId = noted ? visit.entranceId : std::string();
+    sub.entrancePos = noted ? visit.entrancePos.Center() : sd->returnPos.Center();
+    sub.returnPos = sd->returnPos.Center();
+    sub.exitPos = sd->exitPos.Center();
+    sub.miniBossId = sd->miniBossId;
+    sub.cleansedFlag = sd->cleansedFlag;
+    sub.cleansed = !sd->cleansedFlag.empty() && ctx_.session.HasFlag(sd->cleansedFlag);
+    if (const MonsterSystem* monsters = ctx_.sys.monsters) {
+      sub.guardianAlive = monsters->GuardianAlive();
+      sub.hostiles = monsters->AliveCount();
+    }
   }
   out.prompt.kind = prompt_.kind;
   out.prompt.id = prompt_.id;

@@ -10,6 +10,11 @@
 // story, embers, tracker) -> exp -> gold -> items (bag else stash) -> pet -> achievements 'quest' -> SaveRequestMsg.
 // Exp / gold / items go through RewardService (ExpSource::Quest, GoldReason::QuestReward, OverflowPolicy::Stash).
 // Progress from drops / gather nodes / clues emits EvQuestUpdate with hasFrom / from / itemKind (quests 3.2 fly-in).
+// Dark remake K7 (implementation-plan.md 3 K7): an objective lives in its own zone (QuestObjectiveDef::zone, a
+// sub-dungeon of the quest's zone; else the quest's): its gather nodes, clue marks and explore spot exist there, the
+// guide points at the way there from the other zone (GuideWorld::wayTo), and inside a sub-dungeon the parent zone's
+// quests are guided and roll their drops. A clear_area objective is checked every step in its sub-dungeon
+// (CheckClearArea): the zone's cleansedFlag, EvAreaCleansed, then its progress.
 #pragma once
 
 #include <cstdint>
@@ -186,6 +191,7 @@ class ABYSS_API QuestWorld {
   void TickGatherAndClues();
   void TickGuide(double dtMs);
   void CheckExplore();                     // 3.6 (500 ms observer)
+  void CheckClearArea();                   // K7 clear_area (every step; EvWorldFlag, EvAreaCleansed, the progress)
   void AdvanceCraftFromNpc(std::string_view npcId);  // 3.11
   void SpawnEscort();                      // 3.9
   void TickEscort(double dtMs);

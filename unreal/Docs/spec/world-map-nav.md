@@ -19,6 +19,17 @@ Target: portable C++20 core (`AbyssCore`: no exceptions, no RTTI, no UE types) +
 > `ember_tower` keeps plains. K1 (DECISIONS DR8 *K1 as built*): a *sealed* sub-dungeon entrance (the Pit before Wave 3) is
 > handled by §7.1 row 7 / §7.4 order 4 as a toast of its `sealedTextKey` and nothing else; unsealed entrances stay
 > "later" until sub-dungeon travel (implementation-plan.md K7).
+>
+> **K7 as built (3A, 2026-11, pending review; DECISIONS DR8 *K7 as built*).** An unsealed entrance whose target is a
+> **hand-authored** sub-dungeon (a `subDungeons` record with `tiles`) is an interact target like an NPC (within 3 tiles;
+> the interact action or a press that walks there first): the hero enters that sub-dungeon's own zone at its
+> `playerStart`, and its exit tile (an ordinary exit: the W8 arming rule holds) returns to the record's `returnPos` in
+> the parent zone (the nearest walkable tile within 8 when that one is blocked; a load onto that tile follows the same
+> rule). Inside: nothing respawns, no random event rolls, the town portal ends on the exit tile, a death restarts the
+> parent at its first camp (the respawn timer, and `ResolvePendingDeath` on background / menu / quit: 3A review), and a
+> save is written at the entrance in the parent zone. An entrance onto one of the web's two generated sub-dungeons (no
+> `tiles`) stays inert: those are still never built. A sub-dungeon is not a zone proper: it is never `defaultMap`, in
+> `order`, an exit's target or a random-events row.
 
 This document describes **what the web game does today**, precisely enough to re-implement it without reading the
 TypeScript, and proposes the 3D equivalent for everything that is a 2D/Phaser artefact. Markers used below:
