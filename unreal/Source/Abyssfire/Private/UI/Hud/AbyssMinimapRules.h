@@ -15,7 +15,7 @@
 // Two more rules keep a themed palette readable as a map (S-A review R3: the march's bases are greys 6 luma levels
 // apart, so the camp, the tan landmark of the web palette, was lost in the field):
 //   * the camp ground is the brightest walkable colour, at least CampOverGround x the brightest of grass / dirt /
-//     stone (its own hue, lifted);
+//     stone and at least CampOverGroundMin levels above it (its own hue, lifted);
 //   * water that does not stand out by hue (channel spread under WaterHueSpread, the march's grey pools) is capped like
 //     the other blocked tiles; a coloured water (the plains' blue, the abyss's lava) keeps its base.
 //
@@ -95,6 +95,9 @@ namespace AbyssMinimapRules
 
 	/** The camp ground is at least this times the brightest other walkable ground's brightness. */
 	inline constexpr double CampOverGround = 1.25;
+	/** ... and at least this many brightness levels (0..255) above it: on a dark style (the Pit) the ratio alone is
+	 *  too small a step to see. */
+	inline constexpr double CampOverGroundMin = 24.0;
 	/** Water whose channels are closer together than this (0..255) has no hue to be told by: it is capped as blocked. */
 	inline constexpr int WaterHueSpread = 48;
 
@@ -199,7 +202,9 @@ namespace AbyssMinimapRules
 				const double L = Luma(P.Tile[static_cast<size_t>(Walkable)]);
 				BrightestGround = L > BrightestGround ? L : BrightestGround;
 			}
-			P.Tile[TileCamp] = LiftLuma(P.Tile[TileCamp], BrightestGround * CampOverGround);
+			const double CampByRatio = BrightestGround * CampOverGround;
+			const double CampByStep = BrightestGround + CampOverGroundMin;
+			P.Tile[TileCamp] = LiftLuma(P.Tile[TileCamp], CampByRatio > CampByStep ? CampByRatio : CampByStep);
 			double DarkestWalkable = 255.0;
 			for (const int Walkable : { TileGrass, TileDirt, TileStone, TileCamp })
 			{
