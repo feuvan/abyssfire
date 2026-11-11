@@ -6,6 +6,9 @@
 // exactly the signature Ret(Params..., PayloadTypes...) (TMemFunPtrType), a const object needs a const member function,
 // BindUObject needs a UObject-derived class, BindSP a TSharedFromThis-derived one, and a lambda must be callable with
 // (Params..., Payload...) and return something convertible to Ret. Wrong signatures fail to compile, as in UE.
+// A weak lambda (CreateWeakLambda / BindWeakLambda / AddWeakLambda) keeps its owner in a TWeakObjectPtr<UserClass>
+// (TWeakBaseFunctorDelegateInstance): UObject owners only. A Slate widget or another TSharedFromThis object uses
+// CreateSPLambda / BindSPLambda / AddSPLambda.
 #pragma once
 
 #include "CoreTypes.h"
@@ -64,7 +67,7 @@ public:
 	[[nodiscard]] static TDelegate CreateLambda(FunctorType&& InFunctor, VarTypes&&... Vars) UE_STUB_BODY
 	template <typename UserClass, typename FunctorType, typename... VarTypes>
 		requires UE::Stub::CDelegateFunctor<InRetValType, std::decay_t<FunctorType>, ParamTypes..., std::decay_t<VarTypes>...>
-			&& (UE::Stub::CDelegateUObject<UserClass> || UE::Stub::CDelegateSharedFromThis<UserClass>)
+			&& UE::Stub::CDelegateUObject<UserClass>
 	[[nodiscard]] static TDelegate CreateWeakLambda(UserClass* InUserObject, FunctorType&& InFunctor, VarTypes&&... Vars) UE_STUB_BODY
 	template <typename UserClass, ESPMode Mode, typename FunctorType, typename... VarTypes>
 		requires UE::Stub::CDelegateFunctor<InRetValType, std::decay_t<FunctorType>, ParamTypes..., std::decay_t<VarTypes>...>
@@ -105,7 +108,7 @@ public:
 	void BindLambda(FunctorType&& InFunctor, VarTypes&&... Vars) UE_STUB_BODY
 	template <typename UserClass, typename FunctorType, typename... VarTypes>
 		requires UE::Stub::CDelegateFunctor<InRetValType, std::decay_t<FunctorType>, ParamTypes..., std::decay_t<VarTypes>...>
-			&& (UE::Stub::CDelegateUObject<UserClass> || UE::Stub::CDelegateSharedFromThis<UserClass>)
+			&& UE::Stub::CDelegateUObject<UserClass>
 	void BindWeakLambda(UserClass* InUserObject, FunctorType&& InFunctor, VarTypes&&... Vars) UE_STUB_BODY
 	template <typename UserClass, typename FunctorType, typename... VarTypes>
 		requires UE::Stub::CDelegateFunctor<InRetValType, std::decay_t<FunctorType>, ParamTypes..., std::decay_t<VarTypes>...> && UE::Stub::CDelegateSharedFromThis<UserClass>
@@ -157,7 +160,7 @@ public:
 	FDelegateHandle AddLambda(FunctorType&& InFunctor, VarTypes&&... Vars) UE_STUB_BODY
 	template <typename UserClass, typename FunctorType, typename... VarTypes>
 		requires std::is_invocable_v<std::decay_t<FunctorType>&, ParamTypes..., std::decay_t<VarTypes>...>
-			&& (UE::Stub::CDelegateUObject<UserClass> || UE::Stub::CDelegateSharedFromThis<UserClass>)
+			&& UE::Stub::CDelegateUObject<UserClass>
 	FDelegateHandle AddWeakLambda(UserClass* InUserObject, FunctorType&& InFunctor, VarTypes&&... Vars) UE_STUB_BODY
 	template <typename UserClass, typename FunctorType, typename... VarTypes>
 		requires std::is_invocable_v<std::decay_t<FunctorType>&, ParamTypes..., std::decay_t<VarTypes>...> && UE::Stub::CDelegateSharedFromThis<UserClass>

@@ -12,7 +12,7 @@ class UWorld;
 
 class UWorldSubsystem : public USubsystem
 {
-	UE_STUB_CLASS_BODY(UWorldSubsystem, USubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(UWorldSubsystem, USubsystem)
 public:
 	virtual UWorld* GetWorld() const override final;
 	UWorld& GetWorldRef() const;
@@ -27,7 +27,7 @@ protected:
 
 class UTickableWorldSubsystem : public UWorldSubsystem, public FTickableGameObject
 {
-	UE_STUB_CLASS_BODY(UTickableWorldSubsystem, UWorldSubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(UTickableWorldSubsystem, UWorldSubsystem)
 public:
 	virtual UWorld* GetTickableGameObjectWorld() const override;
 	virtual ETickableTickType GetTickableTickType() const override;

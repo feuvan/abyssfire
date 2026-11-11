@@ -28,7 +28,9 @@ RULES = {
     'prefix': 'UObject classes are U-prefixed, actors A-prefixed, structs F, enums E, native interfaces I',
     'class-base': 'a UCLASS derives publicly from exactly one UObject class, listed first',
     'specifier': 'UCLASS / UPROPERTY / UFUNCTION / USTRUCT / UENUM specifiers are ones UHT knows',
-    'property-type': 'UPROPERTY / UFUNCTION types are types UHT can reflect (no std::, no namespaces, no nested containers)',
+    'property-type': 'UPROPERTY / UFUNCTION types are types UHT can reflect (no std::, no namespaces, no nested containers, '
+                     'no UObject class by value)',
+    'property-shadow': 'a UPROPERTY does not have the name of a UPROPERTY / UFUNCTION of a base class (UHT: shadowing is not allowed)',
     'enum-underlying': 'BlueprintType enums are uint8 (error); a UENUM enum class without an underlying type is a warning',
     'preprocessor': 'no reflection macro inside #if other than WITH_EDITOR / WITH_EDITORONLY_DATA',
     'raw-object-pointer': 'UObject pointer members without UPROPERTY are not seen by the garbage collector (reported)',
@@ -200,11 +202,16 @@ def specifier_names(args):
 
 
 class Uht:
-    def __init__(self, module_dir, out_dir, api_macro, stub_index):
+    def __init__(self, module_dir, out_dir, api_macro, stub_index, sdk_default_ctor=None, stub_classes=None):
         self.module_dir, self.out_dir, self.api = module_dir, out_dir, api_macro
         self.findings = []
         self.headers = []
         self.stub_types = stub_index  # set of reflected engine type names (U/A/F/E prefixed) or None
+        # engine classes of the SDK that only have a default constructor (UE_STUB_CLASS_BODY_DEFAULT_CTOR): UHT gives a
+        # constructor-less class derived from one of them `TClass();` instead of the FObjectInitializer form
+        self.sdk_default_ctor = sdk_default_ctor or set()
+        # the engine Python stub's classes ({name without prefix: {base, props}}) for the property-shadow rule, or None
+        self.stub_classes = stub_classes
         self.module_classes, self.module_structs, self.module_enums = {}, {}, {}
         self.module_plain_types = set()
         self.deferred_types = []
@@ -536,7 +543,22 @@ class Uht:
         if '<' in base:
             self.report('error', 'property-type', header, line, '%s: "%s": template type UHT cannot reflect' % (what, type_text))
             return False
+        if not t.endswith('*') and self.is_object_class(base):
+            # UHT: "Missing '*' in Expected a pointer type" (a UObject is never held or passed by value)
+            self.report('error', 'property-type', header, line, '%s: "%s" is a UObject class used by value (UHT: "Missing \'*\' in Expected a pointer type"): '
+                        'use TObjectPtr<%s> / %s*' % (what, type_text, base, base))
+            return False
         return self.check_named(header, line, base, what) and ok
+
+    def is_object_class(self, name):
+        """A reflected UObject class (U / A prefix): one of the module's, or an engine class the Python stub lists."""
+        if not re.match(r'[UA][A-Z]\w*$', name):
+            return False
+        if name in self.module_classes:
+            return True
+        if name in self.module_structs or name in self.module_enums or name in self.module_plain_types:
+            return False
+        return self.stub_types is not None and name[1:] in self.stub_types
 
     def check_named(self, header, line, name, what):
         if name in BUILTIN_TYPES or not name:
@@ -696,6 +718,74 @@ class Uht:
         expected = 'A' if self.is_actor(sup) else 'U'
         if not re.match(expected + r'[A-Z]', name):
             self.report('error', 'prefix', header, cls['line'], 'class %s has an invalid Unreal prefix, expecting %s%s' % (name, expected, name.lstrip('UA')))
+        self.lint_shadowing(header, cls)
+
+    @staticmethod
+    def field_key(name):
+        """UHT compares field names as FNames (case-insensitive). The Python stub spells engine properties in snake_case
+        without the bool prefix (bCanEverTick -> can_ever_tick), so both sides are reduced to lower-case letters / digits."""
+        if re.match(r'b[A-Z]', name):
+            name = name[1:]
+        return re.sub(r'[^a-z0-9]', '', name.lower())
+
+    def inherited_fields(self, sup, depth=0):
+        """[(key, display name, owner, kind)] of the reflected properties / functions of the base classes of a class:
+        module classes from their parsed headers, engine classes from the Python stub (its editor properties only: a
+        property the engine does not expose to the editor / Blueprint is not in the stub and cannot be seen here)."""
+        out = []
+        while sup and depth < 32:
+            depth += 1
+            if sup in self.module_classes:
+                base = self.module_classes[sup]
+                out += [(p['name'].lower(), p['name'], sup, 'UPROPERTY') for p in base['properties']]
+                out += [(f['name'].lower(), f['name'], sup, 'UFUNCTION') for f in base['functions']]
+                sup = base.get('super', '')
+                continue
+            if self.stub_classes is None:
+                break
+            py = sup[1:]
+            while py in self.stub_classes and depth < 64:
+                depth += 1
+                entry = self.stub_classes[py]
+                out += [(self.field_key(p), p, 'engine class ' + py, 'engine property') for p in entry.get('props', [])]
+                py = entry.get('base', '')
+            break
+        return out
+
+    def lint_shadowing(self, header, cls):
+        """UHT: "Member variable declaration: 'X' cannot be defined in 'Y' as it is already defined in scope 'Z' (shadowing
+        is not allowed)". C++ accepts a member with the name of a base-class member, so only a lint can see it."""
+        inherited = self.inherited_fields(cls.get('super', ''))
+        if not inherited:
+            return
+        exact = {}
+        engine = {}
+        for key, display, owner, kind in inherited:
+            (engine if kind == 'engine property' else exact).setdefault(key, (display, owner, kind))
+        for prop in cls['properties']:
+            hit = exact.get(prop['name'].lower()) or engine.get(self.field_key(prop['name']))
+            if hit:
+                display, owner, kind = hit
+                self.report('error', 'property-shadow', header, prop['line'],
+                            "Member variable declaration: '%s' cannot be defined in '%s' as it is already defined in scope '%s' (%s %s; shadowing is not allowed)"
+                            % (prop['name'], cls['name'], owner, kind, display))
+
+    # ---- constructor forms ----------------------------------------------------------------------------------------
+    def has_initializer_ctor(self, name, depth=0):
+        """Can `name` be constructed from an FObjectInitializer (UHT: bObjectInitializerConstructorDeclared)? An engine
+        class of the SDK: unless it is declared with UE_STUB_CLASS_BODY_DEFAULT_CTOR. A module class: when it declares
+        such a constructor, or declares none and its base has one (UHT then generates the initializer form)."""
+        cls = self.module_classes.get(name)
+        if cls is None or depth > 32:
+            return name not in self.sdk_default_ctor
+        if cls['ctors']:
+            return any('FObjectInitializer' in c for c in cls['ctors'])
+        return self.has_initializer_ctor(cls.get('super', ''), depth + 1)
+
+    def generated_ctor_form(self, cls):
+        """'initializer' or 'default': what UHT declares for a class without a constructor of its own (the form of its
+        base class: "Assume super class has OI constructor ... otherwise generate a default constructor")."""
+        return 'initializer' if self.has_initializer_ctor(cls.get('super', '')) else 'default'
 
     # ---- output -----------------------------------------------------------------------------------------------------
     def file_id(self, header):
@@ -767,7 +857,12 @@ class Uht:
                     lines.append('\tDECLARE_FUNCTION(exec%s);' % fn['name'])
                 lines.append('\tUE_STUB_DECLARE_CLASS(%s, %s)' % (name, sup))
                 abstract = 'Abstract' in cls['specs'] or cls['kind'] == 'UINTERFACE'
-                if not cls['ctors']:
+                if not cls['ctors'] and self.generated_ctor_form(cls) == 'default':
+                    # the base class only has a default constructor (a subsystem): UHT generates `TClass();`
+                    lines.append('\t%s();' % name)
+                    if not abstract:
+                        lines.append('\tstatic void __DefaultConstructor(const FObjectInitializer& X) { new ((EInternal*)X.GetObj()) %s; }' % name)
+                elif not cls['ctors']:
                     lines.append('\t%s(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());' % name)
                     if not abstract:
                         lines.append('\tstatic void __DefaultConstructor(const FObjectInitializer& X) { new ((EInternal*)X.GetObj()) %s(X); }' % name)
@@ -806,7 +901,9 @@ class Uht:
             if cls['body_line'] is None:
                 continue
             name = cls['name']
-            if not cls['ctors']:
+            if not cls['ctors'] and self.generated_ctor_form(cls) == 'default':
+                out.append('%s::%s() {}' % (name, name))
+            elif not cls['ctors']:
                 out.append('%s::%s(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) {}' % (name, name))
             out.append('%s::%s(FVTableHelper& Helper) : Super(Helper) {}' % (name, name))
             if not cls['has_dtor']:
@@ -857,6 +954,36 @@ def load_stub_types(stub_path, cache_path):
     return names
 
 
+def sdk_default_ctor_classes(sdk_dir):
+    """Engine classes the stub SDK declares with UE_STUB_CLASS_BODY_DEFAULT_CTOR (a default constructor only)."""
+    names = set()
+    if not sdk_dir or not os.path.isdir(sdk_dir):
+        return names
+    for root, _dirs, files in os.walk(sdk_dir):
+        for name in files:
+            if name.endswith('.h'):
+                with open(os.path.join(root, name), encoding='utf-8') as f:
+                    text = f.read()
+                if 'UE_STUB_CLASS_BODY_DEFAULT_CTOR' in text:
+                    names.update(re.findall(r'^\s*UE_STUB_CLASS_BODY_DEFAULT_CTOR\s*\(\s*(\w+)\s*,', text, re.M))
+    return names
+
+
+def load_stub_classes(stub_path, cache_dir):
+    """{class name without prefix: {base, props, ...}} from the engine Python stub (tools/check_reflected.py's index)."""
+    if not stub_path or not os.path.exists(stub_path):
+        return None
+    tools = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools')
+    sys.dont_write_bytecode = True
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    try:
+        import check_reflected
+    except ImportError:
+        return None
+    return check_reflected.load_stub(stub_path, cache_dir)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--module', required=True, help='module source directory (contains Public / Private)')
@@ -864,12 +991,17 @@ def main():
     parser.add_argument('--api', default='ABYSSFIRE_API')
     parser.add_argument('--report', help='write the findings as JSON here')
     parser.add_argument('--stub', help='engine Python stub (unreal.py): reflected engine type names for the type lint')
+    parser.add_argument('--sdk', default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'sdk'),
+                        help='the stub SDK (its UE_STUB_CLASS_BODY_DEFAULT_CTOR classes decide the generated constructor form)')
+    parser.add_argument('--stub-cache', help='directory for the parsed Python stub index (default: --out)')
     parser.add_argument('--quiet', action='store_true', help='print only the summary line')
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
     stub_types = load_stub_types(args.stub, os.path.join(args.out, 'stub_types.json') if args.stub else None)
-    uht = Uht(os.path.abspath(args.module), os.path.abspath(args.out), args.api, stub_types)
+    stub_classes = load_stub_classes(args.stub, args.stub_cache or args.out)
+    uht = Uht(os.path.abspath(args.module), os.path.abspath(args.out), args.api, stub_types,
+              sdk_default_ctor_classes(args.sdk), stub_classes)
     uht.load()
     uht.lint_headers()
     gen_units = uht.write()

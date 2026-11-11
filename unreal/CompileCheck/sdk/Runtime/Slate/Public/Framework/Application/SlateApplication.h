@@ -87,7 +87,7 @@ public:
 	virtual TSharedPtr<SWindow> GetActiveTopLevelWindow() const override;
 	virtual TSharedPtr<SWindow> GetActiveTopLevelRegularWindow() const override;
 	virtual const TArray<TSharedRef<SWindow>> GetTopLevelWindows() const override;
-	const TArray<TSharedRef<SWindow>>& GetInteractiveTopLevelWindows();
+	TArray<TSharedRef<SWindow>> GetInteractiveTopLevelWindows();
 	void GetAllVisibleWindowsOrdered(TArray<TSharedRef<SWindow>>& OutWindows);
 	TSharedPtr<SWindow> FindWidgetWindow(TSharedRef<const SWidget> InWidget) const;
 	TSharedPtr<SWindow> FindWidgetWindow(TSharedRef<const SWidget> InWidget, FWidgetPath& OutWidgetPath) const;

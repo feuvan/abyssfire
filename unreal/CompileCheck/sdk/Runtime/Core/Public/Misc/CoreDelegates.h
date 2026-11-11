@@ -38,11 +38,13 @@ public:
 	static FApplicationLifetimeDelegate ApplicationHasReactivatedDelegate;
 	static FApplicationLifetimeDelegate ApplicationWillEnterBackgroundDelegate;
 	static FApplicationLifetimeDelegate ApplicationHasEnteredForegroundDelegate;
-	static FApplicationLifetimeDelegate ApplicationWillTerminateDelegate;
-	// UNVERIFIED (API_UNCERTAIN.md #3): the accessor that replaced direct use of ApplicationWillTerminateDelegate in 5.x.
-	// Believed real, not confirmed for 5.8, not reflected. Declared (on by default) because
-	// Private/Framework/AbyssGameInstance.cpp:65,82 calls it; the static member above is the older form.
-	static FApplicationLifetimeDelegate& GetApplicationWillTerminateDelegate();
+	// The older form: a plain (not thread-safe) multicast delegate, deprecated in 5.x in favour of the accessor below.
+	static FSimpleMulticastDelegate ApplicationWillTerminateDelegate;
+	// UNVERIFIED (API_UNCERTAIN.md #3): the accessor that replaced direct use of ApplicationWillTerminateDelegate in 5.x
+	// (next to GetMemoryTrimDelegate / GetOutOfMemoryDelegate, with their thread-safe type). Believed real, not confirmed
+	// for 5.8, not reflected. Declared (on by default) because Private/Framework/AbyssGameInstance.cpp:65,82 calls it;
+	// only AddUObject / RemoveAll are used there, which every multicast delegate type has.
+	static FTSSimpleMulticastDelegate& GetApplicationWillTerminateDelegate();
 	// end UNVERIFIED
 	static FApplicationLifetimeDelegate ApplicationShouldUnloadResourcesDelegate;
 	static FOnUserActivityStringChanged UserActivityStringChanged;

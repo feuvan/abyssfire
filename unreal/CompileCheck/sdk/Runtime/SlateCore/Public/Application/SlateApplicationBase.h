@@ -19,8 +19,8 @@ class FSlateApplicationBase
 public:
 	FSlateApplicationBase();
 	virtual ~FSlateApplicationBase() {}
-	const FSlateRenderer* GetRenderer() const { return Renderer.Get(); }
-	FSlateRenderer* GetRenderer() { return Renderer.Get(); }
+	/** One const accessor that hands out the mutable renderer, as in the engine (no const / non-const pair). */
+	FSlateRenderer* GetRenderer() const { return Renderer.Get(); }
 	virtual TSharedRef<SWindow> AddWindow(TSharedRef<SWindow> InSlateWindow, const bool bShowImmediately = true) = 0;
 	virtual TSharedPtr<SWindow> GetActiveTopLevelWindow() const = 0;
 	virtual TSharedPtr<SWindow> GetActiveTopLevelRegularWindow() const = 0;

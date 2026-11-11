@@ -4,7 +4,7 @@
 The Python stub lists everything the engine exposes through reflection: classes (with base class, module and header
 file), UFUNCTIONs exposed to Blueprint / Python (snake_case, parameter names), editor properties and enums. The SDK
 marks what it claims to be reflected:
-    class U... / A...  with UE_STUB_CLASS_BODY(UFoo, UBar)   -> class Foo(Bar) must exist; module and header checked
+    class U... / A...  with UE_STUB_CLASS_BODY[_DEFAULT_CTOR](UFoo, UBar) -> class Foo(Bar) must exist; module and header checked
     struct F...        with UE_STUB_STRUCT_BODY(FFoo)        -> class Foo must exist; header checked
     UFUNCTION(...) before a member function                  -> method foo_bar must exist on the class (or a base);
                                                                 parameter names compared
@@ -297,7 +297,7 @@ class Checker:
                 continue
             body = text[body_open + 1:body_close]
             name = m.group(2)
-            cm = re.match(r'\s*UE_STUB_CLASS_BODY\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)', body)
+            cm = re.match(r'\s*UE_STUB_CLASS_BODY(?:_DEFAULT_CTOR)?\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)', body)
             sm = re.match(r'\s*UE_STUB_STRUCT_BODY\s*\(\s*(\w+)\s*\)', body)
             if not cm and not sm:
                 continue

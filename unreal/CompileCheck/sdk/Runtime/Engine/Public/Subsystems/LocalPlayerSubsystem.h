@@ -10,7 +10,7 @@ class APlayerController;
 
 class ULocalPlayerSubsystem : public USubsystem
 {
-	UE_STUB_CLASS_BODY(ULocalPlayerSubsystem, USubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(ULocalPlayerSubsystem, USubsystem)
 public:
 	template <typename LocalPlayerType = ULocalPlayer> LocalPlayerType* GetLocalPlayer() const;
 	virtual void PlayerControllerChanged(APlayerController* NewPlayerController);

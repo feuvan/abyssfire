@@ -77,7 +77,7 @@ struct FTextBlockStyle : public FSlateWidgetStyle
 	FSlateColor ColorAndOpacity;
 	FTextBlockStyle& SetColorAndOpacity(const FSlateColor& InColorAndOpacity) { ColorAndOpacity = InColorAndOpacity; return *this; }
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Appearance)
-	UE::Slate::FDeprecateSlateVector2D ShadowOffset;
+	FDeprecateSlateVector2D ShadowOffset;
 	FTextBlockStyle& SetShadowOffset(const UE::Slate::FDeprecateVector2DParameter& InShadowOffset) { ShadowOffset = InShadowOffset; return *this; }
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Appearance)
 	FLinearColor ShadowColorAndOpacity;

@@ -9,7 +9,7 @@ class UGameInstance;
 
 class UGameInstanceSubsystem : public USubsystem
 {
-	UE_STUB_CLASS_BODY(UGameInstanceSubsystem, USubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(UGameInstanceSubsystem, USubsystem)
 public:
 	UGameInstance* GetGameInstance() const;
 };

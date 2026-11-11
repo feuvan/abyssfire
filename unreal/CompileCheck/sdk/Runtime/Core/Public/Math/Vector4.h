@@ -24,29 +24,29 @@ namespace UE::Math
 		explicit TVector4(ENoInit) UE_STUB_BODY
 		template <typename FArg> requires (!std::is_same_v<T, FArg>)
 		explicit TVector4(const TVector4<FArg>& From) UE_STUB_BODY
-		static TVector4 Zero() UE_STUB_BODY
-		static TVector4 One() UE_STUB_BODY
+		[[nodiscard]] static TVector4 Zero() UE_STUB_BODY
+		[[nodiscard]] static TVector4 One() UE_STUB_BODY
 		T& operator[](int32 ComponentIndex) UE_STUB_BODY
 		T operator[](int32 ComponentIndex) const UE_STUB_BODY
-		TVector4 operator-() const UE_STUB_BODY
-		TVector4 operator+(const TVector4& V) const UE_STUB_BODY
+		[[nodiscard]] TVector4 operator-() const UE_STUB_BODY
+		[[nodiscard]] TVector4 operator+(const TVector4& V) const UE_STUB_BODY
 		TVector4& operator+=(const TVector4& V) UE_STUB_BODY
-		TVector4 operator-(const TVector4& V) const UE_STUB_BODY
+		[[nodiscard]] TVector4 operator-(const TVector4& V) const UE_STUB_BODY
 		TVector4& operator-=(const TVector4& V) UE_STUB_BODY
-		template <typename FArg> requires std::is_arithmetic_v<FArg> TVector4 operator*(FArg Scale) const UE_STUB_BODY
-		template <typename FArg> requires std::is_arithmetic_v<FArg> TVector4 operator/(FArg Scale) const UE_STUB_BODY
-		TVector4 operator*(const TVector4& V) const UE_STUB_BODY
-		TVector4 operator/(const TVector4& V) const UE_STUB_BODY
-		bool operator==(const TVector4& V) const UE_STUB_BODY
-		bool operator!=(const TVector4& V) const UE_STUB_BODY
-		bool Equals(const TVector4& V, T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
-		T Size3() const UE_STUB_BODY
-		T SizeSquared3() const UE_STUB_BODY
-		T Size() const UE_STUB_BODY
-		T SizeSquared() const UE_STUB_BODY
-		TVector4 GetSafeNormal(T Tolerance = UE_SMALL_NUMBER) const UE_STUB_BODY
+		template <typename FArg> requires std::is_arithmetic_v<FArg> [[nodiscard]] TVector4 operator*(FArg Scale) const UE_STUB_BODY
+		template <typename FArg> requires std::is_arithmetic_v<FArg> [[nodiscard]] TVector4 operator/(FArg Scale) const UE_STUB_BODY
+		[[nodiscard]] TVector4 operator*(const TVector4& V) const UE_STUB_BODY
+		[[nodiscard]] TVector4 operator/(const TVector4& V) const UE_STUB_BODY
+		[[nodiscard]] bool operator==(const TVector4& V) const UE_STUB_BODY
+		[[nodiscard]] bool operator!=(const TVector4& V) const UE_STUB_BODY
+		[[nodiscard]] bool Equals(const TVector4& V, T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
+		[[nodiscard]] T Size3() const UE_STUB_BODY
+		[[nodiscard]] T SizeSquared3() const UE_STUB_BODY
+		[[nodiscard]] T Size() const UE_STUB_BODY
+		[[nodiscard]] T SizeSquared() const UE_STUB_BODY
+		[[nodiscard]] TVector4 GetSafeNormal(T Tolerance = UE_SMALL_NUMBER) const UE_STUB_BODY
 		void Set(T InX, T InY, T InZ, T InW) UE_STUB_BODY
-		FString ToString() const UE_STUB_BODY
+		[[nodiscard]] FString ToString() const UE_STUB_BODY
 	};
 	template <typename T, typename T2> requires std::is_arithmetic_v<T2>
 	TVector4<T> operator*(T2 Scale, const TVector4<T>& V) UE_STUB_BODY

@@ -78,10 +78,10 @@ public:
 	void Shrink() UE_STUB_BODY
 	void Compact() UE_STUB_BODY
 	void Reserve(int32 Number) UE_STUB_BODY
-	bool IsEmpty() const UE_STUB_BODY
-	int32 Num() const UE_STUB_BODY
-	int32 GetMaxIndex() const UE_STUB_BODY
-	bool IsValidId(FSetElementId Id) const UE_STUB_BODY
+	[[nodiscard]] bool IsEmpty() const UE_STUB_BODY
+	[[nodiscard]] int32 Num() const UE_STUB_BODY
+	[[nodiscard]] int32 GetMaxIndex() const UE_STUB_BODY
+	[[nodiscard]] bool IsValidId(FSetElementId Id) const UE_STUB_BODY
 	ElementType& operator[](FSetElementId Id) UE_STUB_BODY
 	const ElementType& operator[](FSetElementId Id) const UE_STUB_BODY
 	FSetElementId Add(const InElementType& InElement, bool* bIsAlreadyInSetPtr = nullptr) requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
@@ -96,22 +96,22 @@ public:
 	template <typename OtherKeyFuncs, typename OtherAllocator> void Append(const TSet<ElementType, OtherKeyFuncs, OtherAllocator>& OtherSet) UE_STUB_BODY
 	void Append(std::initializer_list<ElementType> InitList) requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
 	void Remove(FSetElementId ElementId) UE_STUB_BODY
-	FSetElementId FindId(KeyInitType Key) const requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
-	ElementType* Find(KeyInitType Key) requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
-	const ElementType* Find(KeyInitType Key) const requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
+	[[nodiscard]] FSetElementId FindId(KeyInitType Key) const requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
+	[[nodiscard]] ElementType* Find(KeyInitType Key) requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
+	[[nodiscard]] const ElementType* Find(KeyInitType Key) const requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
 	int32 Remove(KeyInitType Key) requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
-	bool Contains(KeyInitType Key) const requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
+	[[nodiscard]] bool Contains(KeyInitType Key) const requires UE::Stub::CHashableKey<InElementType> UE_STUB_BODY
 	// FElementCompareClass wraps the predicate in TDereferenceWrapper (Templates/Sorting.h): as TArray::Sort.
 	void Sort() requires UE::Stub::CSortable<InElementType> UE_STUB_BODY
 	template <typename PREDICATE_CLASS> void Sort(const PREDICATE_CLASS& Predicate) requires UE::Stub::CSortPredicate<PREDICATE_CLASS, InElementType> UE_STUB_BODY
 	template <typename PREDICATE_CLASS> void StableSort(const PREDICATE_CLASS& Predicate) requires UE::Stub::CSortPredicate<PREDICATE_CLASS, InElementType> UE_STUB_BODY
-	TSet Intersect(const TSet& OtherSet) const UE_STUB_BODY
-	TSet Union(const TSet& OtherSet) const UE_STUB_BODY
-	TSet Difference(const TSet& OtherSet) const UE_STUB_BODY
-	bool Includes(const TSet& OtherSet) const UE_STUB_BODY
-	TArray<ElementType> Array() const UE_STUB_BODY
-	TIterator CreateIterator() UE_STUB_BODY
-	TConstIterator CreateConstIterator() const UE_STUB_BODY
+	[[nodiscard]] TSet Intersect(const TSet& OtherSet) const UE_STUB_BODY
+	[[nodiscard]] TSet Union(const TSet& OtherSet) const UE_STUB_BODY
+	[[nodiscard]] TSet Difference(const TSet& OtherSet) const UE_STUB_BODY
+	[[nodiscard]] bool Includes(const TSet& OtherSet) const UE_STUB_BODY
+	[[nodiscard]] TArray<ElementType> Array() const UE_STUB_BODY
+	[[nodiscard]] TIterator CreateIterator() UE_STUB_BODY
+	[[nodiscard]] TConstIterator CreateConstIterator() const UE_STUB_BODY
 	struct FRangedForIterator { ElementType& operator*() const UE_STUB_BODY FRangedForIterator& operator++() UE_STUB_BODY bool operator!=(const FRangedForIterator&) const UE_STUB_BODY };
 	struct FRangedForConstIterator { const ElementType& operator*() const UE_STUB_BODY FRangedForConstIterator& operator++() UE_STUB_BODY bool operator!=(const FRangedForConstIterator&) const UE_STUB_BODY };
 	FRangedForIterator begin() UE_STUB_BODY

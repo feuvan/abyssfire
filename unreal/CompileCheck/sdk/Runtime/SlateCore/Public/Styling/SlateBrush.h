@@ -106,7 +106,7 @@ struct FSlateBrush
 	UPROPERTY()
 	TEnumAsByte<enum ESlateBrushImageType::Type> ImageType;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Brush)
-	UE::Slate::FDeprecateSlateVector2D ImageSize;
+	FDeprecateSlateVector2D ImageSize;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Brush)
 	FMargin Margin;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Brush, meta = (DisplayName = "Tint", sRGB = "true"))

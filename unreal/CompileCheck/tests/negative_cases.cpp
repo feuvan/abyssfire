@@ -1152,3 +1152,153 @@ void NegativePanelCases(const FGeometry& Geometry, FSlateWindowElementList& Elem
 	(void)Box; (void)Scroll; (void)Canvas; (void)Constraint; (void)CanvasSlot; (void)ConstraintSlot; (void)Utc; (void)Version;
 	(void)Geometry; (void)Elements; (void)PointerEvent;
 }
+
+// ---- the final audit: shapes the SDK had too wide (weak pointers as booleans, weak lambdas on shared objects, the
+// ---- legacy UTF-8 converters, TObjectPtr construction, constructor forms, FSlateColor from FColor, the Slate bridge
+// ---- struct's namespace) and [[nodiscard]] on the math types and the container queries ----
+
+struct FNegativePlain
+{
+	int32 Value = 0;
+};
+void NegativeTakesObjectPtr(TObjectPtr<AActor> Held);
+void NegativeTakesSlateColor(FSlateColor Color);
+
+/** A widget that listens to a multicast delegate: a Slate widget is not a UObject, so it binds with the SP forms. */
+class SNegativeListenerWidget : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SNegativeListenerWidget) {}
+	SLATE_END_ARGS()
+	void Construct(const FArguments& InArgs);
+	void Listen(FSimpleMulticastDelegate& Event, FSimpleDelegate& Single)
+	{
+#if CASE == 0
+		Event.AddSPLambda(this, []() {});
+		Single.BindSPLambda(this, []() {});
+		Single = FSimpleDelegate::CreateSPLambda(this, []() {});
+#elif CASE == 197  // EXPECT: no matching member function for call to 'AddWeakLambda'
+		Event.AddWeakLambda(this, []() {});                             // a weak lambda holds a TWeakObjectPtr: UObject owners only
+#elif CASE == 198  // EXPECT: no matching member function for call to 'BindWeakLambda'
+		Single.BindWeakLambda(this, []() {});                           // BindSPLambda for a TSharedFromThis object
+#elif CASE == 199  // EXPECT: no matching function for call to 'CreateWeakLambda'
+		Single = FSimpleDelegate::CreateWeakLambda(this, []() {});      // CreateSPLambda for a TSharedFromThis object
+#endif
+	}
+};
+
+/** A subsystem only has a default constructor (USubsystem declares `USubsystem();`): no FObjectInitializer form. */
+class UNegativeSubsystem : public UGameInstanceSubsystem
+{
+public:
+#if CASE == 0
+	UNegativeSubsystem() {}
+#elif CASE == 200  // EXPECT: no matching constructor for initialization of 'UGameInstanceSubsystem'
+	UNegativeSubsystem(const FObjectInitializer& ObjectInitializer) : UGameInstanceSubsystem(ObjectInitializer) {}
+#endif
+};
+/** An actor has both forms (AActor declares `AActor();` and `AActor(const FObjectInitializer&);`). */
+class ANegativeBothFormsActor : public AActor
+{
+public:
+	ANegativeBothFormsActor(const FObjectInitializer& ObjectInitializer) : AActor(ObjectInitializer) {}
+};
+
+#if CASE == 201  // (declared at namespace scope: the assertion fires where the member is instantiated)
+struct FNegativePlainHolder
+{
+	TObjectPtr<FNegativePlain> Held;                                   // TObjectPtr is for UObject-derived types
+};
+#endif
+
+void NegativeAuditCases(UWorld* World, AActor* Actor, AActor& ActorRef, UObject* Object, const FString& Text, const std::string& Utf8,
+	FVector& Vector, FVector2D& Vector2, FRotator& Rotation, FQuat& Quat, TArray<int32>& Numbers, TMap<FName, int32>& Counts, TSet<int32>& NumberSet,
+	UMaterialParameterCollectionInstance* CollectionInstance)
+{
+	TWeakObjectPtr<AActor> Weak(Actor);
+	FSimpleMulticastDelegate Event;
+#if CASE == 0
+	// a weak object pointer is asked IsValid() (or resolved once with Get()); it has no boolean conversion
+	if (Weak.IsValid()) { Weak->Destroy(); }
+	if (AActor* Resolved = Weak.Get()) { Resolved->Destroy(); }
+	const bool bGone = !Weak.IsValid() || Weak == nullptr;
+	// a UObject owner binds a weak lambda
+	Event.AddWeakLambda(Object, []() {});
+	FSimpleDelegate Single = FSimpleDelegate::CreateWeakLambda(Object, []() {});
+	Single.BindWeakLambda(Actor, []() {});
+	// the legacy UTF-8 converters speak ANSICHAR on the UTF-8 side: what std::string and the C library take
+	FTCHARToUTF8 ToUtf8(*Text);
+	const std::string Encoded(ToUtf8.Get(), static_cast<size_t>(ToUtf8.Length()));
+	const ANSICHAR* Bytes = ToUtf8.Get();
+	FUTF8ToTCHAR FromUtf8(Utf8.c_str(), static_cast<int32>(Utf8.size()));
+	const FString Decoded = FString::ConstructFromPtrSize(FromUtf8.Get(), FromUtf8.Length());
+	FUTF8ToTCHAR FromUtf8Chars(reinterpret_cast<const UTF8CHAR*>(Utf8.c_str()), static_cast<int32>(Utf8.size()));   // or from UTF8CHAR
+	const FString Macro(UTF8_TO_TCHAR(Utf8.c_str()));
+	const std::string MacroBack(TCHAR_TO_UTF8(*Text));
+	// StringCast<UTF8CHAR> is the form that yields UTF8CHAR
+	const auto Cast8 = StringCast<UTF8CHAR>(*Text);
+	const UTF8CHAR* Utf8Chars = Cast8.Get();
+	// TObjectPtr: implicit from a pointer, explicit from a reference; forward-declared and UObject-derived types only
+	NegativeTakesObjectPtr(Actor);
+	NegativeTakesObjectPtr(&ActorRef);
+	NegativeTakesObjectPtr(TObjectPtr<AActor>(ActorRef));
+	TObjectPtr<class UNegativeNeverDefined> Forward = nullptr;
+	// FSlateColor: implicit from FLinearColor; an FColor goes through an explicit FSlateColor(...) or FLinearColor(...)
+	NegativeTakesSlateColor(FLinearColor::White);
+	NegativeTakesSlateColor(FSlateColor(FColor::Red));
+	NegativeTakesSlateColor(FLinearColor(FColor::Red));
+	TSharedRef<STextBlock> Tinted = SNew(STextBlock).ColorAndOpacity(FColor::White);
+	// the Slate vector bridge: the struct is a global type, the aliases Slate's signatures use live in UE::Slate
+	const ::FDeprecateSlateVector2D Bridge(1.f, 2.f);
+	const UE::Slate::FDeprecateVector2DResult BridgeResult = Bridge;
+	const UE::Slate::FDeprecateVector2DParameter BridgeParameter = Vector2;
+	// a collection instance takes a typed colour (FLinearColor) or an FVector4
+	CollectionInstance->SetVectorParameterValue(FName(TEXT("Tint")), FLinearColor(1.f, 0.5f, 0.25f, 1.f));
+	CollectionInstance->SetVectorParameterValue(FName(TEXT("Tint")), FVector4(1.0, 0.5, 0.25, 1.0));
+	// results of the math functions and the container queries are used; the mutating calls may be statements
+	const double Longest = FMath::Max(Vector.Size(), Vector2.Size()) + FMath::Clamp(1.0, 0.0, 2.0) + (double)Numbers.Num();
+	const FVector Unit = Vector.GetSafeNormal() + Rotation.Vector() + Quat.GetForwardVector();
+	const bool bKnown = Numbers.Contains(3) && Counts.Contains(NAME_None) && NumberSet.Contains(3) && !Numbers.IsEmpty() && Counts.Find(NAME_None) != nullptr;
+	Vector.Normalize();
+	Rotation.Normalize();
+	Numbers.Add(1);
+	Numbers.AddUnique(2);
+	Numbers.Remove(1);
+	Counts.FindOrAdd(NAME_None);
+	Counts.Add(NAME_None, 1);
+	Counts.Remove(NAME_None);
+	NumberSet.Add(3);
+	(void)bGone; (void)Encoded; (void)Bytes; (void)Decoded; (void)FromUtf8Chars; (void)Macro; (void)MacroBack; (void)Utf8Chars; (void)Forward; (void)Tinted;
+	(void)BridgeResult; (void)BridgeParameter; (void)Longest; (void)Unit; (void)bKnown;
+#elif CASE == 196  // EXPECT: attempt to use a deleted function
+	if (Weak) { Weak->Destroy(); }                                      // no operator bool on TWeakObjectPtr: IsValid() or Get()
+#elif CASE == 201  // EXPECT: TObjectPtr<T> can only be used with types derived from UObject
+	FNegativePlainHolder Holder;
+	(void)Holder;
+#elif CASE == 202  // EXPECT: no matching function for call to 'NegativeTakesObjectPtr'|no viable conversion from 'AActor' to 'TObjectPtr<AActor>'
+	NegativeTakesObjectPtr(ActorRef);                                   // the reference constructor is explicit: pass &ActorRef
+#elif CASE == 203  // EXPECT: no viable conversion from 'const FColor' to 'FSlateColor'|no matching function for call to 'NegativeTakesSlateColor'
+	NegativeTakesSlateColor(FColor::Red);                               // two user conversions (FColor -> FLinearColor -> FSlateColor)
+#elif CASE == 204  // EXPECT: cannot initialize a variable of type 'const UTF8CHAR \*'
+	const UTF8CHAR* Chars = FTCHARToUTF8(*Text).Get();                  // the legacy converter yields ANSICHAR: StringCast<UTF8CHAR>
+#elif CASE == 205  // EXPECT: no matching constructor for initialization of 'FUTF8ToTCHAR'
+	FUTF8ToTCHAR FromWide(*Text);                                       // its source is ANSICHAR (UTF-8 bytes), not TCHAR
+#elif CASE == 206  // EXPECT: no (type|member) named 'FDeprecateSlateVector2D' in namespace 'UE::Slate'
+	const UE::Slate::FDeprecateSlateVector2D Bridge(1.f, 2.f);          // a USTRUCT is a global type: ::FDeprecateSlateVector2D
+#elif CASE == 207  // EXPECT: ignoring return value of function declared with 'nodiscard' attribute
+	FMath::Max(1, 2);                                                   // FMath is [[nodiscard]]: -Wunused-result is an error in UE
+#elif CASE == 208  // EXPECT: ignoring return value of function declared with 'nodiscard' attribute
+	Vector.GetSafeNormal();                                             // Normalize() changes the vector; GetSafeNormal() returns one
+#elif CASE == 209  // EXPECT: ignoring return value of function declared with 'nodiscard' attribute
+	Numbers.Num();
+#elif CASE == 210  // EXPECT: ignoring return value of function declared with 'nodiscard' attribute
+	Counts.Contains(NAME_None);
+#elif CASE == 211  // EXPECT: no matching member function for call to 'AddWeakLambda'
+	FNegativeListener Plain;
+	Event.AddWeakLambda(&Plain, []() {});                              // neither a UObject nor shared: AddLambda / AddRaw
+#elif CASE == 212  // EXPECT: no matching member function for call to 'SetVectorParameterValue'
+	CollectionInstance->SetVectorParameterValue(FName(TEXT("Tint")), FVector2D(1.0, 0.5));        // a colour or an FVector4
+#endif
+	(void)World; (void)Actor; (void)ActorRef; (void)Object; (void)Text; (void)Utf8; (void)Vector; (void)Vector2; (void)Rotation; (void)Quat;
+	(void)Numbers; (void)Counts; (void)NumberSet; (void)Weak; (void)Event; (void)CollectionInstance;
+}

@@ -6,7 +6,7 @@
 // it). So a header that forgets its .generated.h include, includes it before another include that defines
 // CURRENT_FILE_ID, or moves GENERATED_BODY() off the line UHT saw, fails here the way it fails with the real UHT.
 //
-// SDK engine classes cannot have generated headers; they use UE_STUB_CLASS_BODY / UE_STUB_STRUCT_BODY (below), which
+// SDK engine classes cannot have generated headers; they use UE_STUB_CLASS_BODY[_DEFAULT_CTOR] / UE_STUB_STRUCT_BODY (below), which
 // declare what GENERATED_BODY gives an engine class (Super, ThisClass, StaticClass, constructors). CompileCheck/tools/
 // check_reflected.py treats exactly those classes / structs as "reflected" and checks them against the Python stub.
 #pragma once
@@ -133,13 +133,30 @@ enum EStaticConstructor { EC_StaticConstructor };
 		TClass(const TClass&) = delete; \
 		TClass(FVTableHelper& Helper);
 
-/** SDK engine classes (see the header comment). Both constructor forms derived classes may call are declared. */
+/** SDK engine classes (see the header comment). The constructor form is API: a derived class can only call the
+ *  constructors its base really has, and UHT gives a class without a constructor of its own the form its base has.
+ *  - UE_STUB_CLASS_BODY: the engine class can be constructed both ways, `Super()` and `Super(ObjectInitializer)`. It
+ *    either declares both constructors (UObject, AActor) or the usual
+ *    `TClass(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get())` (GENERATED_UCLASS_BODY classes,
+ *    APlayerController, AGameModeBase, UActorComponent, ...; also what UHT generates for a constructor-less class whose
+ *    base has the initializer form).
+ *  - UE_STUB_CLASS_BODY_DEFAULT_CTOR: the engine class only declares `TClass();` (USubsystem and its family, and what
+ *    UHT generates for a constructor-less class derived from such a class): `Super(ObjectInitializer)` does not compile.
+ *  The fake UHT reads the form from these macros (uht/fake_uht.py, sdk_default_ctor_classes). */
 #define UE_STUB_CLASS_BODY(TClass, TSuperClass) \
 	UE_STUB_DECLARE_CLASS_COMMON(TClass, TSuperClass) \
 		TClass(TClass&&) = delete; \
 		TClass(const TClass&) = delete; \
 		TClass(FVTableHelper& Helper); \
 		TClass(const FObjectInitializer& ObjectInitializer); \
+		TClass(); \
+		virtual ~TClass(); \
+	private:
+#define UE_STUB_CLASS_BODY_DEFAULT_CTOR(TClass, TSuperClass) \
+	UE_STUB_DECLARE_CLASS_COMMON(TClass, TSuperClass) \
+		TClass(TClass&&) = delete; \
+		TClass(const TClass&) = delete; \
+		TClass(FVTableHelper& Helper); \
 		TClass(); \
 		virtual ~TClass(); \
 	private:

@@ -9,7 +9,7 @@
 
 class UEnhancedInputLocalPlayerSubsystem : public ULocalPlayerSubsystem, public IEnhancedInputSubsystemInterface
 {
-	UE_STUB_CLASS_BODY(UEnhancedInputLocalPlayerSubsystem, ULocalPlayerSubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(UEnhancedInputLocalPlayerSubsystem, ULocalPlayerSubsystem)
 public:
 	virtual UEnhancedPlayerInput* GetPlayerInput() const override;
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -18,7 +18,7 @@ public:
 };
 class UEnhancedInputWorldSubsystem : public UWorldSubsystem, public IEnhancedInputSubsystemInterface
 {
-	UE_STUB_CLASS_BODY(UEnhancedInputWorldSubsystem, UWorldSubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(UEnhancedInputWorldSubsystem, UWorldSubsystem)
 public:
 	virtual UEnhancedPlayerInput* GetPlayerInput() const override;
 };

@@ -125,12 +125,21 @@ namespace AbyssWorldUtil
 	inline constexpr float VfxPxToCm = 100.f / 45.f;
 
 	/**
+	 * One warning per run when MarkInstancesDirty has to take its fallback (this engine has no public
+	 * UActorComponent::MarkRenderInstancesDirty): the per-frame instance updates (occlusion fade, VFX pools, set pieces)
+	 * then re-create scene proxies, which is correct on screen and costs frame time. Not a template: the log category
+	 * stays out of this header.
+	 */
+	ABYSSFIRE_API void WarnInstancedFallback();
+
+	/**
 	 * Sends the instance data an instanced mesh component changed with bMarkRenderStateDirty = false (transforms, custom
 	 * data) to the renderer: UActorComponent::MarkRenderInstancesDirty, the incremental update of the 5.4+ instance data
 	 * manager, where this engine has it; else MarkRenderStateDirty, which every engine has but which re-creates the scene
 	 * proxy (full FScene remove / add, lost velocity / TSR history). Same `if constexpr (requires ...)` hedge as the
 	 * material-resource shims: the member is not reflected, so it cannot be checked without the engine
-	 * (CompileCheck/API_UNCERTAIN.md 5). A template so that this header needs no component include.
+	 * (CompileCheck/API_UNCERTAIN.md 5). A template so that this header needs no component include. The fallback is
+	 * never silent: it logs once per run (WarnInstancedFallback), like the module's other engine-version shims.
 	 */
 	template <typename ComponentType>
 	void MarkInstancesDirty(ComponentType& Component)
@@ -141,6 +150,7 @@ namespace AbyssWorldUtil
 		}
 		else
 		{
+			WarnInstancedFallback();
 			Component.MarkRenderStateDirty();
 		}
 	}

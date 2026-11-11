@@ -25,6 +25,7 @@
 #include "Types/WidgetActiveTimerDelegate.h"
 #include "Types/WidgetMouseEventsDelegate.h"
 #include "Widgets/InvalidateWidgetReason.h"
+#include "Widgets/WidgetPixelSnapping.h"
 #include "GenericPlatform/ICursor.h"
 #include "Styling/SlateColor.h"
 
@@ -39,7 +40,6 @@ class IToolTip;
 class SWindow;
 struct FSlateBrush;
 struct FSlateBaseNamedArgs;
-enum class EWidgetPixelSnapping : uint8 { Inherit, Disabled, SnapToPixel };
 
 class SWidget : public TSharedFromThis<SWidget>
 {

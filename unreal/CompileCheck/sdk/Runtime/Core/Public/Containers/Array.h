@@ -1,6 +1,8 @@
 // Stub SDK. Real header: Engine/Source/Runtime/Core/Public/Containers/Array.h (from UE 5.x source knowledge).
 // TArray: the member list and signatures of the engine's dynamic array (int32 indices, Num() not size(), Add returns the
 // index, Emplace_GetRef / AddDefaulted_GetRef return the element, Remove* return counts, ...). Declarations only.
+// The queries (Num, IsEmpty, Contains, Find*, IndexOf*, Last, Top, GetData, ...) are [[nodiscard]] as in the engine; the
+// mutating calls whose result is routinely dropped (Add, Emplace, AddUnique, Remove*, Pop) are not.
 #pragma once
 
 #include "CoreTypes.h"
@@ -68,41 +70,41 @@ public:
 	template <typename OtherElementType, typename OtherSizeType> requires std::is_constructible_v<InElementType, OtherElementType&>
 	TArray& operator=(const TArrayView<OtherElementType, OtherSizeType>& Other) UE_STUB_BODY
 
-	ElementType* GetData() UE_LIFETIMEBOUND UE_STUB_BODY
-	const ElementType* GetData() const UE_LIFETIMEBOUND UE_STUB_BODY
-	static constexpr uint32 GetTypeSize() { return sizeof(ElementType); }
-	SIZE_T GetAllocatedSize() const UE_STUB_BODY
-	SizeType GetSlack() const UE_STUB_BODY
-	bool IsValidIndex(SizeType Index) const UE_STUB_BODY
-	bool IsEmpty() const UE_STUB_BODY
-	SizeType Num() const UE_STUB_BODY
-	SIZE_T NumBytes() const UE_STUB_BODY
-	SizeType Max() const UE_STUB_BODY
+	[[nodiscard]] ElementType* GetData() UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] const ElementType* GetData() const UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] static constexpr uint32 GetTypeSize() { return sizeof(ElementType); }
+	[[nodiscard]] SIZE_T GetAllocatedSize() const UE_STUB_BODY
+	[[nodiscard]] SizeType GetSlack() const UE_STUB_BODY
+	[[nodiscard]] bool IsValidIndex(SizeType Index) const UE_STUB_BODY
+	[[nodiscard]] bool IsEmpty() const UE_STUB_BODY
+	[[nodiscard]] SizeType Num() const UE_STUB_BODY
+	[[nodiscard]] SIZE_T NumBytes() const UE_STUB_BODY
+	[[nodiscard]] SizeType Max() const UE_STUB_BODY
 	ElementType& operator[](SizeType Index) UE_LIFETIMEBOUND UE_STUB_BODY
 	const ElementType& operator[](SizeType Index) const UE_LIFETIMEBOUND UE_STUB_BODY
 	ElementType Pop(EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
 	void Push(ElementType&& Item) UE_STUB_BODY
 	void Push(const ElementType& Item) UE_STUB_BODY
-	ElementType& Top() UE_LIFETIMEBOUND UE_STUB_BODY
-	const ElementType& Top() const UE_LIFETIMEBOUND UE_STUB_BODY
-	ElementType& Last(SizeType IndexFromTheEnd = 0) UE_LIFETIMEBOUND UE_STUB_BODY
-	const ElementType& Last(SizeType IndexFromTheEnd = 0) const UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] ElementType& Top() UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] const ElementType& Top() const UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] ElementType& Last(SizeType IndexFromTheEnd = 0) UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] const ElementType& Last(SizeType IndexFromTheEnd = 0) const UE_LIFETIMEBOUND UE_STUB_BODY
 	void Shrink() UE_STUB_BODY
 	bool Find(const ElementType& Item, SizeType& Index) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
-	SizeType Find(const ElementType& Item) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
+	[[nodiscard]] SizeType Find(const ElementType& Item) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
 	bool FindLast(const ElementType& Item, SizeType& Index) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
-	SizeType FindLast(const ElementType& Item) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
-	template <typename Predicate> SizeType FindLastByPredicate(Predicate Pred, SizeType Count) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
-	template <typename Predicate> SizeType FindLastByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
-	template <typename KeyType> SizeType IndexOfByKey(const KeyType& Key) const requires requires(const ElementType& E, const KeyType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
-	template <typename Predicate> SizeType IndexOfByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
-	template <typename KeyType> const ElementType* FindByKey(const KeyType& Key) const requires requires(const ElementType& E, const KeyType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
-	template <typename KeyType> ElementType* FindByKey(const KeyType& Key) requires requires(const ElementType& E, const KeyType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
-	template <typename Predicate> const ElementType* FindByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
-	template <typename Predicate> ElementType* FindByPredicate(Predicate Pred) requires std::is_invocable_r_v<bool, Predicate&, ElementType&> UE_STUB_BODY
-	template <typename Predicate> TArray<ElementType> FilterByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
-	template <typename ComparisonType> bool Contains(const ComparisonType& Item) const requires requires(const ElementType& E, const ComparisonType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
-	template <typename Predicate> bool ContainsByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
+	[[nodiscard]] SizeType FindLast(const ElementType& Item) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] SizeType FindLastByPredicate(Predicate Pred, SizeType Count) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] SizeType FindLastByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
+	template <typename KeyType> [[nodiscard]] SizeType IndexOfByKey(const KeyType& Key) const requires requires(const ElementType& E, const KeyType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] SizeType IndexOfByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
+	template <typename KeyType> [[nodiscard]] const ElementType* FindByKey(const KeyType& Key) const requires requires(const ElementType& E, const KeyType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
+	template <typename KeyType> [[nodiscard]] ElementType* FindByKey(const KeyType& Key) requires requires(const ElementType& E, const KeyType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] const ElementType* FindByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] ElementType* FindByPredicate(Predicate Pred) requires std::is_invocable_r_v<bool, Predicate&, ElementType&> UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] TArray<ElementType> FilterByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
+	template <typename ComparisonType> [[nodiscard]] bool Contains(const ComparisonType& Item) const requires requires(const ElementType& E, const ComparisonType& K) { { E == K } -> std::convertible_to<bool>; } UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] bool ContainsByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
 	bool operator==(const TArray& OtherArray) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
 	bool operator!=(const TArray& OtherArray) const requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
 
@@ -180,8 +182,8 @@ public:
 	void Swap(SizeType FirstIndexToSwap, SizeType SecondIndexToSwap) UE_STUB_BODY
 	template <typename SearchType> bool FindItemByClass(SearchType** Item = nullptr, SizeType* ItemIndex = nullptr, SizeType StartIndex = 0) const UE_STUB_BODY
 
-	TIterator CreateIterator() UE_STUB_BODY
-	TConstIterator CreateConstIterator() const UE_STUB_BODY
+	[[nodiscard]] TIterator CreateIterator() UE_STUB_BODY
+	[[nodiscard]] TConstIterator CreateConstIterator() const UE_STUB_BODY
 	RangedForIteratorType begin() UE_STUB_BODY
 	RangedForConstIteratorType begin() const UE_STUB_BODY
 	RangedForIteratorType end() UE_STUB_BODY
@@ -201,8 +203,8 @@ public:
 	SizeType HeapPush(const ElementType& InItem) requires UE::Stub::CHeapOrdered<InElementType> UE_STUB_BODY
 	template <class PREDICATE_CLASS> void HeapPop(ElementType& OutItem, const PREDICATE_CLASS& Predicate, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires UE::Stub::CSortPredicate<PREDICATE_CLASS, InElementType> UE_STUB_BODY
 	void HeapPop(ElementType& OutItem, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires UE::Stub::CHeapOrdered<InElementType> UE_STUB_BODY
-	const ElementType& HeapTop() const UE_LIFETIMEBOUND UE_STUB_BODY
-	ElementType& HeapTop() UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] const ElementType& HeapTop() const UE_LIFETIMEBOUND UE_STUB_BODY
+	[[nodiscard]] ElementType& HeapTop() UE_LIFETIMEBOUND UE_STUB_BODY
 };
 template <typename T, typename AllocatorType> struct TIsContiguousContainer<TArray<T, AllocatorType>> { enum { Value = true }; };
 template <typename T, typename AllocatorType> struct TIsZeroConstructType<TArray<T, AllocatorType>> { enum { Value = true }; };

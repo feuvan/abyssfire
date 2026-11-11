@@ -40,7 +40,9 @@ public:
 	T* GetEvenIfUnreachable() const { return (T*)TWeakObjectPtrBase::GetEvenIfUnreachable(); }
 	T& operator*() const { return *Get(); }
 	T* operator->() const { return Get(); }
-	explicit operator bool() const { return Get() != nullptr; }
+	// "This is explicitly not added to avoid resolving weak pointers too often - use Get() once in a function."
+	// `if (Weak)`, `!Weak` and `Weak && X` do not compile in UE 5.x: IsValid() or Get().
+	explicit operator bool() const = delete;
 	bool IsValid(bool bEvenIfPendingKill, bool bThreadsafeTest = false) const { return TWeakObjectPtrBase::IsValid(bEvenIfPendingKill, bThreadsafeTest); }
 	bool IsValid() const { return TWeakObjectPtrBase::IsValid(); }
 	bool IsStale(bool bIncludingIfPendingKill = true, bool bThreadsafeTest = false) const { return TWeakObjectPtrBase::IsStale(bIncludingIfPendingKill, bThreadsafeTest); }

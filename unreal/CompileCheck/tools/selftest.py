@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Proves the compile check bites: plants known faults in a scratch copy of Source/Abyssfire and requires each one to be
-reported at the planted place. Run through  ./run.sh --selftest  (uses <build>/selftest, mac-editor only).
+reported at the planted place. Run through  ./run.sh --selftest  (uses <build>/selftest; mac-editor, except the faults
+that sit in a platform / target branch: those run in every configuration and must fail in exactly the right ones).
 
 A fault that is NOT reported means the stub SDK or the fake UHT has become too permissive: fix that before trusting a
 PASS of the real module.
@@ -237,6 +238,198 @@ FAULTS = [
         'expect': r"TCheckedFormatStringPrivate<char16_t, long long, int, .*is not a constant expression",
         'run': 'G',
     },
+    # ---- the final audit: fake-UHT rules, configuration-specific branches, the Build.cs lint, the link scan, --msvc-lint ----
+    {
+        'name': 'UHT rule: a UPROPERTY named like a property of an engine base class',
+        'what': 'AAbyssCameraRig gets a UPROPERTY "RootComponent" (AActor has one): UHT rejects the shadowing, C++ accepts the member',
+        'file': 'Public/Camera/AbyssCameraRig.h',
+        'find': '\tUPROPERTY(VisibleAnywhere, Category = "Abyss")\n\tTObjectPtr<USceneComponent> SceneRoot;\n',
+        'replace': '\tUPROPERTY(VisibleAnywhere, Category = "Abyss")\n\tTObjectPtr<USceneComponent> SceneRoot;\n\tUPROPERTY(Transient)\n\tTObjectPtr<USceneComponent> RootComponent;\n',
+        'expect_file': 'Public/Camera/AbyssCameraRig.h',
+        'expect': r"property-shadow.*'RootComponent' cannot be defined in 'AAbyssCameraRig'",
+        'run': 'B',
+        'uht': True,
+    },
+    {
+        'name': 'UHT rule: a UObject class by value as a UPROPERTY',
+        'what': 'a reflected member of type UInputMappingContext (UHT: "Missing \'*\' in Expected a pointer type")',
+        'file': 'Public/Input/AbyssInputConfig.h',
+        'find': '\tUPROPERTY(Transient)\n\tTObjectPtr<UInputMappingContext> StoryContext;\n',
+        'replace': '\tUPROPERTY(Transient)\n\tTObjectPtr<UInputMappingContext> StoryContext;\n\tUPROPERTY(Transient)\n\tUInputMappingContext PlantedByValue;\n',
+        'expect_file': 'Public/Input/AbyssInputConfig.h',
+        'expect': r'property-type.*UObject class used by value',
+        'run': 'B',
+        'uht': True,
+    },
+    {
+        'name': 'configurations: a fault inside #if PLATFORM_ANDROID || PLATFORM_IOS',
+        'what': 'an undeclared name in the mobile branch of AbyssPlatform::IsMobilePlatform: android-game and ios-shipping fail, the Mac ones pass',
+        'file': 'Private/Platform/AbyssPlatform.cpp',
+        'find': '#if PLATFORM_ANDROID || PLATFORM_IOS\n\t\treturn true;\n',
+        'replace': '#if PLATFORM_ANDROID || PLATFORM_IOS\n\t\treturn AbyssPlantedMobileOnly;\n',
+        'expect_file': 'Private/Platform/AbyssPlatform.cpp',
+        'expect': r"use of undeclared identifier 'AbyssPlantedMobileOnly'",
+        'configs': ['android-game', 'ios-shipping'],
+        'run': 'M',
+    },
+    {
+        'name': 'configurations: a fault inside #if UE_BUILD_SHIPPING',
+        'what': 'an undeclared name in the shipping branch of the sim configuration: only ios-shipping fails',
+        'file': 'Private/Framework/AbyssGameInstance.cpp',
+        'find': '#if UE_BUILD_SHIPPING\n\tConfig.enableDebugCommands = false;\n',
+        'replace': '#if UE_BUILD_SHIPPING\n\tConfig.enableDebugCommands = AbyssPlantedShippingOnly;\n',
+        'expect_file': 'Private/Framework/AbyssGameInstance.cpp',
+        'expect': r"use of undeclared identifier 'AbyssPlantedShippingOnly'",
+        'configs': ['ios-shipping'],
+        'run': 'M',
+    },
+    {
+        'name': 'configurations: a fault inside #if WITH_EDITOR',
+        'what': 'an undeclared name in the editor-only body of SetMaterialInstanceScalarParameter: only mac-editor fails',
+        'file': 'Private/ContentBuild/AbyssContentBuildLibrary.cpp',
+        'find': 'Instance->SetScalarParameterValueEditorOnly(FMaterialParameterInfo(ParameterName), Value);',
+        'replace': 'Instance->SetScalarParameterValueEditorOnly(FMaterialParameterInfo(ParameterName), AbyssPlantedEditorOnly);',
+        'expect_file': 'Private/ContentBuild/AbyssContentBuildLibrary.cpp',
+        'expect': r"use of undeclared identifier 'AbyssPlantedEditorOnly'",
+        'configs': ['mac-editor'],
+        'run': 'M',
+    },
+    {
+        'name': 'configurations: a name that only the editor build declares',
+        'what': 'a local declared inside #if WITH_EDITOR and used outside it: the three game configurations fail, mac-editor passes',
+        'file': 'Private/Framework/AbyssGameInstance.cpp',
+        'find': '\tConfig.milestone1 = true;   // U6 / Q3\n',
+        'replace': '#if WITH_EDITOR\n\tconst bool bAbyssPlantedEditorFlag = true;\n#endif\n\tConfig.milestone1 = bAbyssPlantedEditorFlag;\n',
+        'expect_file': 'Private/Framework/AbyssGameInstance.cpp',
+        'expect': r"use of undeclared identifier 'bAbyssPlantedEditorFlag'",
+        'configs': ['mac-game', 'android-game', 'ios-shipping'],
+        'run': 'M',
+    },
+    {
+        'name': 'Build.cs lint: a module only reachable through another module',
+        'what': '"Slate" removed from Abyssfire.Build.cs: its headers are still found (Engine re-exports Slate), every file compiles, and the '
+                'modular editor build would fail to link',
+        'file': 'Abyssfire.Build.cs',
+        'find': '"Slate", "SlateCore",',
+        'replace': '"SlateCore",',
+        'expect_file': '',
+        'expect': r'build-cs.*belongs to the engine module Slate, which Abyssfire.Build.cs does not list',
+        'run': 'L',
+        'build_cs': True,
+    },
+    {
+        'name': 'link scan: one helper name in two anonymous namespaces (different parameters)',
+        'what': 'AbyssPlantedBlend(float) in one .cpp and AbyssPlantedBlend(double) in another: both files and the unity unit compile; in a '
+                'unity blob the two silently become one overload set',
+        'file': 'Private/World/AbyssWorldTypes.cpp',
+        'append': '\nnamespace { float AbyssPlantedBlend(float A) { return A; } }\n',
+        'expect_file': '',
+        'expect': r"unity-collision.*'\(anonymous\)::AbyssPlantedBlend' has internal linkage and is also defined in",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: the second file of the pair',
+        'what': 'the other half of the planted pair',
+        'file': 'Private/Vfx/AbyssVfxDefaults.cpp',
+        'append': '\nnamespace { double AbyssPlantedBlend(double A) { return A; } }\n',
+        'expect_file': '',
+        'expect': r"unity-collision.*'\(anonymous\)::AbyssPlantedBlend'",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: one helper name in a named private namespace of two files (different parameters)',
+        'what': 'AbyssPlantedPrivate::Pick(int32) in one .cpp and AbyssPlantedPrivate::Pick(float) in another, declared in no header: '
+                'external linkage, so no redefinition anywhere; one overload set in a unity blob',
+        'file': 'Private/World/AbyssTerrain.cpp',
+        'append': '\nnamespace AbyssPlantedPrivate { int32 Pick(int32 A) { return A; } }\n',
+        'expect_file': '',
+        'expect': r"unity-collision.*'AbyssPlantedPrivate::Pick' is declared in no header and is defined with other parameters in",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: the second file of that pair',
+        'what': 'the other half of the planted pair',
+        'file': 'Private/World/AbyssSetPieces.cpp',
+        'append': '\nnamespace AbyssPlantedPrivate { int32 Pick(float A) { return static_cast<int32>(A); } }\n',
+        'expect_file': '',
+        'expect': r"unity-collision.*'AbyssPlantedPrivate::Pick'",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: declared, used, never defined',
+        'what': 'a function declared and called in a .cpp, with no definition anywhere: every file compiles, the link fails',
+        'file': 'Private/World/AbyssZoneActor.cpp',
+        'append': '\nint32 AbyssPlantedMissing(int32 Value);\nint32 AbyssPlantedCaller() { return AbyssPlantedMissing(1); }\n',
+        'expect_file': 'Private/World/AbyssZoneActor.cpp',
+        'expect': r"undefined.*function 'AbyssPlantedMissing' is declared here, used, and defined in no translation unit",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: a non-inline definition in a header',
+        'what': 'a function with a body and without `inline` in Public/World/AbyssWorldTypes.h: a duplicate symbol in every pair of files that include it',
+        'file': 'Public/World/AbyssWorldTypes.h',
+        'append': '\nABYSSFIRE_API int32 AbyssPlantedInHeader() { return 1; }\n',
+        'expect_file': 'Public/World/AbyssWorldTypes.h',
+        'expect': r"header-definition.*function 'AbyssPlantedInHeader' is defined in a header without `inline`",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: an Apple type name in an anonymous namespace',
+        'what': 'namespace { struct Rect {...}; } compiles here; on macOS / iOS MacTypes.h has a global Rect and the name is ambiguous',
+        'file': 'Private/Vfx/AbyssVfxRecipe.cpp',
+        'append': '\nnamespace { struct Rect { int32 Left = 0; }; }\n',
+        'expect_file': 'Private/Vfx/AbyssVfxRecipe.cpp',
+        'expect': r"platform-name.*struct 'Rect' at global scope",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: an identifier that is a platform macro',
+        'what': 'a local variable named `nil` (an Objective-C macro on every Apple translation unit)',
+        'file': 'Private/Vfx/AbyssVfxSystem.cpp',
+        'append': '\nnamespace { int32 AbyssPlantedNil() { const int32 nil = 0; return nil; } }\n',
+        'expect_file': 'Private/Vfx/AbyssVfxSystem.cpp',
+        'expect': r"platform-name.*identifier 'nil' is a macro",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: std::uint64_t and size_t in one std::max',
+        'what': 'std::max(std::uint64_t, size_t): one type on Linux / Android (unsigned long), two on macOS / iOS (unsigned long long, unsigned long)',
+        'file': 'Private/World/AbyssAssetLibrary.cpp',
+        'append': '\n#include <algorithm>\n#include <cstdint>\nnamespace { std::uint64_t AbyssPlantedWidest(std::uint64_t A, size_t B) { return std::max(A, B); } }\n',
+        'expect_file': 'Private/World/AbyssAssetLibrary.cpp',
+        'expect': r"lp64-mix.*'max' mixes",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': 'link scan: an AbyssCore symbol the module uses without ABYSS_API',
+        'what': 'ABYSS_API removed from abyss::JsonValue in a scratch copy of AbyssCore/Public: every file compiles; the modular editor build '
+                'cannot link the module against the AbyssCore library',
+        'core_file': 'abyss/base/Json.h',
+        'find': 'class ABYSS_API JsonValue {',
+        'replace': 'class JsonValue {',
+        'expect_file': '',
+        'expect': r"core-export.*AbyssCore member function 'abyss::JsonValue::\w+' .* is used here but not exported",
+        'run': 'L',
+        'scan': True,
+    },
+    {
+        'name': '--msvc-lint: a constructor parameter that hides a member',
+        'what': 'the clang twin of MSVC C4458, an error in a Windows UE build; not part of the default (Mac / Android) warning set',
+        'file': 'Private/World/AbyssWorldTypes.cpp',
+        'append': '\nnamespace { struct FAbyssPlantedHide { int32 Value; explicit FAbyssPlantedHide(int32 Value) : Value(Value) {} }; }\n',
+        'expect_file': 'Private/World/AbyssWorldTypes.cpp',
+        'expect': r"constructor parameter 'Value' shadows the field 'Value' of 'FAbyssPlantedHide'",
+        'run': 'N',
+    },
 ]
 RUNS = {
     'A': ['Private/Input/AbyssPicking.cpp', 'Private/Anim/AbyssAnimInstance.cpp', 'Private/Framework/AbyssGameMode.cpp'],
@@ -247,9 +440,17 @@ RUNS = {
           'Private/UI/Hud/AbyssMinimapTexture.cpp'],
     'F': ['Private/UI/Panels/SAbyssAchievementsPanel.cpp', 'Private/UI/Menu/SAbyssMainMenu.cpp', 'Private/UI/Story/SAbyssStoryOverlay.cpp'],
     'G': ['Private/UI/Panels/SAbyssSkillTreePanel.cpp'],
+    'L': ['Private/World/AbyssWorldTypes.cpp', 'Private/Vfx/AbyssVfxDefaults.cpp'],
+    'M': ['Private/Platform/AbyssPlatform.cpp', 'Private/Framework/AbyssGameInstance.cpp', 'Private/ContentBuild/AbyssContentBuildLibrary.cpp'],
+    'N': ['Private/World/AbyssWorldTypes.cpp'],
 }
 # extra --define of a run (the opt-in lints of the SDK)
 RUN_DEFINES = {'G': ['UE_STUB_STRICT_FORMAT_WIDTH=1']}
+# extra options of a run; the configurations of a run (default: mac-editor only)
+RUN_OPTIONS = {'L': ['--link-scan'], 'N': ['--msvc-lint']}
+RUN_CONFIGS = {'M': ['mac-editor', 'mac-game', 'android-game', 'ios-shipping']}
+# a run that passes when nothing is planted wrongly: the faults of these runs are only visible to a lint, not the compiler
+ALL_CONFIGS = ['mac-editor', 'mac-game', 'android-game', 'ios-shipping']
 
 
 # tools/stub_bodies.py must find every body-less template declaration: a miss makes module code that instantiates the
@@ -330,17 +531,27 @@ def run_bodies_probe(build):
     return ok and explicit_ok, rows
 
 
-CASES_FILE = os.path.join(CHECK_DIR, 'tests', 'negative_cases.cpp')
+CASES_FILES = [os.path.join(CHECK_DIR, 'tests', 'negative_cases.cpp'), os.path.join(CHECK_DIR, 'tests', 'negative_boundaries.cpp')]
 CASE_RE = re.compile(r'^#elif CASE == (\d+)\s*//\s*EXPECT(?:\[([\w-]+)\])?:\s*(.+?)\s*$', re.M)
 
 
 def run_negative_cases(build, jobs, cxx):
-    """tests/negative_cases.cpp: code UE rejects must be rejected by the SDK too; the control case must compile."""
+    """tests/negative_*.cpp: code UE rejects must be rejected by the SDK too; the control case of each file must compile."""
+    ok, rows = True, []
+    for cases_file in CASES_FILES:
+        file_ok, file_rows = run_negative_file(cases_file, build, jobs, cxx)
+        ok = ok and file_ok
+        rows += file_rows
+    return ok, rows
+
+
+def run_negative_file(CASES_FILE, build, jobs, cxx):
     import argparse
     import concurrent.futures
     import compile_check as cc
     ns = argparse.Namespace(build_dir=build, cxx=cxx, define=[], no_pch=False, force=False, only=[], jobs=jobs)
     checker = cc.Checker(ns)
+    label = os.path.basename(CASES_FILE)
     text = open(CASES_FILE, encoding='utf-8').read()
     cases = [(int(n), cfg or 'mac-editor', rx) for n, cfg, rx in CASE_RE.findall(text)]
     lines = {int(m.group(1)): text.count('\n', 0, m.start()) + 2 for m in CASE_RE.finditer(text)}
@@ -367,16 +578,16 @@ def run_negative_cases(build, jobs, cxx):
             if code != 0 or diags:
                 ok = False
                 first = diags[0] if diags else {'line': 0, 'message': output.strip()[:200]}
-                rows.append(('control (correct code), %s' % config, 'REJECTED', 'tests/negative_cases.cpp:%s: %s' % (first['line'], first['message'])))
+                rows.append(('%s: control (correct code), %s' % (label, config), 'REJECTED', 'tests/%s:%s: %s' % (label, first['line'], first['message'])))
             else:
-                rows.append(('control (correct code), %s' % config, 'COMPILES', 'the correct twin of every case'))
+                rows.append(('%s: control (correct code), %s' % (label, config), 'COMPILES', 'the correct twin of every case'))
         missed = 0
         for number, config, rx, future in futures:
             code, diags, output = future.result()
             snippet = source[lines[number] - 1].strip() if lines[number] - 1 < len(source) else ''
             hit = None
             for d in diags:
-                if d['level'] == 'error' and d['file'].endswith('negative_cases.cpp') and re.search(rx, d['message'] + ' ' + d['option'], re.I):
+                if d['level'] == 'error' and d['file'].endswith(label) and re.search(rx, d['message'] + ' ' + d['option'], re.I):
                     hit = d
                     break
             if hit is None:
@@ -389,14 +600,46 @@ def run_negative_cases(build, jobs, cxx):
                 ok = False
                 missed += 1
                 why = 'compiles' if code == 0 else 'fails, but not with /%s/: %s' % (rx, (diags[0]['message'] if diags else output.strip())[:160])
-                rows.append(('case %d (%s)' % (number, config), 'NOT DETECTED', '%s  -> %s' % (snippet[:110], why)))
-        rows.append(('negative cases', 'REJECTED' if missed == 0 else 'NOT DETECTED', '%d of %d cases of invalid UE code are rejected' % (len(cases) - missed, len(cases))))
+                rows.append(('%s: case %d (%s)' % (label, number, config), 'NOT DETECTED', '%s  -> %s' % (snippet[:110], why)))
+        rows.append(('%s: negative cases' % label, 'REJECTED' if missed == 0 else 'NOT DETECTED', '%d of %d cases of invalid UE code are rejected' % (len(cases) - missed, len(cases))))
     return ok, rows
+
+
+def find_fault(fault, report):
+    """(hit text or None, detail) for one planted fault in the report of its run."""
+    expect_file = fault.get('expect_file', '')
+    if fault.get('uht'):
+        for f in report.get('uht', {}).get('findings', []):
+            if f.get('level') == 'error' and f.get('file', '').replace(os.sep, '/').endswith(expect_file) and re.search(fault['expect'], f.get('rule', '') + ' ' + f.get('message', '')):
+                return '%s:%s: [uht/%s] %s' % (f['file'], f['line'], f['rule'], f['message'])
+        return None
+    if fault.get('scan') or fault.get('build_cs'):
+        findings = report.get('link_scan', {}).get('findings', []) if fault.get('scan') else report.get('build_cs', {}).get('findings', [])
+        for f in findings:
+            if f.get('level') == 'error' and f.get('file', '').replace(os.sep, '/').endswith(expect_file) and re.search(fault['expect'], f.get('rule', '') + ' ' + f.get('message', '')):
+                return '%s:%s: [%s] %s' % (f['file'], f['line'], f['rule'], f['message'])
+        return None
+    hit, hit_configs = None, []
+    for config, cfg in report.get('configs', {}).items():
+        for unit in cfg['files']:
+            for d in unit['diagnostics']:
+                if d['level'] == 'error' and d['file'].replace(os.sep, '/').endswith(expect_file) and re.search(fault['expect'], d['message']):
+                    hit = hit or '%s:%d: %s' % (d['file'], d['line'], d['message'])
+                    if config not in hit_configs:
+                        hit_configs.append(config)
+    if hit and 'configs' in fault:
+        # a fault in a platform / target branch: reported in exactly the configurations that compile the branch
+        if sorted(hit_configs) != sorted(fault['configs']):
+            fault['why'] = 'reported in {%s}, expected exactly {%s}' % (', '.join(hit_configs), ', '.join(fault['configs']))
+            return None
+        hit += '  {%s only}' % ', '.join(hit_configs)
+    return hit
 
 
 def main(args=None):
     build = os.path.abspath(getattr(args, 'build_dir', None) or os.environ.get('ABYSS_CC_BUILD') or os.path.join(CHECK_DIR, 'build'))
     root = os.path.join(build, 'selftest')
+    core_public = os.path.join(os.path.dirname(CHECK_DIR), 'Source', 'AbyssCore', 'Public')
     ok = True
     rows = []
     for run_name, only in sorted(RUNS.items()):
@@ -405,52 +648,52 @@ def main(args=None):
             shutil.rmtree(scratch)
         shutil.copytree(MODULE_DIR, scratch)
         faults = [f for f in FAULTS if f['run'] == run_name]
+        scratch_core = None
+        if any('core_file' in f for f in faults):
+            # a fault in the core's public headers: a scratch copy of AbyssCore/Public (the core itself is never edited)
+            scratch_core = os.path.join(root, run_name, 'AbyssCorePublic')
+            if os.path.exists(scratch_core):
+                shutil.rmtree(scratch_core)
+            shutil.copytree(core_public, scratch_core)
         for fault in faults:
-            path = os.path.join(scratch, fault['file'])
+            path = os.path.join(scratch_core, fault['core_file']) if 'core_file' in fault else os.path.join(scratch, fault['file'])
+            shown = fault.get('core_file') or fault['file']
             text = open(path, encoding='utf-8').read()
             if 'append' in fault:
                 open(path, 'w', encoding='utf-8').write(text + fault['append'])
                 fault['planted'] = True
                 continue
             if text.count(fault['find']) != 1:
-                rows.append((fault['name'], 'CANNOT PLANT', '%s: the text to mutate occurs %d times (update tools/selftest.py)' % (fault['file'], text.count(fault['find']))))
+                rows.append((fault['name'], 'CANNOT PLANT', '%s: the text to mutate occurs %d times (update tools/selftest.py)' % (shown, text.count(fault['find']))))
                 ok = False
                 fault['planted'] = False
                 continue
             open(path, 'w', encoding='utf-8').write(text.replace(fault['find'], fault['replace']))
             fault['planted'] = True
-        cmd = [sys.executable, os.path.join(HERE, 'compile_check.py'), '--module-dir', scratch, '--build-dir', os.path.join(root, run_name, 'build'),
-               '--config', 'mac-editor', '--force']
+        cmd = [sys.executable, os.path.join(HERE, 'compile_check.py'), '--module-dir', scratch, '--build-dir', os.path.join(root, run_name, 'build'), '--force']
+        for config in RUN_CONFIGS.get(run_name, ['mac-editor']):
+            cmd += ['--config', config]
         for o in only:
             cmd += ['--only', o]
         for d in RUN_DEFINES.get(run_name, []):
             cmd += ['--define', d]
+        cmd += RUN_OPTIONS.get(run_name, [])
+        if scratch_core:
+            cmd += ['--core-public', scratch_core]
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         report_path = os.path.join(root, run_name, 'build', 'report.json')
         report = json.load(open(report_path, encoding='utf-8')) if os.path.exists(report_path) else {'configs': {}, 'uht': {'findings': []}}
-        diags = []
-        for cfg in report.get('configs', {}).values():
-            for f in cfg['files']:
-                diags += f['diagnostics']
-        uht_findings = report.get('uht', {}).get('findings', [])
         if proc.returncode == 0:
             rows.append(('run ' + run_name, 'NOT DETECTED', 'the check passed although faults were planted'))
+            ok = False
+        elif not report.get('configs'):
+            rows.append(('run ' + run_name, 'CANNOT RUN', proc.stdout.strip()[-300:]))
             ok = False
         for fault in faults:
             if not fault.get('planted'):
                 continue
-            hit = None
-            if fault.get('uht'):
-                for f in uht_findings:
-                    if f.get('level') == 'error' and f.get('file', '').replace(os.sep, '/').endswith(fault['expect_file']) and re.search(fault['expect'], f.get('rule', '') + ' ' + f.get('message', '')):
-                        hit = '%s:%s: [uht/%s] %s' % (f['file'], f['line'], f['rule'], f['message'])
-                        break
-            else:
-                for d in diags:
-                    if d['level'] == 'error' and d['file'].replace(os.sep, '/').endswith(fault['expect_file']) and re.search(fault['expect'], d['message']):
-                        hit = '%s:%d: %s' % (d['file'], d['line'], d['message'])
-                        break
-            rows.append((fault['name'], 'REPORTED' if hit else 'NOT DETECTED', hit or fault['what']))
+            hit = find_fault(fault, report)
+            rows.append((fault['name'], 'REPORTED' if hit else 'NOT DETECTED', hit or ('%s (%s)' % (fault['what'], fault['why']) if fault.get('why') else fault['what'])))
             ok = ok and hit is not None
     bodies_ok, bodies_rows = run_bodies_probe(build)
     ok = ok and bodies_ok
@@ -458,11 +701,13 @@ def main(args=None):
     neg_ok, neg_rows = run_negative_cases(build, getattr(args, 'jobs', 3) or 3, getattr(args, 'cxx', None) or 'clang++')
     ok = ok and neg_ok
     rows += neg_rows
-    print('== selftest: faults planted in a scratch copy of Source/Abyssfire (%s) and tests/negative_cases.cpp' % root)
+    print('== selftest: faults planted in a scratch copy of Source/Abyssfire (%s) and tests/negative_*.cpp' % root)
     for name, status, detail in rows:
         print('%-13s %s' % (status, name))
         print('              %s' % detail[:300])
-    print('SELFTEST: %s' % ('PASS (every planted fault and every negative case was reported)' if ok else 'FAIL (the check missed a planted fault: the SDK / fake UHT is too permissive)'))
+    planted = sum(1 for f in FAULTS if f.get('planted'))
+    print('%d faults planted in %d runs' % (planted, len(RUNS)))
+    print('SELFTEST: %s' % ('PASS (every planted fault and every negative case was reported)' if ok else 'FAIL (the check missed a planted fault: the SDK / fake UHT / a lint is too permissive)'))
     return 0 if ok else 1
 
 

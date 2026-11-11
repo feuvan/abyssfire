@@ -7,7 +7,12 @@
 #include "Containers/StringFwd.h"
 #include "Containers/UnrealString.h"
 
-template <typename ToType, typename FromType>
+class FTCHARToUTF8_Convert;
+class FUTF8ToTCHAR_Convert;
+
+/** The engine's TStringConversion<Converter>: `Tag` stands for the converter class, so that the legacy converters below
+ *  are types of their own (FTCHARToUTF8 is not what StringCast<ANSICHAR>(const TCHAR*) returns). */
+template <typename ToType, typename FromType, typename Tag = void>
 class TStringConversionStub
 {
 public:
@@ -15,6 +20,12 @@ public:
 	using FromCharType = FromType;
 	explicit TStringConversionStub(const FromType* Source) UE_STUB_BODY
 	TStringConversionStub(const FromType* Source, int32 SourceLen) UE_STUB_BODY
+	// FUTF8ToTCHAR has two source types in the engine (Converter::FromType is UTF8CHAR, Converter::LegacyFromType is
+	// ANSICHAR, both constructor pairs exist): the UTF8CHAR pair here, the ANSICHAR pair above.
+	template <typename SrcBufferType> requires std::is_same_v<Tag, FUTF8ToTCHAR_Convert> && std::is_same_v<SrcBufferType, UTF8CHAR>
+	explicit TStringConversionStub(const SrcBufferType* Source) UE_STUB_BODY
+	template <typename SrcBufferType> requires std::is_same_v<Tag, FUTF8ToTCHAR_Convert> && std::is_same_v<SrcBufferType, UTF8CHAR>
+	TStringConversionStub(const SrcBufferType* Source, int32 SourceLen) UE_STUB_BODY
 	TStringConversionStub(TStringConversionStub&&) = default;
 	TStringConversionStub(const TStringConversionStub&) = delete;
 	TStringConversionStub& operator=(const TStringConversionStub&) = delete;
@@ -49,8 +60,12 @@ TStringPointerStub<To> StringCast(const From* Str) UE_STUB_BODY
 template <typename To, typename From> requires std::is_same_v<To, From>
 TStringPointerStub<To> StringCast(const From* Str, int32 Len) UE_STUB_BODY
 
-using FTCHARToUTF8 = TStringConversionStub<UTF8CHAR, TCHAR>;
-using FUTF8ToTCHAR = TStringConversionStub<TCHAR, UTF8CHAR>;
+// The legacy UTF-8 converters keep ANSICHAR on the UTF-8 side: FTCHARToUTF8::Get() is a `const ANSICHAR*`
+// (FTCHARToUTF8_Convert::ToType; what std::string and the C library take) and FUTF8ToTCHAR is built from a
+// `const ANSICHAR*` (its LegacyFromType) or a `const UTF8CHAR*` (its FromType). Only StringCast<UTF8CHAR> yields
+// `const UTF8CHAR*`. From UE 5.x source knowledge; the module uses neither class (API_UNCERTAIN.md, lower-confidence rows).
+using FTCHARToUTF8 = TStringConversionStub<ANSICHAR, TCHAR, FTCHARToUTF8_Convert>;
+using FUTF8ToTCHAR = TStringConversionStub<TCHAR, ANSICHAR, FUTF8ToTCHAR_Convert>;
 using FTCHARToUTF16 = TStringPointerStub<TCHAR, UTF16CHAR>;
 using FUTF16ToTCHAR = TStringPointerStub<UTF16CHAR, TCHAR>;
 

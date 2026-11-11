@@ -8,6 +8,30 @@ UE 5.8 build or by moving the module to an API that is not in doubt.
 
 Verdict vocabulary: see README.md ("The three verdicts").
 
+The final audit went through every entry and gave each a verdict from UE 5.x source knowledge (it had no engine
+either, so a verdict is a second opinion, not a confirmation). Each entry ends with that verdict. In short: #2 and #7
+are closed by a module change; #4, #5 and #6 are believed to be exactly as the SDK declares them and cannot break the
+build either way (strict form chosen, or hedged in the module); #3 is believed real with a different delegate type
+(the SDK now declares that type; the module compiles with both); #1 and #8 are the two to settle with the first real
+5.8 build, and only #8 can stop a game target from compiling.
+
+## What to check on the Mac (one question per open entry)
+
+Paths are relative to the engine's `Engine/Source`. Each line is a `grep` on one engine header, then what the answer
+means for the module.
+
+| # | Question | If the answer is "no" |
+|---|---|---|
+| 8 | `grep -n UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS Runtime/SlateCore/Public/Types/SlateVector2.h`: is it still defined as 1 (behind `#ifndef`)? | 22 lines in 12 files fail with "no viable conversion from 'FVector2D'": wrap each listed argument in `UE::Slate::CastToVector2f(...)` (entry 8 lists them and the alternative) |
+| 1 | `grep -n GetMaterialResource Runtime/Engine/Classes/Materials/MaterialInterface.h`: is there an overload taking `ERHIFeatureLevel::Type` or one taking `EShaderPlatform`, returning `FMaterialResource*`? And `grep -n "FinishCompilation\|GetCompileErrors\|IsCompilationFinished" Runtime/Engine/Public/MaterialShared.h`? | Editor target only: `AbyssContentBuildLibrary.cpp` / `AbyssZoneActor.cpp` fail in `AbyssEditorMaterialResource` / `ShaderGateResource`; return an empty error list / switch the shader gate off (entry 1) |
+| 3 | `grep -n ApplicationWillTerminateDelegate Runtime/Core/Public/Misc/CoreDelegates.h`: is there a static `GetApplicationWillTerminateDelegate()`? | `AbyssGameInstance.cpp:65`, `:82` fail in every target: use the static member `ApplicationWillTerminateDelegate`, or drop the two lines (entry 3) |
+| 5 | `grep -n MarkRenderInstancesDirty Runtime/Engine/Classes/Components/ActorComponent.h`: declared, and under `public:`? | Nothing fails to compile. The log shows once "Instanced meshes: UActorComponent::MarkRenderInstancesDirty not found on this engine" and instance updates re-create scene proxies: apply the alternative of entry 5 if the frame time shows it |
+| 4 | `grep -n TCopyQualifiersFromTo_T Runtime/CoreUObject/Public/Templates/Casts.h`: do `Cast` / `CastChecked` return a qualifier-copying pointer? | Nothing fails (the SDK has the strict form); the check is then stricter than the engine for casts of const objects |
+| 6 | `grep -n "GetAudioListenerPosition" Runtime/Engine/Classes/GameFramework/PlayerController.h`: is it `const`? | Nothing fails (the module calls it on a non-const controller) |
+
+After the first successful 5.8 build, delete the entries it confirms and remove their `// UNVERIFIED` markers from the
+SDK; the README says how to re-check the whole SDK against a real engine tree.
+
 ## Open
 
 ### 1. `UMaterialInterface::GetMaterialResource`: feature level or shader platform
@@ -35,6 +59,10 @@ Verdict vocabulary: see README.md ("The three verdicts").
   only.
 - **Safest alternative**: none that is better known. If it fails on the Mac, the function can return an empty array
   without touching the resource (it only feeds the content-build log), which removes the dependency altogether.
+- **Audit verdict**: the feature-level form (`ERHIFeatureLevel::Type, EMaterialQualityLevel::Type = Num`, const and
+  non-const) exists at least through 5.6; a shader-platform overload next to a deprecated (not yet removed)
+  feature-level one is plausible for 5.7 / 5.8; `FMaterial::FinishCompilation` / `IsCompilationFinished` /
+  `GetCompileErrors` exist under `WITH_EDITOR`. Keep the hedge. Stays open: editor target only.
 
 ### 3. `FCoreDelegates::GetApplicationWillTerminateDelegate()`
 
@@ -49,11 +77,17 @@ Verdict vocabulary: see README.md ("The three verdicts").
 - **Evidence against**: none found, but nothing here can confirm it either: `FCoreDelegates` is not reflected (the
   5.6 Python stub has no such class; its `application_will_terminate_delegate` hits belong to `UApplicationLifecycleComponent`, a Blueprint-facing
   component), there is no engine source in the container and the API reference could not be opened. The release in
-  which the accessor appeared and the exact return type (`FApplicationLifetimeDelegate&`, as declared, or a
-  differently named thread-safe delegate type) are from memory.
-- **What the SDK declares**: both forms in `sdk/Runtime/Core/Public/Misc/CoreDelegates.h`: the static member, and the
-  accessor inside a block marked `// UNVERIFIED`. The accessor is on by default because the module calls it; the
-  marker is what records that a PASS of `AbyssGameInstance.cpp` rests on it.
+  which the accessor appeared and the exact return type (the thread-safe `FTSSimpleMulticastDelegate&`, as now
+  declared, or `FApplicationLifetimeDelegate&`, as declared before the final audit) are from memory.
+- **What the SDK declares**: both forms in `sdk/Runtime/Core/Public/Misc/CoreDelegates.h`: the static member (a plain
+  `FSimpleMulticastDelegate`, the form the accessor replaced), and the accessor inside a block marked `// UNVERIFIED`,
+  returning `FTSSimpleMulticastDelegate&` since the final audit (it was typed `FApplicationLifetimeDelegate&` before).
+  The accessor is on by default because the module calls it; the marker is what records that a PASS of
+  `AbyssGameInstance.cpp` rests on it.
+- **Audit verdict**: the accessor exists in 5.x, next to `GetMemoryTrimDelegate` / `GetOutOfMemoryDelegate`, with their
+  thread-safe type `FTSSimpleMulticastDelegate`; only the return type was in doubt, and the module's two calls
+  (`AddUObject`, `RemoveAll`) exist on every multicast delegate type. Believed real; stays marked until a 5.8 header
+  shows it.
 - **Residual risk**: one line each way. If 5.8 lacks the accessor, both calls fail to compile in every target; if it
   has the accessor with another delegate type, they still compile as long as that type has `AddUObject` / `RemoveAll`.
 - **Safest alternative**: `FCoreDelegates::ApplicationWillTerminateDelegate.AddUObject(...)` / `.RemoveAll(this)`, the
@@ -84,6 +118,8 @@ Verdict vocabulary: see README.md ("The three verdicts").
 - **Residual risk**: none for the build (the strict form was chosen). If 5.8 drops constness, case 122 / 123 describe
   code the engine accepts; that only makes this check stricter than the engine.
 - **Safest alternative for new code**: keep the result as const as the argument, or cast a mutable pointer.
+- **Audit verdict**: believed as written (`Cast` / `CastChecked` / `ExactCast` return
+  `TCopyQualifiersFromTo_T<From, To>*`). No build risk in either case.
 
 ### 5. `UActorComponent::MarkRenderInstancesDirty()` (hedged in the module)
 
@@ -114,6 +150,13 @@ Verdict vocabulary: see README.md ("The three verdicts").
 - **Safest alternative if the fallback cost shows**: pass `bMarkRenderStateDirty = true` to the LAST update call of a
   batch (`SetCustomDataValue`, `SetCustomData` and `BatchUpdateInstancesTransforms` all take the flag); the engine then
   picks its own cheapest path.
+- **The fallback is not silent (final audit)**: the `else` branch of the helper calls
+  `AbyssWorldUtil::WarnInstancedFallback()` (`Private/World/AbyssWorldTypes.cpp`), which logs one `LogAbyss` warning per
+  run ("Instanced meshes: UActorComponent::MarkRenderInstancesDirty not found on this engine ..."), like the module's
+  other engine-version shims. Before that, a 5.8 without the member would have built green and run the slow path every
+  frame without a trace. Mac checklist: search the first editor log for "Instanced meshes:".
+- **Audit verdict**: believed as written (`void MarkRenderInstancesDirty();`, public on `UActorComponent` since 5.4);
+  the hedge is harmless and stays.
 
 ### 6. `APlayerController::GetAudioListenerPosition`: const or not (hedged in the module)
 
@@ -136,6 +179,7 @@ Verdict vocabulary: see README.md ("The three verdicts").
 - **Residual risk**: none for this call. A module class that overrides the function would have to match the engine's
   constness (the module has no such override).
 - **Safest form for new code**: call it on a non-const controller.
+- **Audit verdict**: believed as written (const in 5.x). No build risk in either case.
 
 ### 8. The Slate `FVector2D` bridge (`UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS`)
 
@@ -186,6 +230,14 @@ Verdict vocabulary: see README.md ("The three verdicts").
   `SAbyssShopPanel.cpp` and `SAbyssSkillTreePanel.cpp` (`FVector2f(6.f, 6.f)` there) and
   `MyGeometry.IsUnderLocation(End)` at `SAbyssSkillTreePanel.cpp:224` (`FVector2f(End)`); CC5 re-ran the bridge-off
   estimate and got the same 22 lines in 12 files.
+- **SDK corrections of the final audit**: `FDeprecateSlateVector2D` / `FDeprecateSlateOptionalVector2D` are now
+  global-scope structs, as a USTRUCT must be (they were inside `UE::Slate`; only the aliases
+  `FDeprecateVector2DParameter` / `FDeprecateVector2DResult` / `FDeprecateOptionalVector2DParameter` live there;
+  negative case 206), and the `const TArray<FVector2D>&` overloads of `FSlateDrawElement::MakeLines` are behind the
+  switch too, so the bridge-off run would also list a caller that passes `FVector2D` points (the module's three
+  `MakeLines` calls pass `TArray<FVector2f>`). The final bridge-off run gives the same 22 lines in 12 files.
+- **Audit verdict**: exists as written through 5.6 and is believed still on by default in 5.8. It stays the one open
+  entry that can stop a game target from compiling (22 argument sites), so it is the first line of the Mac checklist.
 
 ## Resolved by changing the module
 
@@ -224,7 +276,7 @@ reflected in a form the Python stub exposes.
 | SDK declaration | Assumption | If wrong |
 |---|---|---|
 | `Misc/VarArgs.h` format-string checker | Reimplements `UE::Core::Private::FormatStringSan`: `%s` needs a `TCHAR*`, `%d` an integer or enum, `%f` a float / double; too few or too many arguments are errors | A stricter or looser real checker; the module only uses plain `%s %d %f %lld %u %x` forms |
-| `sdk/modules.json` | PUBLIC dependency lists of the engine modules (`Engine` re-exports `Slate`, `SlateCore`, `InputCore`, `RenderCore`, `RHI`, `PhysicsCore`, `AudioExtensions`, `DeveloperSettings`; `RHI` re-exports `ApplicationCore`) | A header could be reachable here and not in UBT. In the areas checked so far the module includes only from modules that `Abyssfire.Build.cs` lists itself |
+| `sdk/modules.json` | PUBLIC dependency lists of the engine modules (`Engine` re-exports `Slate`, `SlateCore`, `InputCore`, `RenderCore`, `RHI`, `PhysicsCore`, `AudioExtensions`, `DeveloperSettings`; `RHI` re-exports `ApplicationCore`) | A header could be reachable here and not in UBT. The Build.cs lint of every run (final audit) now requires each included engine header to belong to a module `Abyssfire.Build.cs` lists itself, so no module file depends on a re-export (10 modules, 169 distinct headers; `AudioMixer`, `DeveloperSettings` and `RenderCore` are listed and not included from) |
 | `UObject/Class.h` includes `Math/RandomStream.h`, `Misc/Guid.h`, `HAL/CriticalSection.h` | The real header's include list | `Public/Camera/AbyssCameraRig.h` now includes `Math/RandomStream.h` itself, so nothing depends on it |
 | `UEnhancedInputComponent::BindAction(..., Func, VarTypes... Vars)` | Payload arguments after the member function (the form Lyra uses) | `Private/Input/AbyssPlayerControllerInput.cpp:157` binds with an `ActionId` payload |
 | `EMaterialParameterType::TextureCollection` | Present between `Texture` and `Font` (the 5.6 stub has texture-collection parameter getters) | Enumerator order only; the module uses `EMaterialParameterType::Texture` |
@@ -247,7 +299,7 @@ reflected in a form the Python stub exposes.
 | `TObjectPtr` comparison (`UObject/ObjectPtr.h`) | `operator==(const TObjectPtr<U>&)`, `operator==(nullptr)` and a generic `operator==(const U&)` over what converts to `const T*` or has `Get()` (the engine's `ObjectPtr_Private::CoerceToPointer`); `!=` and the reversed forms come from C++20 | `Ptr == RawPointer` resolves to the member (exact match) instead of being ambiguous with the built-in comparison. A pointer to a BASE of `T` compares through `operator T*()` |
 | `FStreamableManager::RequestAsyncLoad` / `RequestSyncLoad` (`Engine/StreamableManager.h`) | The four long-standing overloads (path array or single path; `FStreamableDelegate` or `TFunction<void()>&&`). 5.5+ are believed to fold them into templates with an extra source-location parameter | `Private/World/AbyssAssetLibrary.cpp:480` passes only a moved `TArray<FSoftObjectPath>`: valid for both shapes |
 | `Rendering/SkeletalMeshRenderData.h` | Only forward-declares `FSkeletalMeshLODRenderData` (strict side); `LODRenderData` is a `TIndirectArray` with `Num()` / `operator[]` / `IsValidIndex()` and the engine's range-`for` iterators (`TDereferencingIterator`, in `Containers/Array.h`: `T&`, and `const T&` through a const array; negative cases 142 / 143) | The module includes `Rendering/SkeletalMeshLODRenderData.h` itself and only counts and indexes. Mutation (`Add`, `RemoveAt`, `Empty`) is not declared |
-| `UMaterialParameterCollectionInstance` (`Materials/MaterialParameterCollectionInstance.h`) | Not exposed to Python. `SetScalarParameterValue(FName, float)` and `SetVectorParameterValue(FName, const FLinearColor&)` only. A second overload `SetVectorParameterValue(FName, const FVector4&)` is believed to exist in 5.x; it could not be confirmed, so it is not declared | Both module calls (`Private/Vfx/AbyssVfxSystem.cpp:1759`, `Private/World/AbyssWorldBuilder.cpp:2254`) pass a `const FLinearColor&`: an exact match whichever overload set the engine has. With one overload an `FVector4` / `FVector` argument is rejected here although the engine may accept it, and a braced list (`{ R, G, B, A }`) compiles here although it would be ambiguous between the two overloads: pass a typed `FLinearColor` |
+| `UMaterialParameterCollectionInstance` (`Materials/MaterialParameterCollectionInstance.h`) | Not exposed to Python. `SetScalarParameterValue(FName, float)` and two overloads of `SetVectorParameterValue`: `(FName, const FLinearColor&)` and, since the final audit, `(FName, const FVector4&)` (believed to exist since the 5.0 large-world change; two reviews remembered it, none could confirm it) | Both module calls (`Private/Vfx/AbyssVfxSystem.cpp:1760`, `Private/World/AbyssWorldBuilder.cpp:2254`) pass a `const FLinearColor&`: an exact match whichever overload set the engine has. If 5.8 only has the `FLinearColor` form, an `FVector4` argument passes here and fails there. A braced list (`{ R, G, B, A }`) picks the `FLinearColor` overload with clang (the four-component `FVector4` constructor is explicit) and may be ambiguous for another compiler: pass a typed `FLinearColor` (negative case 212 pins that other vector types are rejected) |
 | `ULightComponent::SetLightFColor(FColor)` | The C++-only twin of the reflected `SetLightColor(FLinearColor, bool)` | `Private/World/AbyssZoneActor.cpp:1415`; `SetLightColor(FLinearColor(Bytes), true)` is the reflected alternative |
 | `UActorComponent::SetCanEverAffectNavigation(bool)` | Public, C++-only (the property `bCanEverAffectNavigation` is reflected) | Ten calls in the actors and the zone actor |
 | `StaticEnum<T>()` / `StaticStruct<T>()` / `StaticClass<T>()` (`UObject/Class.h`) | Declared without a body, as in the engine (`UObject/ReflectedTypeAccessors.h`); the fake UHT emits the `StaticClass<UFoo>` specialisation per module class | A call with a type UHT did not reflect compiles here and in UE, and fails to LINK in UE: invisible to this check. The module calls none |
@@ -277,5 +329,16 @@ reflected in a form the Python stub exposes.
 | `SBoxPanel` slot size rules (`Widgets/SBoxPanel.h`) | `AutoWidth` / `FillWidth` / `MaxWidth` and the vertical twins are declared. `MinWidth` / `MinHeight` and `FillContentWidth` / `FillContentHeight` (newer 5.x additions; CC1 had declared them) were removed in CC5: unused by the module, and the release that added each is not known here | Strict side: a slot with `.MinWidth(...)` is rejected here; valid on a recent engine |
 | `FMath::RoundToInt(double)` and friends (`Math/UnrealMathUtility.h`) | `RoundToInt` / `FloorToInt` / `CeilToInt` / `TruncToInt` return `int32` for a `float` and `int64` for a `double` (5.0+, the large-world-coordinates change); the `...ToInt32` forms return `int32` for both | Decides only the opt-in width lint (`--define UE_STUB_STRICT_FORMAT_WIDTH=1`): the engine's format check wants an integer under `%d` and, as far as remembered, does not look at its size. CC5 moved the three `%d` call sites that passed `RoundToInt(double)` to `RoundToInt32` (`Private/Actors/AbyssCorpses.cpp:813`, `Private/UI/Panels/SAbyssSkillTreePanel.cpp:552`, `:907`), valid whichever way the engine checks |
 | `FDateTime` arithmetic (`Misc/DateTime.h`) | `FDateTime + FTimespan`, `FDateTime - FDateTime` (a time span), `ToString(const TCHAR*)`, `FromUnixTimestamp(int64)`, `Now()` / `UtcNow()`; an `operator+(const FDateTime&)` is declared too (believed to exist; unused) | `Private/UI/Menu/SAbyssMainMenu.cpp:117-119` (the save slot's local time) uses the first group only |
-| SDK include edges the Panels / Menu / Story pass rests on | `tools/include_audit.py` lists them (83 edges; `cc5_include_edges.txt` of the CC5 run). All are edges the engine headers are believed to have (`CoreMinimal.h` to the Core containers / math / delegates / text; `Widgets/SWidget.h` to `Layout/Geometry.h`, `Input/Reply.h`, `Input/CursorReply.h`, `Types/PaintArgs.h`; `Widgets/DeclarativeSyntaxSupport.h` to `Widgets/SWidget.h`, `SlotBase.h`, `Misc/Attribute.h`; the widget headers to their slot / style / enum headers) | An edge the engine lacks lets a module file compile here without an include it needs on the Mac. The lowest-confidence one, `Styling/WidgetStyle.h` to `Misc/Attribute.h`, is never the only path (every file that relies on it also includes a widget header) |
+| SDK include edges the Panels / Menu / Story pass rests on | `tools/include_audit.py` lists them (83 edges; `cc5_include_edges.txt` of the CC5 run). All are edges the engine headers are believed to have (`CoreMinimal.h` to the Core containers / math / delegates / text; `Widgets/SWidget.h` to `Layout/Geometry.h`, `Input/Reply.h`, `Input/CursorReply.h`, `Types/PaintArgs.h`; `Widgets/DeclarativeSyntaxSupport.h` to `SlotBase.h`, `Misc/Attribute.h`; the widget headers to their slot / style / enum headers) | An edge the engine lacks lets a module file compile here without an include it needs on the Mac. The lowest-confidence one, `Styling/WidgetStyle.h` to `Misc/Attribute.h`, is never the only path (every file that relies on it also includes a widget header) |
+| `Widgets/DeclarativeSyntaxSupport.h` and `Widgets/WidgetPixelSnapping.h` (final audit) | `DeclarativeSyntaxSupport.h` only forward-declares `SWidget` (it included `Widgets/SWidget.h` before, an edge the engine is believed not to have); `EWidgetPixelSnapping` lives in its own header (the 5.6 stub names the file `WidgetPixelSnapping.h`, module SlateCore; the `Widgets/` directory is from memory). The audit also removed three other doubted edges in a scratch SDK (`Engine/EngineBaseTypes.h` to `Misc/CoreDelegates.h`, `UObject/Class.h` to `Math/RandomStream.h` and `HAL/CriticalSection.h`, `Engine/World.h` to `Engine/GameInstance.h`) and the module still passed; those three are still in the SDK | Strict side now: a file that includes only `DeclarativeSyntaxSupport.h` and uses `SWidget` members is rejected (`tests/negative_boundaries.cpp` case 1). Every module file that includes it also includes `SCompoundWidget.h` / `SLeafWidget.h` / `SPanel.h` or a module widget header |
+| `TWeakObjectPtr::operator bool` (`UObject/WeakObjectPtrTemplates.h`, final audit) | `explicit operator bool() const = delete;` (the engine deliberately has no boolean conversion). The SDK had a working one before | `if (Weak)` / `!Weak` are rejected (negative case 196); `IsValid()` / `Get()` are valid in every version. The module used neither form |
+| Weak lambdas (`Delegates/Delegate.h`, final audit) | `CreateWeakLambda` / `BindWeakLambda` / `AddWeakLambda` take a UObject owner only (the instance holds a `TWeakObjectPtr<UserClass>`); a `TSharedFromThis` object uses the `SPLambda` forms. The SDK accepted both before | A widget passed to `AddWeakLambda` is rejected (negative cases 197-199, 211). The module's one use (`Private/Framework/AbyssPlayerController.cpp:37`) passes a UObject |
+| `FTCHARToUTF8` / `FUTF8ToTCHAR` (`Containers/StringConv.h`, final audit) | `FTCHARToUTF8::Get()` is a `const ANSICHAR*`; `FUTF8ToTCHAR` is built from `const ANSICHAR*` (the converter's `LegacyFromType`) or `const UTF8CHAR*` (its `FromType`). The SDK had `UTF8CHAR` on both before, which rejected the usual `std::string(Conv.Get(), Conv.Length())` and accepted `const UTF8CHAR* P = FTCHARToUTF8(...).Get()` | Negative cases 204 / 205 and their twins. The module uses `StringCast<UTF8CHAR>`, `FString::ConstructFromPtrSize` and the `UTF8_TO_TCHAR` macro, none of the two classes |
+| `TObjectPtr` construction (`UObject/ObjectPtr.h`, final audit) | The constructor from `T&` is `explicit`; `TObjectPtr<T>` asserts that a COMPLETE `T` derives from `UObject` (the engine's `ResolveTypeIsComplete` probe; a forward-declared `T` is fine) | `G(ActorRef)` for a `TObjectPtr<AActor>` parameter and `TObjectPtr<FSomeStruct>` are rejected (negative cases 201 / 202). The module does neither |
+| Constructor forms of engine classes (`UObject/ObjectMacros.h`: `UE_STUB_CLASS_BODY` / `UE_STUB_CLASS_BODY_DEFAULT_CTOR`, final audit) | `USubsystem` and its family (`UDynamicSubsystem`, `UEngineSubsystem`, `UGameInstanceSubsystem`, `UWorldSubsystem`, `UTickableWorldSubsystem`, `ULocalPlayerSubsystem`, the two Enhanced Input subsystems) only have a default constructor; every other SDK class keeps both forms (`Super()` and `Super(ObjectInitializer)`), which is right for `UObject`, `AActor` and the classes with the usual `(const FObjectInitializer& = FObjectInitializer::Get())` constructor, and is NOT known for each remaining class | `Super(ObjectInitializer)` in a subsystem is rejected (negative case 200); for another engine class that only has a default constructor it would still pass here. No module file mentions `FObjectInitializer`; the fake UHT generates the constructor form of the base class |
+| `FSlateColor` constructors (`Styling/SlateColor.h`, final audit) | Default, `const FLinearColor&`, `const TSharedRef<FLinearColor>&`. The `FColor` constructor the SDK had is gone (not believed to exist: an `FColor` argument then needs two user conversions); the engine's `FSlateColor(EStyleColor)` is not declared (`Styling/StyleColors.h` is not in the SDK) | `FSlateColor C = FColor::Red;` and passing an `FColor` for an `FSlateColor` parameter are rejected (negative case 203); `FSlateColor(FColor::Red)` and `.ColorAndOpacity(FColor::White)` (a `TAttribute`) compile either way. An `EStyleColor` argument is rejected here although valid (strict side). The module passes `FLinearColor` |
+| The bridge structs of `Types/SlateVector2.h` (final audit) | `FDeprecateSlateVector2D` is a global-scope struct derived from `FVector2f` (checked against the 5.6 stub: name, base, header; a USTRUCT is never in a namespace). The optional variant behind `UE::Slate::FDeprecateOptionalVector2DParameter` is not reflected: that it is a global struct named `FDeprecateSlateOptionalVector2D` is from memory | Only code that names the structs notices (negative case 206); the module names neither, and Slate's signatures use the `UE::Slate` aliases |
+| `FSlateApplicationBase::GetRenderer()`, `FSlateApplication::GetInteractiveTopLevelWindows()` (final audit) | One `FSlateRenderer* GetRenderer() const` (the SDK had a const / non-const pair that handed a `const FSlateRenderer*` out of a const application); the window list is returned by value | Only callers through a const application or binding the list to a non-const reference notice. `Private/UI/Core/AbyssUiDraw.cpp` uses the renderer through the non-const singleton |
+| `TBitArray` / `TSparseArray` (final audit) | Not in the SDK, although the engine's `CoreMinimal.h` includes `Containers/BitArray.h` and `Containers/SparseArray.h` | Strict side: a first use in the module is reported as "no template named 'TBitArray'": add the two headers then, with their real members. The module uses neither |
+| `[[nodiscard]]` (final audit: `Math/UnrealMathUtility.h`, `Math/Vector.h`, `Vector2D.h`, `Vector4.h`, `Rotator.h`, `Quat.h`, `Containers/Array.h`, `Map.h`, `Set.h`) | Every value-returning function of `FMath` / `FGenericPlatformMath`, the value-returning const / static members of the vector, rotator and quaternion types, and the queries of the containers (`Num`, `IsEmpty`, `Contains`, `Find`, `FindByKey`, `FindByPredicate`, `IndexOfByKey`, `FilterByPredicate`, `Last`, `Top`, `GetData`, ...; not `Add`, `Emplace`, `AddUnique`, `Remove*`, `Pop`, `FindOrAdd`, `Normalize`) carry the attribute, as the engine's do since 5.1 (`UE_NODISCARD`). That each single one carries it in 5.8 is from memory | Strict side where wrong: a discarded result is `-Werror,-Wunused-result` here (negative cases 207-210) and would only be dead code in the engine; write `(void)` or use the value. The module discards none (a libclang scan of the audit, and every run since) |
 | UE clang warning set in `tools/compile_check.py` | `-Wall -Werror` minus UE's `-Wno-*` list, `-Wshadow` and `-Wundef` as errors | A warning UE disables could fail here (strict side) or the reverse |

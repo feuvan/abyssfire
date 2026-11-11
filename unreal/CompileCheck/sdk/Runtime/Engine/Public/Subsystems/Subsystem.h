@@ -11,7 +11,7 @@ class FSubsystemCollectionBase;
 
 class USubsystem : public UObject
 {
-	UE_STUB_CLASS_BODY(USubsystem, UObject)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(USubsystem, UObject)
 public:
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const { return true; }
 	virtual void Initialize(FSubsystemCollectionBase& Collection) {}
@@ -19,5 +19,5 @@ public:
 };
 class UDynamicSubsystem : public USubsystem
 {
-	UE_STUB_CLASS_BODY(UDynamicSubsystem, USubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(UDynamicSubsystem, USubsystem)
 };

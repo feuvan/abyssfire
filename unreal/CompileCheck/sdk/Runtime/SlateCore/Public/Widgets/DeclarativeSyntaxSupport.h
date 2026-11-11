@@ -25,11 +25,14 @@
 #include "Types/SlateEnums.h"
 #include "Layout/FlowDirection.h"
 #include "Widgets/SNullWidget.h"
-#include "Widgets/SWidget.h"
+#include "Widgets/WidgetPixelSnapping.h"
 #include "SlotBase.h"
 
+// SWidget is only forward-declared here, as in the engine: a file that uses SWidget / FGeometry / FReply must include
+// Widgets/SWidget.h (or SCompoundWidget.h / SLeafWidget.h / SPanel.h) itself.
 class IToolTip;
 class SUserWidget;
+class SWidget;
 class USlateWidgetStyleAsset;
 class ISlateStyle;
 

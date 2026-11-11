@@ -9,6 +9,12 @@
 class UObject;
 class UClass;
 
+namespace ObjectPtr_Private
+{
+	/** The engine's completeness probe: char[2] when T is complete where TObjectPtr<T> is first instantiated. */
+	template <typename T, int = sizeof(T)> char (&ResolveTypeIsComplete(int))[2];
+	template <typename T> char (&ResolveTypeIsComplete(...))[1];
+}
 namespace UE::Stub
 {
 	/** ObjectPtr_Private::CoerceToPointer<T> of the engine: through implicit conversion to const T*, or through Get(). */
@@ -19,6 +25,10 @@ namespace UE::Stub
 template <typename T>
 struct TObjectPtr
 {
+	// As in the engine: T is either incomplete here (forward declared) or complete and derived from UObject.
+	// TObjectPtr<int>, TObjectPtr<FSomeStruct> and TObjectPtr<IInterface> must fail to compile.
+	static_assert(std::disjunction<std::negation<std::bool_constant<sizeof(ObjectPtr_Private::ResolveTypeIsComplete<T>(1)) == 2>>, std::is_base_of<UObject, T>>::value,
+		"TObjectPtr<T> can only be used with types derived from UObject");
 public:
 	using ElementType = T;
 	TObjectPtr() : ObjectPtr(nullptr) {}
@@ -30,7 +40,7 @@ public:
 	TObjectPtr(const TObjectPtr<U>& Other) : ObjectPtr(Other.Get()) {}
 	template <typename U> requires std::is_convertible_v<U, T*> && (!std::is_null_pointer_v<std::decay_t<U>>)
 	TObjectPtr(U&& Object) : ObjectPtr(Object) {}
-	TObjectPtr(T& Object) : ObjectPtr(&Object) {}
+	explicit TObjectPtr(T& Object) : ObjectPtr(&Object) {}
 	TObjectPtr<T>& operator=(TObjectPtr<T>&&) = default;
 	TObjectPtr<T>& operator=(const TObjectPtr<T>&) = default;
 	TObjectPtr<T>& operator=(TYPE_OF_NULLPTR) { ObjectPtr = nullptr; return *this; }

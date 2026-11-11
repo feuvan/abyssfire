@@ -1574,9 +1574,10 @@ void UAbyssVfxSystem::Render()
 			Component->SetCustomData(Index, TArrayView<const float>(Pool.CustomData.GetData() + Index * AbyssVfxIcd::Count,
 				AbyssVfxIcd::Count), /*bMarkRenderStateDirty*/ false);
 		}
-		// Incremental instance update (FPrimitiveInstanceDataManager, 5.4+), never MarkRenderStateDirty: that would destroy
+		// Incremental instance update (FPrimitiveInstanceDataManager, 5.4+), not MarkRenderStateDirty: that would destroy
 		// and re-create the scene proxy of every active pool every frame (full FScene remove / add, instance re-upload,
-		// lost velocity / TSR history).
+		// lost velocity / TSR history). MarkInstancesDirty only falls back to it on an engine without the incremental
+		// call, and then logs once (AbyssWorldUtil::WarnInstancedFallback).
 		AbyssWorldUtil::MarkInstancesDirty(*Component);
 		Pool.UsedLastFrame = Used;
 	}

@@ -64,6 +64,10 @@ WARNING_FLAGS = [
     '-Wshadow', '-Wundef',
     '-Wno-error=deprecated-declarations',
 ]
+# --msvc-lint: the clang twins of warnings MSVC reports and UE turns into errors on Windows (not a checked platform, see
+# README.md): C4099 (a type declared `class` here and `struct` there), C4456-C4459 (a local / parameter that hides another
+# local, a member or a global: -Wshadow-all without the base-class-field case MSVC does not have) and C4018 / C4389.
+MSVC_LINT_FLAGS = ['-Wmismatched-tags', '-Wshadow-all', '-Wno-shadow-field', '-Wsign-compare']
 BASE_FLAGS = ['-fsyntax-only', '-x', 'c++', '-std=c++20', '-fno-exceptions', '-fno-rtti', '-ffp-contract=off',
               '-fdiagnostics-absolute-paths', '-fno-color-diagnostics', '-fno-caret-diagnostics',
               '-ferror-limit=60', '-ftemplate-backtrace-limit=6', '-fmacro-backtrace-limit=4']
@@ -114,6 +118,54 @@ def include_roots(build_cs, modules, target_type):
         for root in modules[name].get('roots', []):
             roots.append(os.path.join(SDK_DIR, root))
     return order, roots, missing
+
+
+INCLUDE_RE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"', re.M)
+
+
+def dependency_lint(module_dir, build_cs, modules):
+    """Build.cs dependency lint. UBT gives a module the include paths of its dependencies AND of their public dependencies
+    (Engine re-exports Slate, SlateCore, InputCore, RenderCore, RHI, ...), but links it only against the modules its own
+    Build.cs lists. A header that is reachable only through somebody else's public dependency therefore compiles
+    everywhere and fails to link in the modular (editor) build as soon as a non-inline symbol of it is used. Every engine
+    header a module file includes must belong to a module Abyssfire.Build.cs names itself.
+    Returns (findings, {module: number of distinct headers included})."""
+    direct = set()
+    for kind in ('PublicDependencyModuleNames', 'PrivateDependencyModuleNames', 'PublicIncludePathModuleNames', 'PrivateIncludePathModuleNames'):
+        direct.update(build_cs[kind])
+    roots = [(os.path.join(SDK_DIR, root), name) for name, info in sorted(modules.items()) for root in info.get('roots', [])]
+    used, findings, missing = {}, [], {}
+    for root, _dirs, files in os.walk(module_dir):
+        for name in sorted(files):
+            if not name.endswith(('.h', '.cpp', '.inl')):
+                continue
+            path = os.path.join(root, name)
+            with open(path, encoding='utf-8', errors='replace') as f:
+                text = f.read()
+            for m in INCLUDE_RE.finditer(text):
+                header = m.group(1)
+                if any(os.path.exists(os.path.join(base, header)) for base in (root, os.path.join(module_dir, 'Public'), os.path.join(module_dir, 'Private'), CORE_PUBLIC)):
+                    continue   # the module's own header, or the core's
+                owner = next((mod for base, mod in roots if os.path.exists(os.path.join(base, header))), None)
+                if owner is None:
+                    continue   # a generated header, or one the compile reports as not found
+                used.setdefault(owner, set()).add(header)
+                if owner not in direct:
+                    missing.setdefault(owner, []).append((os.path.join('Source', 'Abyssfire', os.path.relpath(path, module_dir)), text.count('\n', 0, m.start()) + 1, header))
+    for owner in sorted(missing):
+        places = sorted(missing[owner])
+        path, line, header = places[0]
+        findings.append({'rule': 'build-cs', 'level': 'error', 'file': path, 'line': line,
+                         'message': '"%s" belongs to the engine module %s, which Abyssfire.Build.cs does not list (%d such include%s in %d file%s): the headers are only '
+                                    'reachable through the public dependencies of another module, so everything compiles, and the modular (editor) build fails to '
+                                    'link as soon as a non-inline symbol of %s is used. Add "%s" to the dependency list' % (
+                                        header, owner, len(places), '' if len(places) == 1 else 's', len({p for p, _l, _h in places}),
+                                        '' if len({p for p, _l, _h in places}) == 1 else 's', owner, owner)})
+    for name in sorted(direct):
+        if name in modules and name not in used:
+            findings.append({'rule': 'build-cs', 'level': 'note', 'file': os.path.join('Source', 'Abyssfire', 'Abyssfire.Build.cs'), 'line': 0,
+                             'message': '"%s" is listed and no module file includes a header of it (harmless: it may be needed at link or run time only)' % name})
+    return findings, {name: len(headers) for name, headers in sorted(used.items())}
 
 
 # Engine preprocessor switches (not UE_STUB_* ones) that an // UNVERIFIED block of the SDK may sit behind: the engine
@@ -298,6 +350,8 @@ class Checker:
                               '#include "%s"\n#include "%s"\n' % (definitions_path, self.pch_header))
         includes = [os.path.join(MODULE_DIR, 'Public'), os.path.join(MODULE_DIR, 'Private'), self.uht_dir, CORE_PUBLIC] + roots
         cmd = [self.args.cxx] + BASE_FLAGS + WARNING_FLAGS
+        if getattr(self.args, 'msvc_lint', False):
+            cmd += MSVC_LINT_FLAGS
         if getattr(self.args, 'stdlib', None):
             # the C++ standard library of the real toolchains (Xcode, the Android NDK) is libc++; the default here is
             # the system's (libstdc++ on Linux), whose headers include each other differently
@@ -420,13 +474,14 @@ class Checker:
         uht_cmd = [sys.executable, os.path.join(CHECK_DIR, 'uht', 'fake_uht.py'), '--module', MODULE_DIR, '--out', self.uht_dir,
                    '--report', os.path.join(self.build, 'uht_report.json')]
         if os.path.exists(args.stub):
-            uht_cmd += ['--stub', args.stub]
+            uht_cmd += ['--stub', args.stub, '--stub-cache', self.build]
         uht_code, uht_out = run(uht_cmd)
         print('== fake UHT (generated headers + UHT rule lint)')
         print(uht_out.rstrip())
         with open(os.path.join(self.build, 'uht_report.json'), encoding='utf-8') as f:
             uht_report = json.load(f)
         units = self.translation_units(uht_report['generated'])
+        build_cs_findings, build_cs_used = dependency_lint(MODULE_DIR, self.build_cs, self.modules)
         if args.list:
             for unit in units:
                 print(unit['rel'])
@@ -435,8 +490,16 @@ class Checker:
             print('no translation unit matches --only ' + ' '.join(args.only))
             return 2
         report = {'unreal_dir': UNREAL_DIR, 'module_dir': MODULE_DIR, 'defines': args.define, 'compiler': run([args.cxx, '--version'])[1].splitlines()[0], 'configs': {},
-                  'uht': uht_report, 'only': args.only, 'unverified': unverified_blocks(args.define)}
+                  'uht': uht_report, 'only': args.only, 'unverified': unverified_blocks(args.define),
+                  'build_cs': {'findings': build_cs_findings, 'headers_per_module': build_cs_used}}
         overall_ok = uht_code == 0 and sdk_ok
+        print('== Abyssfire.Build.cs dependencies (every included engine header belongs to a module the Build.cs lists itself)')
+        for f in build_cs_findings:
+            print('%s:%d: %s: [%s] %s' % (f['file'], f['line'], f['level'], f['rule'], f['message']))
+        build_cs_errors = sum(1 for f in build_cs_findings if f['level'] == 'error')
+        print('Build.cs lint: %d errors; engine headers included per module: %s' % (
+            build_cs_errors, ', '.join('%s %d' % (k, v) for k, v in build_cs_used.items()) or 'none'))
+        overall_ok = overall_ok and build_cs_errors == 0
         compile_commands = []
         for config in configs:
             desc = CONFIGS[config][0]
@@ -473,12 +536,36 @@ class Checker:
             print('   %d translation units: %d pass, %d fail (%d from cache)' % (len(results), len(results) - len(failed), len(failed), sum(1 for r in results if r.get('cached'))))
         with open(os.path.join(self.build, 'compile_commands.json'), 'w', encoding='utf-8') as f:
             json.dump(compile_commands, f, indent=1)
+        # 3. the link scan: what one translation unit at a time cannot show (tools/link_scan.py). It needs every
+        # translation unit of the module, so a run restricted with --only skips it unless --link-scan asks for it.
+        link_ok = True
+        if args.no_link_scan or (args.only and not args.link_scan):
+            print('\n== link scan: skipped (%s)' % ('--no-link-scan' if args.no_link_scan else 'a run with --only does not see the whole module; --link-scan forces it'))
+            report['link_scan'] = {'skipped': True}
+        else:
+            import link_scan
+            print('\n== link scan (libclang over every translation unit: unity collisions, undefined / duplicate symbols, exports, platform names)')
+            if link_scan.load_libclang() is None:
+                print('   skipped: libclang not found (set ABYSS_LIBCLANG to the shared library of the clang in use)')
+                report['link_scan'] = {'skipped': True}
+            else:
+                # this file runs as __main__: link_scan imported its own copy of the module, with the default directories
+                link_scan.cc.MODULE_DIR, link_scan.cc.CORE_PUBLIC = MODULE_DIR, CORE_PUBLIC
+                only, self.args.only = self.args.only, []
+                all_units = self.translation_units(uht_report['generated'])
+                self.args.only = only
+                findings, stats, errors = link_scan.run_scan(self, configs, all_units, args.jobs, use_cache=not args.force)
+                link_ok = link_scan.print_findings(findings, stats, errors, configs)
+                report['link_scan'] = {'findings': findings, 'stats': stats, 'errors': errors, 'skipped': False}
+        overall_ok = overall_ok and link_ok
         self.print_summary(report, configs, uht_report)
         report['ok'] = overall_ok
         with open(os.path.join(self.build, 'report.json'), 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=1)
         print('\nreport: %s' % os.path.join(self.build, 'report.json'))
-        print('RESULT: %s' % ('PASS (every file in every configuration, no UHT lint error, SDK consistent with the engine stub)' if overall_ok else 'FAIL'))
+        scanned = 'no UHT / Build.cs / link-scan error' if not report['link_scan'].get('skipped') else 'no UHT / Build.cs error; link scan not run'
+        scope = 'every file in every configuration' if not args.only and len(configs) == len(CONFIGS) else 'every selected file in the selected configurations'
+        print('RESULT: %s' % ('PASS (%s, %s, SDK consistent with the engine stub)' % (scope, scanned) if overall_ok else 'FAIL'))
         return 0 if overall_ok else 1
 
     def print_summary(self, report, configs, uht_report):
@@ -533,6 +620,14 @@ class Checker:
         totals = ['%d/%d' % (report['configs'][c]['passed'], report['configs'][c]['total']) for c in configs]
         print('%-*s  %s' % (width, 'TOTAL', '  '.join('%-13s' % t for t in totals)))
         print('UHT lint: %d errors, %d warnings, %d notes' % (uht_report['counts']['error'], uht_report['counts']['warn'], uht_report['counts']['note']))
+        build_cs = report.get('build_cs', {}).get('findings', [])
+        print('Build.cs lint: %d errors' % sum(1 for f in build_cs if f['level'] == 'error'))
+        scan = report.get('link_scan', {})
+        if scan.get('skipped'):
+            print('link scan: skipped')
+        elif scan:
+            print('link scan: %d errors, %d warnings%s' % (sum(1 for f in scan['findings'] if f['level'] == 'error'), sum(1 for f in scan['findings'] if f['level'] == 'warn'),
+                                                          (', %d translation units not scanned' % len(scan['errors'])) if scan['errors'] else ''))
         blocks = report.get('unverified', [])
         if blocks:
             # a PASS is only as good as these: engine API that could not be confirmed for 5.8 (API_UNCERTAIN.md)
@@ -550,7 +645,7 @@ class Checker:
 
 
 def main():
-    global MODULE_DIR
+    global MODULE_DIR, CORE_PUBLIC
     parser = argparse.ArgumentParser(description='Engine-free compile check of unreal/Source/Abyssfire (see README.md).')
     parser.add_argument('--config', action='append', help='configuration to check (repeatable; default: all): ' + ', '.join(CONFIGS))
     parser.add_argument('--only', action='append', default=[], help='only these files / directories (repeatable): "Framework", "Private/Input/Touch", "Public/Camera/AbyssCameraRig.h", "AbyssText.cpp"')
@@ -560,6 +655,12 @@ def main():
     parser.add_argument('--stub', default=DEFAULT_STUB, help='engine Python stub for the UHT type lint (optional)')
     parser.add_argument('--no-pch', action='store_true', help='force-include the PCH textually instead of precompiling it (slower, same result)')
     parser.add_argument('--no-unity', action='store_true', help='skip the extra unity translation unit (all passing module files compiled together)')
+    parser.add_argument('--no-link-scan', action='store_true', help='skip the link scan (tools/link_scan.py) after the compiles')
+    parser.add_argument('--link-scan', action='store_true', help='run the link scan although --only restricts the compiles (the scan always reads the whole module)')
+    parser.add_argument('--msvc-lint', action='store_true', help='extra warnings as errors, the clang twins of MSVC warnings UE treats as errors on Windows: '
+                                                                 + ' '.join(MSVC_LINT_FLAGS) + ' (use a build directory of its own)')
+    parser.add_argument('--core-public', default=os.environ.get('ABYSS_CC_CORE_PUBLIC', CORE_PUBLIC),
+                        help='use this copy of Source/AbyssCore/Public instead (used by tools/selftest.py)')
     parser.add_argument('--force', action='store_true', help='ignore cached results')
     parser.add_argument('--list', action='store_true', help='list the translation units and exit')
     parser.add_argument('--notes', action='store_true', help='print the compiler notes under each diagnostic')
@@ -577,6 +678,7 @@ def main():
         import selftest
         return selftest.main(args)
     MODULE_DIR = os.path.abspath(args.module_dir)
+    CORE_PUBLIC = os.path.abspath(args.core_public)
     return Checker(args).main()
 
 

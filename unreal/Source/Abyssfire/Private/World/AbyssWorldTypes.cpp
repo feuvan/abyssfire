@@ -1,5 +1,6 @@
 #include "World/AbyssWorldTypes.h"
 
+#include "Abyssfire.h"
 #include "Misc/Parse.h"
 
 FName AbyssAnchorSocketName(EAbyssAnchor Anchor)
@@ -18,6 +19,20 @@ FName AbyssAnchorSocketName(EAbyssAnchor Anchor)
 
 namespace AbyssWorldUtil
 {
+	void WarnInstancedFallback()
+	{
+		static bool bWarned = false;
+		if (bWarned)
+		{
+			return;
+		}
+		bWarned = true;
+		UE_LOG(LogAbyss, Warning, TEXT("Instanced meshes: UActorComponent::MarkRenderInstancesDirty not found on this engine, so "
+			"instance updates (occlusion fade, VFX pools, set pieces) fall back to MarkRenderStateDirty, which re-creates the "
+			"scene proxy of every touched component on each update: correct picture, expect a frame-time cost "
+			"(CompileCheck/API_UNCERTAIN.md 5)"));
+	}
+
 	FLinearColor ColorFromRgb(uint32 Rgb, float Alpha)
 	{
 		const FColor Srgb(static_cast<uint8>((Rgb >> 16) & 0xFF), static_cast<uint8>((Rgb >> 8) & 0xFF),

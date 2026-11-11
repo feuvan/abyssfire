@@ -7,5 +7,5 @@
 
 class UEngineSubsystem : public UDynamicSubsystem
 {
-	UE_STUB_CLASS_BODY(UEngineSubsystem, UDynamicSubsystem)
+	UE_STUB_CLASS_BODY_DEFAULT_CTOR(UEngineSubsystem, UDynamicSubsystem)
 };

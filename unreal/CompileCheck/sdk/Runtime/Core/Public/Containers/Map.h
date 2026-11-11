@@ -68,11 +68,11 @@ public:
 	void Compact() UE_STUB_BODY
 	void CompactStable() UE_STUB_BODY
 	void Reserve(int32 Number) UE_STUB_BODY
-	bool IsEmpty() const UE_STUB_BODY
-	int32 Num() const UE_STUB_BODY
+	[[nodiscard]] bool IsEmpty() const UE_STUB_BODY
+	[[nodiscard]] int32 Num() const UE_STUB_BODY
 	template <typename Allocator> int32 GetKeys(TArray<KeyType, Allocator>& OutKeys) const UE_STUB_BODY
 	template <typename Allocator> int32 GetKeys(TSet<KeyType, DefaultKeyFuncs<KeyType>, Allocator>& OutKeys) const UE_STUB_BODY
-	SIZE_T GetAllocatedSize() const UE_STUB_BODY
+	[[nodiscard]] SIZE_T GetAllocatedSize() const UE_STUB_BODY
 
 	ValueType& Add(const KeyType& InKey, const ValueType& InValue) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
 	ValueType& Add(const KeyType& InKey, ValueType&& InValue) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
@@ -89,26 +89,26 @@ public:
 		requires UE::Stub::CHashableKey<InKeyType> && std::is_constructible_v<InKeyType, InitKeyType&&> && std::is_default_constructible_v<InValueType>
 	ValueType& Emplace(InitKeyType&& InKey) UE_STUB_BODY
 	int32 Remove(KeyConstPointerType InKey) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
-	const KeyType* FindKey(ValueInitType Value) const requires requires(const ValueType& A, const ValueType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
-	template <typename Predicate> TMap<KeyType, ValueType> FilterByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
-	ValueType* Find(KeyConstPointerType Key) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
-	const ValueType* Find(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
+	[[nodiscard]] const KeyType* FindKey(ValueInitType Value) const requires requires(const ValueType& A, const ValueType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
+	template <typename Predicate> [[nodiscard]] TMap<KeyType, ValueType> FilterByPredicate(Predicate Pred) const requires std::is_invocable_r_v<bool, Predicate&, const ElementType&> UE_STUB_BODY
+	[[nodiscard]] ValueType* Find(KeyConstPointerType Key) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
+	[[nodiscard]] const ValueType* Find(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
 	ValueType& FindOrAdd(const KeyType& Key) requires UE::Stub::CHashableKey<InKeyType> && std::is_default_constructible_v<InValueType> UE_STUB_BODY
 	ValueType& FindOrAdd(KeyType&& Key) requires UE::Stub::CHashableKey<InKeyType> && std::is_default_constructible_v<InValueType> UE_STUB_BODY
 	ValueType& FindOrAdd(const KeyType& Key, const ValueType& Value) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
 	ValueType& FindOrAdd(const KeyType& Key, ValueType&& Value) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
 	ValueType& FindOrAdd(KeyType&& Key, const ValueType& Value) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
 	ValueType& FindOrAdd(KeyType&& Key, ValueType&& Value) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
-	const ValueType& FindChecked(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
-	ValueType& FindChecked(KeyConstPointerType Key) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
-	ValueType FindRef(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> && std::is_default_constructible_v<InValueType> UE_STUB_BODY
-	ValueType FindRef(KeyConstPointerType Key, ValueType DefaultValue) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
-	bool Contains(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
+	[[nodiscard]] const ValueType& FindChecked(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
+	[[nodiscard]] ValueType& FindChecked(KeyConstPointerType Key) requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
+	[[nodiscard]] ValueType FindRef(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> && std::is_default_constructible_v<InValueType> UE_STUB_BODY
+	[[nodiscard]] ValueType FindRef(KeyConstPointerType Key, ValueType DefaultValue) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
+	[[nodiscard]] bool Contains(KeyConstPointerType Key) const requires UE::Stub::CHashableKey<InKeyType> UE_STUB_BODY
 	template <typename Allocator> void GenerateKeyArray(TArray<KeyType, Allocator>& OutArray) const UE_STUB_BODY
 	template <typename Allocator> void GenerateValueArray(TArray<ValueType, Allocator>& OutArray) const UE_STUB_BODY
-	TArray<ElementType> Array() const UE_STUB_BODY
-	TIterator CreateIterator() UE_STUB_BODY
-	TConstIterator CreateConstIterator() const UE_STUB_BODY
+	[[nodiscard]] TArray<ElementType> Array() const UE_STUB_BODY
+	[[nodiscard]] TIterator CreateIterator() UE_STUB_BODY
+	[[nodiscard]] TConstIterator CreateConstIterator() const UE_STUB_BODY
 	struct FRangedForIterator { ElementType& operator*() const UE_STUB_BODY FRangedForIterator& operator++() UE_STUB_BODY bool operator!=(const FRangedForIterator&) const UE_STUB_BODY };
 	struct FRangedForConstIterator { const ElementType& operator*() const UE_STUB_BODY FRangedForConstIterator& operator++() UE_STUB_BODY bool operator!=(const FRangedForConstIterator&) const UE_STUB_BODY };
 	FRangedForIterator begin() UE_STUB_BODY

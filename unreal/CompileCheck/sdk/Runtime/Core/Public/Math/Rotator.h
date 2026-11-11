@@ -24,44 +24,44 @@ namespace UE::Math
 		explicit TRotator(const TQuat<T>& Quat) UE_STUB_BODY
 		template <typename FArg> requires (!std::is_same_v<T, FArg>)
 		explicit TRotator(const TRotator<FArg>& From) UE_STUB_BODY
-		TRotator operator+(const TRotator& R) const UE_STUB_BODY
-		TRotator operator-(const TRotator& R) const UE_STUB_BODY
-		template <typename FArg> requires std::is_arithmetic_v<FArg> TRotator operator*(FArg Scale) const UE_STUB_BODY
+		[[nodiscard]] TRotator operator+(const TRotator& R) const UE_STUB_BODY
+		[[nodiscard]] TRotator operator-(const TRotator& R) const UE_STUB_BODY
+		template <typename FArg> requires std::is_arithmetic_v<FArg> [[nodiscard]] TRotator operator*(FArg Scale) const UE_STUB_BODY
 		template <typename FArg> requires std::is_arithmetic_v<FArg> TRotator operator*=(FArg Scale) UE_STUB_BODY
-		bool operator==(const TRotator& R) const UE_STUB_BODY
-		bool operator!=(const TRotator& V) const UE_STUB_BODY
+		[[nodiscard]] bool operator==(const TRotator& R) const UE_STUB_BODY
+		[[nodiscard]] bool operator!=(const TRotator& V) const UE_STUB_BODY
 		TRotator operator+=(const TRotator& R) UE_STUB_BODY
 		TRotator operator-=(const TRotator& R) UE_STUB_BODY
-		bool IsNearlyZero(T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
-		bool IsZero() const UE_STUB_BODY
-		bool Equals(const TRotator& R, T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
-		bool EqualsOrientation(const TRotator& R, T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
+		[[nodiscard]] bool IsNearlyZero(T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
+		[[nodiscard]] bool IsZero() const UE_STUB_BODY
+		[[nodiscard]] bool Equals(const TRotator& R, T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
+		[[nodiscard]] bool EqualsOrientation(const TRotator& R, T Tolerance = UE_KINDA_SMALL_NUMBER) const UE_STUB_BODY
 		TRotator Add(T DeltaPitch, T DeltaYaw, T DeltaRoll) UE_STUB_BODY
-		TRotator GetInverse() const UE_STUB_BODY
-		TRotator GridSnap(const TRotator& RotGrid) const UE_STUB_BODY
-		TVector<T> Vector() const UE_STUB_BODY
-		TQuat<T> Quaternion() const UE_STUB_BODY
-		TVector<T> Euler() const UE_STUB_BODY
-		TVector<T> RotateVector(const TVector<T>& V) const UE_STUB_BODY
-		TVector<T> UnrotateVector(const TVector<T>& V) const UE_STUB_BODY
-		TRotator Clamp() const UE_STUB_BODY
-		TRotator GetNormalized() const UE_STUB_BODY
-		TRotator GetDenormalized() const UE_STUB_BODY
-		T GetComponentForAxis(EAxis::Type Axis) const UE_STUB_BODY
+		[[nodiscard]] TRotator GetInverse() const UE_STUB_BODY
+		[[nodiscard]] TRotator GridSnap(const TRotator& RotGrid) const UE_STUB_BODY
+		[[nodiscard]] TVector<T> Vector() const UE_STUB_BODY
+		[[nodiscard]] TQuat<T> Quaternion() const UE_STUB_BODY
+		[[nodiscard]] TVector<T> Euler() const UE_STUB_BODY
+		[[nodiscard]] TVector<T> RotateVector(const TVector<T>& V) const UE_STUB_BODY
+		[[nodiscard]] TVector<T> UnrotateVector(const TVector<T>& V) const UE_STUB_BODY
+		[[nodiscard]] TRotator Clamp() const UE_STUB_BODY
+		[[nodiscard]] TRotator GetNormalized() const UE_STUB_BODY
+		[[nodiscard]] TRotator GetDenormalized() const UE_STUB_BODY
+		[[nodiscard]] T GetComponentForAxis(EAxis::Type Axis) const UE_STUB_BODY
 		void SetComponentForAxis(EAxis::Type Axis, T Component) UE_STUB_BODY
 		void Normalize() UE_STUB_BODY
 		void GetWindingAndRemainder(TRotator& Winding, TRotator& Remainder) const UE_STUB_BODY
-		T GetManhattanDistance(const TRotator& Rotator) const UE_STUB_BODY
-		TRotator GetEquivalentRotator() const UE_STUB_BODY
-		FString ToString() const UE_STUB_BODY
-		FString ToCompactString() const UE_STUB_BODY
+		[[nodiscard]] T GetManhattanDistance(const TRotator& Rotator) const UE_STUB_BODY
+		[[nodiscard]] TRotator GetEquivalentRotator() const UE_STUB_BODY
+		[[nodiscard]] FString ToString() const UE_STUB_BODY
+		[[nodiscard]] FString ToCompactString() const UE_STUB_BODY
 		bool InitFromString(const FString& InSourceString) UE_STUB_BODY
-		bool ContainsNaN() const UE_STUB_BODY
-		static T ClampAxis(T Angle) UE_STUB_BODY
-		static T NormalizeAxis(T Angle) UE_STUB_BODY
-		static uint8 CompressAxisToByte(T Angle) UE_STUB_BODY
-		static T DecompressAxisFromByte(uint8 Angle) UE_STUB_BODY
-		static TRotator MakeFromEuler(const TVector<T>& Euler) UE_STUB_BODY
+		[[nodiscard]] bool ContainsNaN() const UE_STUB_BODY
+		[[nodiscard]] static T ClampAxis(T Angle) UE_STUB_BODY
+		[[nodiscard]] static T NormalizeAxis(T Angle) UE_STUB_BODY
+		[[nodiscard]] static uint8 CompressAxisToByte(T Angle) UE_STUB_BODY
+		[[nodiscard]] static T DecompressAxisFromByte(uint8 Angle) UE_STUB_BODY
+		[[nodiscard]] static TRotator MakeFromEuler(const TVector<T>& Euler) UE_STUB_BODY
 	};
 	template <typename T, typename FArg> requires std::is_arithmetic_v<FArg>
 	TRotator<T> operator*(FArg Scale, const TRotator<T>& R) UE_STUB_BODY
