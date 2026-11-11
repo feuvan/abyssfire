@@ -409,6 +409,61 @@
       }
     },
     {
+      "id": "q_rf_the_pit",
+      "name": "信者之坑",
+      "description": "焚尸坑底下还有一层，有东西在下面挖。下去，放倒那个挖坑的，让坑底的死人躺下，再看看坑底留着什么。",
+      "zone": "emerald_plains",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "kill",
+          "targetId": "sub_pitwarden",
+          "targetName": "掘坑官",
+          "required": 1,
+          "current": 0,
+          "zone": "sub_rf_pit"
+        },
+        {
+          "type": "clear_area",
+          "targetId": "sub_rf_pit",
+          "targetName": "信者之坑",
+          "required": 1,
+          "current": 0,
+          "maxRemaining": 5,
+          "after": 0
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_rf_flame_niche",
+          "targetName": "坑底的石龛",
+          "required": 1,
+          "current": 0,
+          "zone": "sub_rf_pit",
+          "location": {"col": 20, "row": 36, "radius": 2}
+        }
+      ],
+      "rewards": {
+        "exp": 300,
+        "gold": 50,
+        "permanent": {"skillPoints": 1}
+      },
+      "prereqQuests": ["q_rf_gnawed_field"],
+      "level": 5,
+      "progressKey": "data.quest.q_rf_the_pit.progress",
+      "derived": {
+        "giverNpcId": "knell_chaplain",
+        "objectiveItemKinds": [null, null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_rf_the_pit.name",
+          "desc": "data.quest.q_rf_the_pit.desc",
+          "offer": "data.quest.q_rf_the_pit.offer",
+          "complete": "data.quest.q_rf_the_pit.complete"
+        }
+      }
+    },
+    {
       "id": "q_explore_forest",
       "name": "永夜之林",
       "description": "暮色森林已在暮光中沉睡数百年，近来亡灵复苏。侦察北部密林、废弃墓地与古老遗迹。",

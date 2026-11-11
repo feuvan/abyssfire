@@ -39,10 +39,14 @@ enum class AutoPilotStepKind : uint8_t {
   PortalHome,
   EquipUpgrades,
   SmokeEnd,       // the Smoke scenario ends here
+  // K7 (dark remake 3B): clear a sub-dungeon - entrance (an entrance of the route's zone), tiles = the room centres in
+  // play order, radius (a room = the monsters within it of its centre), visit (tiles walked to once `until` holds),
+  // until, tries (a hero that died inside or left early goes in again), maxSec.
+  Dungeon,
 };
 ABYSS_ENUM_STRINGS(AutoPilotStepKind, "checkpoint", "note", "waitIdle", "talk", "closePanels", "tree", "visit", "shop",
                    "townTrip", "gather", "hunt", "boss", "clues", "explore", "escort", "defend", "goTo",
-                   "portalHome", "equipUpgrades", "smokeEnd")
+                   "portalHome", "equipUpgrades", "smokeEnd", "dungeon")
 
 // The monster roles a `boss` step hunts by (MonsterRole StoryBoss / ZoneMiniBoss / HuntLeader).
 enum class AutoPilotBossRole : uint8_t { StoryBoss, MiniBoss, HuntLeader };
@@ -68,7 +72,10 @@ struct AutoPilotStep {
   std::string quest;
   std::vector<std::string> ids;   // tree path / quests to accept / monsters to hunt
   TilePos tile;                   // hunt / boss anchor, explore centre, goTo target
-  std::vector<TilePos> tiles;     // clue marks
+  std::vector<TilePos> tiles;     // clue marks; a dungeon's room centres
+  std::string entrance;           // dungeon: the entrance id (SubDungeonEntranceDef::id) in the route's zone
+  std::vector<TilePos> visit;     // dungeon: tiles walked to after the clear, before leaving
+  double radius = 0;              // dungeon: a room's radius round its centre
   int32_t obj = 0, count = 0;
   int32_t hp = -1, mp = -1;       // shop potion targets (-1: the class's)
   int32_t tries = 1;

@@ -1079,8 +1079,10 @@ TEST_SUITE("telegraph")
 				continue;
 			}
 			CAPTURE(Def.id);
+			// The zone's roster, its mini-boss, and (Wave 3) the guardian of its hand-authored sub-dungeon: the Pitwarden's
+			// home zone is the Red Field (the exporter derives it from the Pit's parent zone).
 			const bool bChapterOne = std::find(Plains->monsterIds.begin(), Plains->monsterIds.end(), Def.id) != Plains->monsterIds.end()
-				|| Def.id == Herd->monsterId;
+				|| Def.id == Herd->monsterId || (Def.isSubDungeonMiniBoss && Def.homeZone == "emerald_plains");
 			CHECK(bChapterOne);
 		}
 		// The elite affixes are one table for every zone: Scorched / Gravecold elites burst / ring wherever they roll

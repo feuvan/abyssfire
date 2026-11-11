@@ -160,6 +160,16 @@
         {"kind": "wait", "ms": 1200}
       ]
     },
+    "cs_rf_pit": {
+      "id": "cs_rf_pit",
+      "steps": [
+        {"kind": "narrate", "text": "story.cs_rf_pit.1"},
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_rf_pit.3"},
+        {"kind": "whisper", "text": "story.cs_rf_pit.4"},
+        {"kind": "wait", "ms": 800}
+      ]
+    },
     "cs_rf_siege": {
       "id": "cs_rf_siege",
       "steps": [
@@ -847,6 +857,7 @@
       "cutscene": "cs_rf_marshal_falls",
       "whileQuest": "q_rf_marshal"
     },
+    {"on": "zone_entered", "zoneId": "sub_rf_pit", "cutscene": "cs_rf_pit"},
     {"on": "quest_turned_in", "questId": "q_talk_hermit", "cutscene": "cs_tf_hermit"},
     {"on": "quest_turned_in", "questId": "q_seal_dark_source", "cutscene": "cs_tf_finale"},
     {"on": "quest_turned_in", "questId": "q_reforge_artifact", "cutscene": "cs_am_hammer"},

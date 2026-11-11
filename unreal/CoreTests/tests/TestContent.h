@@ -59,27 +59,27 @@ inline constexpr char kQuestM5[] = "q_rf_last_toll";      // M5: chapter complet
 // and the zone id are not listed. Package 1B part 1 (world data) put the remake's monsters, hunts, lore, hidden area,
 // story decorations, achievements, NPCs and the boss intro here; part 2 (narrative) the quests, their targets, the
 // beats and the tree's quest nodes.
-inline constexpr std::array<std::string_view, 73> kPinnedIds = {
-    // quests (chapter1.md Id map: M1-M5, S1-S6)
+inline constexpr std::array<std::string_view, 77> kPinnedIds = {
+    // quests (chapter1.md Id map: M1-M5, S1-S7)
     "q_rf_burial_detail", "q_rf_gnawed_field", "q_rf_ashwheat", "q_rf_marshal", "q_rf_last_toll", "q_rf_black_blood",
-    "q_rf_barrowmoss", "q_rf_tag_thief", "q_rf_oathless", "q_rf_lanternwisp", "q_rf_hallowed_ground",
+    "q_rf_barrowmoss", "q_rf_tag_thief", "q_rf_oathless", "q_rf_lanternwisp", "q_rf_hallowed_ground", "q_rf_the_pit",
     // NPCs (role keys kept, chapter1.md 3; the two new ones)
     "quest_elder", "plains_herbalist", "plains_wanderer", "knell_chaplain", "crow_trader",
     // monsters, the mini-boss, hunts (monsters.md 2)
     "breachclot", "risen_footman", "gravegnawer", "cinderbloat", "risen_arbalest", "oath_zealot", "deserter",
     "deserter_drummer", "risen_shieldbearer", "dead_standard_bearer", "bonegorger", "valdras", "miniboss_corpseherd",
-    "hunt_hungerbell", "hunt_dreck", "hunt_harke",
+    "hunt_hungerbell", "hunt_dreck", "hunt_harke", "sub_pitwarden",
     // quest objective targets and items
     "mat_breach_ichor", "mat_barrowmoss", "mat_tag_pouch", "zone_rf_ashwheat", "defend_rf_boneyard_gate",
     "escort_rf_bern", "clue_rf_tag_cord", "clue_rf_tag_cloth", "clue_rf_tag_ashes", "clue_rf_lantern_1",
     "clue_rf_lantern_2", "clue_rf_lantern_3", "clue_rf_lantern_4",
     // story beats (chapter1.md 8)
     "cs_rf_brand", "cs_rf_whisper", "cs_rf_herd", "cs_rf_marshal_falls", "cs_rf_siege", "cs_rf_finale",
-    "cs_boss_valdras",
+    "cs_boss_valdras", "cs_rf_pit",
     // lore and echoes, hidden area, story decorations, the sealed Pit (chapter1.md 12, 17)
     "lore_rf_01", "lore_rf_02", "lore_rf_03", "lore_rf_04", "lore_rf_echo_01", "lore_rf_echo_02", "lore_rf_echo_03",
     "hidden_rf_paymaster", "story_rf_belfry", "story_rf_red_banner", "story_rf_penitents_altar", "entrance_rf_pit",
-    "sub_rf_pit",
+    "sub_rf_pit", "rf_pit_cleansed",
     // achievements (chapter1.md 14)
     "ach_kill_breachclot", "ach_kill_valdras",
     // the Captain's dialogue tree: quest nodes (chapter1.md 4)

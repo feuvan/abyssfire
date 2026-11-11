@@ -71,6 +71,18 @@ bool SessionState::SetFlag(std::string_view flag) {
   return true;
 }
 
+bool SessionState::GuardianSlain(std::string_view subDungeonId) const {
+  return std::binary_search(slainGuardians.begin(), slainGuardians.end(), subDungeonId, std::less<>());
+}
+
+bool SessionState::SetGuardianSlain(std::string_view subDungeonId) {
+  if (subDungeonId.empty()) return false;
+  const auto it = std::lower_bound(slainGuardians.begin(), slainGuardians.end(), subDungeonId, std::less<>());
+  if (it != slainGuardians.end() && *it == subDungeonId) return false;
+  slainGuardians.insert(it, std::string(subDungeonId));
+  return true;
+}
+
 bool PermanentRewardsState::Claimed(std::string_view questId, Difficulty d) const {
   return std::any_of(claimed.begin(), claimed.end(),
                      [&](const PermanentRewardClaim& c) { return c.questId == questId && c.difficulty == d; });

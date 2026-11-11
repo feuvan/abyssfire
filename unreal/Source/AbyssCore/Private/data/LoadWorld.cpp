@@ -40,7 +40,7 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
     sp.monsterId = s.Str("monsterId");
     sp.count = s.Int("count");
     if (!packs) {
-      for (const char* key : {"mix", "leader", "variants", "dormant"}) {
+      for (const char* key : {"mix", "leader", "variants", "dormant", "guard"}) {
         if (s.Has(key)) {
           s.Child(key).Error(std::string("a generated sub-dungeon's spawn has no '") + key +
                              "' (only a hand-authored sub-dungeon, one with tiles, is entered)");
@@ -118,6 +118,8 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
         if (!(sp.dormant.faceDeg >= -360 && sp.dormant.faceDeg <= 360)) d.Child("faceDeg").Error("expected -360..360");
       }
     }
+    // K7 (3B review; remake schema subDungeon.spawnGuard): the entry guards the sub-dungeon's guardian (MapData.h).
+    sp.guard = s.Bool("guard", false);
     out.push_back(std::move(sp));
   }
   return out;

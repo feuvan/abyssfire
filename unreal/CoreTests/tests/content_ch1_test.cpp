@@ -35,8 +35,21 @@
 #include "abyss/combat/HitFeedback.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/monsters/MonsterAbilities.h"
+#include "abyss/hero/Hero.h"
+#include "abyss/monsters/MonsterSystem.h"
+#include "abyss/pets/Homestead.h"
+#include "abyss/quests/QuestGuide.h"
 #include "abyss/quests/QuestSystem.h"
+#include "abyss/quests/QuestWorld.h"
+#include "abyss/sim/GameSim.h"
+#include "abyss/sim/SimContext.h"
+#include "abyss/story/StoryDirector.h"
+#include "abyss/world/Locomotion.h"
+#include "abyss/world/MapGen.h"
+#include "abyss/world/Pathfinding.h"
+#include "abyss/world/SetPieces.h"
 #include "abyss/world/WorldState.h"
+#include "abyss/world/Zone.h"
 #include "doctest/doctest.h"
 
 using namespace abyss;
@@ -61,24 +74,26 @@ TEST_SUITE("monsters") {
       double tilesPerSec;
     };
     const Row rows[] = {
-        // monsters.md 2.0; exp as built (1B review, DECISIONS DR9): round(0.75 x the 2.0 Exp) for the regulars, Valdras
-        // 110. Valdras as tuned by package 2F and its review (Wave 2, three phases: 9000 HP / 20 dmg, every class's
-        // median fight in DR9's 30-180 s band; implementation-plan.md "2F review outcomes"); the Corpseherd 600 HP (2F
-        // review: Keen at the main path's Lv 10); the roll-call standard-bearer is his phase-2 summon.
-        {"breachclot", 1, 28, 5, 2, 38, 4, 1.2, 1500, 8, 2, 4, false, 1.14},
-        {"risen_footman", 2, 50, 7, 5, 32, 4, 1.5, 1600, 11, 2, 5, false, 0.96},
-        {"gravegnawer", 3, 42, 7, 3, 66, 6, 1.3, 950, 13, 1, 4, false, 1.98},
-        {"cinderbloat", 4, 40, 4, 2, 30, 5, 1.2, 1800, 14, 1, 3, false, 0.90},
-        {"risen_arbalest", 5, 46, 11, 4, 34, 7, 6.0, 2200, 18, 3, 6, false, 1.02},
-        {"oath_zealot", 6, 90, 11, 6, 52, 6, 1.5, 1100, 23, 4, 8, false, 1.56},
-        {"deserter", 6, 80, 12, 7, 56, 5, 1.6, 1150, 21, 6, 12, false, 1.68},
-        {"deserter_drummer", 6, 70, 8, 5, 50, 6, 1.5, 1400, 21, 4, 9, false, 1.50},
-        {"risen_shieldbearer", 7, 130, 12, 14, 30, 5, 1.6, 1700, 26, 3, 7, false, 0.90},
-        {"dead_standard_bearer", 7, 140, 8, 8, 30, 6, 1.6, 1700, 30, 4, 8, false, 0.90},
-        {"bonegorger", 7, 210, 17, 9, 42, 6, 2.0, 1700, 36, 6, 12, false, 1.26},
-        {"miniboss_corpseherd", 6, 600, 15, 10, 45, 7, 3.0, 1300, 95, 15, 30, true, 1.35},
-        {"valdras", 9, 9000, 20, 12, 48, 8, 2.0, 1300, 110, 30, 60, true, 1.44},
-        {"rollcall_standard_bearer", 7, 140, 8, 8, 30, 6, 1.6, 1700, 30, 4, 8, false, 0.90},
+        // monsters.md 2.0; exp as built (DECISIONS DR9: the 1B review's round(0.75 x the 2.0 Exp) for the regulars became
+        // round(0.5 x) with the Pit, package 3B - S7's 300 and the Pit's twenty kills are in the 12-14 band), Valdras
+        // 110. Valdras as tuned by package 2F, its review, 3B and its review (three phases: 10400 HP / 20 dmg, every class's median
+        // fight in DR9's 30-180 s band with the Pit's skill point and loot behind the hero; implementation-plan.md "3B
+        // outcomes"); the Corpseherd 700 HP (2F review: Keen at the main path's Lv 10; 3B: 600 -> 700); the roll-call
+        // standard-bearer is his phase-2 summon.
+        {"breachclot", 1, 28, 5, 2, 38, 4, 1.2, 1500, 6, 2, 4, false, 1.14},
+        {"risen_footman", 2, 50, 7, 5, 32, 4, 1.5, 1600, 8, 2, 5, false, 0.96},
+        {"gravegnawer", 3, 42, 7, 3, 66, 6, 1.3, 950, 9, 1, 4, false, 1.98},
+        {"cinderbloat", 4, 40, 4, 2, 30, 5, 1.2, 1800, 9, 1, 3, false, 0.90},
+        {"risen_arbalest", 5, 46, 11, 4, 34, 7, 6.0, 2200, 12, 3, 6, false, 1.02},
+        {"oath_zealot", 6, 90, 11, 6, 52, 6, 1.5, 1100, 15, 4, 8, false, 1.56},
+        {"deserter", 6, 80, 12, 7, 56, 5, 1.6, 1150, 14, 6, 12, false, 1.68},
+        {"deserter_drummer", 6, 70, 8, 5, 50, 6, 1.5, 1400, 14, 4, 9, false, 1.50},
+        {"risen_shieldbearer", 7, 130, 12, 14, 30, 5, 1.6, 1700, 17, 3, 7, false, 0.90},
+        {"dead_standard_bearer", 7, 140, 8, 8, 30, 6, 1.6, 1700, 20, 4, 8, false, 0.90},
+        {"bonegorger", 7, 210, 17, 9, 42, 6, 2.0, 1700, 24, 6, 12, false, 1.26},
+        {"miniboss_corpseherd", 6, 700, 15, 10, 45, 7, 3.0, 1300, 95, 15, 30, true, 1.35},
+        {"valdras", 9, 10400, 20, 12, 48, 8, 2.0, 1300, 110, 30, 60, true, 1.44},
+        {"rollcall_standard_bearer", 7, 140, 8, 8, 30, 6, 1.6, 1700, 20, 4, 8, false, 0.90},
     };
     for (const Row& r : rows) {
       CAPTURE(r.id);
@@ -130,8 +145,8 @@ TEST_SUITE("monsters") {
         {"risen_shieldbearer", 9, 3, 13, 7.5, 1.92, 2.66},
         {"dead_standard_bearer", 6, 3, 14, 9.0, 1.92, 2.66},
         {"bonegorger", 13, 4, 21, 9.0, 2.4, 3.2},
-        {"miniboss_corpseherd", 12, 4, 60, 10.5, 3.6, 4.55},  // range 3.0
-        {"valdras", 16, 4, 900, 12.0, 2.4, 3.2},
+        {"miniboss_corpseherd", 12, 4, 70, 10.5, 3.6, 4.55},  // range 3.0
+        {"valdras", 16, 4, 1040, 12.0, 2.4, 3.2},
         {"rollcall_standard_bearer", 6, 3, 14, 9.0, 1.92, 2.66},
         {"hunt_hungerbell", 13, 4, 42, 10.5, 2.4, 3.2},  // 420 HP / 17 dmg (hp x2, dmg x1.0)
         {"hunt_dreck", 11, 5, 24, 10.5, 1.92, 2.66},
@@ -161,36 +176,39 @@ TEST_SUITE("monsters") {
     };
     // Math.round(x * mul): hp / damage x1.5 / x2, defense x1.3 / x1.6, exp and gold x2 / x3.
     const Row rows[] = {
-        {"breachclot", Difficulty::Nightmare, 42, 8, 3, 16, 4, 8},
-        {"breachclot", Difficulty::Hell, 56, 10, 3, 24, 6, 12},
-        {"risen_footman", Difficulty::Nightmare, 75, 11, 7, 22, 4, 10},
-        {"risen_footman", Difficulty::Hell, 100, 14, 8, 33, 6, 15},
-        {"gravegnawer", Difficulty::Nightmare, 63, 11, 4, 26, 2, 8},
-        {"gravegnawer", Difficulty::Hell, 84, 14, 5, 39, 3, 12},
-        {"cinderbloat", Difficulty::Nightmare, 60, 6, 3, 28, 2, 6},
-        {"cinderbloat", Difficulty::Hell, 80, 8, 3, 42, 3, 9},
-        {"risen_arbalest", Difficulty::Nightmare, 69, 17, 5, 36, 6, 12},
-        {"risen_arbalest", Difficulty::Hell, 92, 22, 6, 54, 9, 18},
-        {"oath_zealot", Difficulty::Nightmare, 135, 17, 8, 46, 8, 16},
-        {"oath_zealot", Difficulty::Hell, 180, 22, 10, 69, 12, 24},
-        {"deserter", Difficulty::Nightmare, 120, 18, 9, 42, 12, 24},
-        {"deserter", Difficulty::Hell, 160, 24, 11, 63, 18, 36},
-        {"risen_shieldbearer", Difficulty::Nightmare, 195, 18, 18, 52, 6, 14},
-        {"risen_shieldbearer", Difficulty::Hell, 260, 24, 22, 78, 9, 21},
-        {"dead_standard_bearer", Difficulty::Nightmare, 210, 12, 10, 60, 8, 16},
-        {"dead_standard_bearer", Difficulty::Hell, 280, 16, 13, 90, 12, 24},
-        {"bonegorger", Difficulty::Nightmare, 315, 26, 12, 72, 12, 24},
-        {"bonegorger", Difficulty::Hell, 420, 34, 14, 108, 18, 36},
-        {"miniboss_corpseherd", Difficulty::Nightmare, 900, 23, 13, 190, 30, 60},
-        {"miniboss_corpseherd", Difficulty::Hell, 1200, 30, 16, 285, 45, 90},
-        {"valdras", Difficulty::Nightmare, 13500, 30, 16, 220, 60, 120},
-        {"valdras", Difficulty::Hell, 18000, 40, 19, 330, 90, 180},
-        {"hunt_hungerbell", Difficulty::Nightmare, 630, 26, 14, 216, 36, 72},
-        {"hunt_hungerbell", Difficulty::Hell, 840, 34, 18, 324, 54, 108},
-        {"hunt_dreck", Difficulty::Nightmare, 360, 21, 10, 126, 36, 72},
-        {"hunt_dreck", Difficulty::Hell, 480, 28, 13, 189, 54, 108},
-        {"hunt_harke", Difficulty::Nightmare, 600, 29, 10, 210, 36, 72},
-        {"hunt_harke", Difficulty::Hell, 800, 38, 13, 315, 54, 108},
+        {"breachclot", Difficulty::Nightmare, 42, 8, 3, 12, 4, 8},
+        {"breachclot", Difficulty::Hell, 56, 10, 3, 18, 6, 12},
+        {"risen_footman", Difficulty::Nightmare, 75, 11, 7, 16, 4, 10},
+        {"risen_footman", Difficulty::Hell, 100, 14, 8, 24, 6, 15},
+        {"gravegnawer", Difficulty::Nightmare, 63, 11, 4, 18, 2, 8},
+        {"gravegnawer", Difficulty::Hell, 84, 14, 5, 27, 3, 12},
+        {"cinderbloat", Difficulty::Nightmare, 60, 6, 3, 18, 2, 6},
+        {"cinderbloat", Difficulty::Hell, 80, 8, 3, 27, 3, 9},
+        {"risen_arbalest", Difficulty::Nightmare, 69, 17, 5, 24, 6, 12},
+        {"risen_arbalest", Difficulty::Hell, 92, 22, 6, 36, 9, 18},
+        {"oath_zealot", Difficulty::Nightmare, 135, 17, 8, 30, 8, 16},
+        {"oath_zealot", Difficulty::Hell, 180, 22, 10, 45, 12, 24},
+        {"deserter", Difficulty::Nightmare, 120, 18, 9, 28, 12, 24},
+        {"deserter", Difficulty::Hell, 160, 24, 11, 42, 18, 36},
+        {"risen_shieldbearer", Difficulty::Nightmare, 195, 18, 18, 34, 6, 14},
+        {"risen_shieldbearer", Difficulty::Hell, 260, 24, 22, 51, 9, 21},
+        {"dead_standard_bearer", Difficulty::Nightmare, 210, 12, 10, 40, 8, 16},
+        {"dead_standard_bearer", Difficulty::Hell, 280, 16, 13, 60, 12, 24},
+        {"bonegorger", Difficulty::Nightmare, 315, 26, 12, 48, 12, 24},
+        {"bonegorger", Difficulty::Hell, 420, 34, 14, 72, 18, 36},
+        {"miniboss_corpseherd", Difficulty::Nightmare, 1050, 23, 13, 190, 30, 60},
+        {"miniboss_corpseherd", Difficulty::Hell, 1400, 30, 16, 285, 45, 90},
+        {"valdras", Difficulty::Nightmare, 15600, 30, 16, 220, 60, 120},
+        {"valdras", Difficulty::Hell, 20800, 40, 19, 330, 90, 180},
+        {"hunt_hungerbell", Difficulty::Nightmare, 630, 26, 14, 144, 36, 72},
+        {"hunt_hungerbell", Difficulty::Hell, 840, 34, 18, 216, 54, 108},
+        {"hunt_dreck", Difficulty::Nightmare, 360, 21, 10, 84, 36, 72},
+        {"hunt_dreck", Difficulty::Hell, 480, 28, 13, 126, 54, 108},
+        {"hunt_harke", Difficulty::Nightmare, 600, 29, 10, 140, 36, 72},
+        {"hunt_harke", Difficulty::Hell, 800, 38, 13, 210, 54, 108},
+        // the Pitwarden (3B): his own definition, like the mini-boss's
+        {"sub_pitwarden", Difficulty::Nightmare, 2250, 42, 14, 220, 40, 80},
+        {"sub_pitwarden", Difficulty::Hell, 3000, 56, 18, 330, 60, 120},
     };
     for (const Row& r : rows) {
       CAPTURE(r.id);
@@ -214,7 +232,7 @@ TEST_SUITE("monsters") {
     CHECK(harke.hp == 400);        // 80 x 5
     CHECK(harke.damage == 19);     // round(12 x 1.6)
     CHECK(harke.defense == 8);     // round(7 x 1.2)
-    CHECK(harke.expReward == 105); // 21 x max(3, 5)
+    CHECK(harke.expReward == 70);  // 14 x max(3, 5)
     CHECK(harke.goldMin == 18);
     CHECK(harke.goldMax == 36);
     CHECK(harke.aggroRange == 7);
@@ -229,13 +247,13 @@ TEST_SUITE("monsters") {
     CHECK(dreck.hp == 240);
     CHECK(dreck.damage == 14);
     CHECK(dreck.defense == 8);
-    CHECK(dreck.expReward == 63);
+    CHECK(dreck.expReward == 42);
     CHECK(ScaleMonsterForDifficulty(dreck, MDiff(), Difficulty::Nightmare).hp == 360);
     const MonsterDef hungerbell = MakeHuntDefinition(MDef("bonegorger"), MHunt("hunt_hungerbell"), MAi(), "Hungerbell");
     CHECK(hungerbell.hp == 420);     // 210 x 2 (1B review: x2, not x3)
     CHECK(hungerbell.damage == 17);  // 17 x 1.0
     CHECK(hungerbell.defense == 11);
-    CHECK(hungerbell.expReward == 108);  // 36 x max(3, 2)
+    CHECK(hungerbell.expReward == 72);  // 24 x max(3, 2)
     CHECK(hungerbell.aggroRange == 7);
     CHECK(hungerbell.level == 7);
     // Defaults: hpMul 4, dmgMul 1.5 when the hunt omits them.
@@ -244,7 +262,7 @@ TEST_SUITE("monsters") {
     const MonsterDef def = MakeHuntDefinition(deserter, bare, MAi(), "x");
     CHECK(def.hp == 320);
     CHECK(def.damage == 18);
-    CHECK(def.expReward == 84);
+    CHECK(def.expReward == 56);
     // Cross-check every hunt of every zone against the exporter's TS-computed definition.
     for (const HuntDef& h : MD().Monsters().hunts) {
       CAPTURE(h.huntId);
@@ -320,15 +338,16 @@ TEST_SUITE("monsters") {
       const char* id;
       std::array<std::array<int32_t, 5>, 8> v;  // hp, dmg, speed, def, str per affix in table order
     };
-    // floor(x * mult) per affix (the mechanics are the web's; the remake re-voices and recolours them only). The eighth,
+    // floor(x * mult) per affix in doubles, as the web computes it (10400 x 1.15 is 11959.99..., so 11959) (the
+    // mechanics are the web's; the remake re-voices and recolours them only). The eighth,
     // Unburied (Wave 2, package 2F), changes no number: it only makes the monster rise again once (K3).
     const Row rows[] = {
         {"valdras",
-         {{{10800, 20, 48, 12, 16}, {9000, 20, 76, 12, 16}, {10350, 22, 48, 12, 17}, {11700, 27, 48, 13, 21},
-           {10800, 22, 48, 12, 17}, {11250, 22, 48, 12, 17}, {10800, 21, 43, 13, 16}, {9000, 20, 48, 12, 16}}}},
+         {{{12480, 20, 48, 12, 16}, {10400, 20, 76, 12, 16}, {11959, 22, 48, 12, 17}, {13520, 27, 48, 13, 21},
+           {12480, 22, 48, 12, 17}, {13000, 22, 48, 12, 17}, {12480, 21, 43, 13, 16}, {10400, 20, 48, 12, 16}}}},
         {"miniboss_corpseherd",
-         {{{720, 15, 45, 10, 12}, {600, 15, 72, 10, 12}, {690, 16, 45, 10, 12}, {780, 20, 45, 11, 16},
-           {720, 16, 45, 10, 12}, {750, 16, 45, 10, 12}, {720, 15, 40, 11, 12}, {600, 15, 45, 10, 12}}}},
+         {{{840, 15, 45, 10, 12}, {700, 15, 72, 10, 12}, {804, 16, 45, 10, 12}, {910, 20, 45, 11, 16},
+           {840, 16, 45, 10, 12}, {875, 16, 45, 10, 12}, {840, 15, 40, 11, 12}, {700, 15, 45, 10, 12}}}},
         {"hunt_dreck",
          {{{288, 14, 56, 8, 11}, {240, 14, 89, 8, 11}, {276, 15, 56, 8, 12}, {312, 18, 56, 9, 14}, {288, 15, 56, 8, 12},
            {300, 15, 56, 8, 12}, {288, 14, 50, 8, 11}, {240, 14, 56, 8, 11}}}},
@@ -822,7 +841,7 @@ TEST_SUITE("monsters") {
       CHECK(m.noRespawn);
       CHECK(m.affixes.empty());  // even the elite boss
     }
-    CHECK(rig.M(w0[2]).maxHp == 9000);
+    CHECK(rig.M(w0[2]).maxHp == 10400);
     CHECK(rig.aggros.size() == 3);
     // Wave 2 on nightmare: n = 5, difficulty then wave scaling.
     rig.h.session.difficulty = Difficulty::Nightmare;
@@ -1064,8 +1083,9 @@ TEST_SUITE("monsters") {
   // synthetic fixtures (monster_abilities / corpses / phases / packs tests); these pin the authored numbers.
   // ===================================================================================================================
 
-  // Every Chapter 1 definition (the roster, the Corpseherd, the hunts): the 35 % hit cap (plan 6: no death to one hit)
-  // and an authored wind-up on every ability (>= 600 ms; >= 700 ms for a boss special: DataStore refuses less).
+  // Every Chapter 1 definition (the roster, the Corpseherd, the Pit's guardian, the hunts): the 35 % hit cap (plan 6: no
+  // death to one hit) and an authored wind-up on every ability (>= 600 ms; >= 700 ms for a boss special: DataStore
+  // refuses less).
   TEST_CASE("Chapter 1 W2 roster: hit caps, authored wind-ups, the ability table") {
     std::vector<MonsterDef> defs;
     for (const MonsterDef& d : MD().Monsters().defs) {
@@ -1074,7 +1094,7 @@ TEST_SUITE("monsters") {
     for (const HuntDef& h : MD().Monsters().hunts) {
       if (h.zone == "emerald_plains") defs.push_back(MNormalDef(h.huntId));
     }
-    CHECK(defs.size() == 17);  // 13 roster (with the roll-call bearer) + the Corpseherd + 3 hunts
+    CHECK(defs.size() == 18);  // 13 roster (with the roll-call bearer) + the Corpseherd + the Pitwarden + 3 hunts
     size_t abilities = 0;
     for (const MonsterDef& d : defs) {
       CAPTURE(d.id);
@@ -1087,7 +1107,8 @@ TEST_SUITE("monsters") {
         CHECK(a.windupMs >= (boss ? 700 : 600));
       }
     }
-    CHECK(abilities == 13);  // drummer, standard-bearer, bonegorger 1 each; Valdras 4; roll-call 1; Corpseherd 3; Hungerbell 2
+    // drummer, standard-bearer, bonegorger 1 each; Valdras 4; roll-call 1; Corpseherd 3; Hungerbell 2; the Pitwarden 2
+    CHECK(abilities == 15);
     struct Row {
       const char* monster;
       const char* id;
@@ -1111,6 +1132,8 @@ TEST_SUITE("monsters") {
         {"valdras", "breach_seep", AbilityKind::Hazard, "", 700, 6000, 1500, 3, AbilityAim::Anchor},  // the dais pulses
         {"valdras", "lunge", AbilityKind::Line, "Lunge", 800, 7000, 1000, 2, AbilityAim::HeroAtWindup},
         {"rollcall_standard_bearer", "roll_call", AbilityKind::Summon, "Cast01", 900, 10000, 3000, 0, AbilityAim::Self},
+        {"sub_pitwarden", "dig", AbilityKind::Line, "Cast01", 800, 12000, 0, 2, AbilityAim::HeroAtWindup},
+        {"sub_pitwarden", "spade_sweep", AbilityKind::Cone, "Attack02", 700, 6000, 2500, 1, AbilityAim::HeroAtWindup},
     };
     for (const Row& r : rows) {
       CAPTURE(r.monster);
@@ -1341,7 +1364,7 @@ TEST_SUITE("monsters") {
   // closing ring).
   TEST_CASE("Chapter 1 W2 Valdras: three phases, the roll call, Feed, the closing ring") {
     const MonsterDef& v = MDef("valdras");
-    CHECK(v.hp == 9000);
+    CHECK(v.hp == 10400);   // 3B: 9000 -> 10000 (the hero comes with the Pit's skill point and loot); 3B review: 10400
     CHECK(v.damage == 20);  // 2F review (BOT-R2 / BAL-R3 / 2F-D2): 14000 / 32 -> 9000 / 20 (the design's damage)
     REQUIRE(v.phases.size() == 2);
     const MonsterPhaseDef& p2 = v.phases[0];
@@ -1491,6 +1514,12 @@ TEST_SUITE("monsters") {
         CHECK(p.present);
         CHECK(p.maxLife == 0);
         CHECK(p.statPoints == 3);
+      } else if (q.id == "q_rf_the_pit") {  // S7 (Wave 3): the empty niche's warmth
+        CHECK(p.present);
+        CHECK(p.maxLife == 0);
+        CHECK(p.statPoints == 0);
+        CHECK(p.skillPoints == 1);
+        CHECK(p.respecTokens == 0);
       } else {
         CHECK_FALSE(p.present);
       }
@@ -1978,7 +2007,7 @@ TEST_SUITE("quests") {
     CHECK(e.qs.Marker("quest_elder", 3) == NpcMarker::Available);  // M2 now available
   }
 
-  TEST_CASE("chapter 1 quest table (10.1): 11 quests, rewards and totals; Q4 Marshal area; Q8 escort label") {
+  TEST_CASE("chapter 1 quest table (10.1): 12 quests, rewards and totals; Q4 Marshal area; Q8 escort label") {
     const DataStore& data = test::RealData();
     int count = 0;
     int64_t exp = 0, gold = 0;
@@ -1988,9 +2017,11 @@ TEST_SUITE("quests") {
       exp += q.rewards.exp;
       gold += q.rewards.gold;
     }
-    CHECK(count == 11);
-    CHECK(exp == 2740);  // chapter1.md 7 (DR9): today's 2660 / 505 plus the remake's re-tuned main line
-    CHECK(gold == 510);
+    CHECK(count == 12);
+    // chapter1.md 7 (DR9): Wave 1's 2740 / 510 (today's 2660 / 505 plus the remake's re-tuned main line) and S7's
+    // 300 / 50 (Wave 3, package 3B).
+    CHECK(exp == 3040);
+    CHECK(gold == 560);
     const QuestDef* chief = data.FindQuest("q_rf_marshal");
     REQUIRE(chief != nullptr);
     CHECK(chief->questArea.col == 15);  // Q4: centred on Valdras's spawn (15,95); the data keeps the slot's (25,65)
@@ -2178,12 +2209,13 @@ TEST_SUITE("quests") {
       CHECK(s.Lookup(LocaleId::En, key) != nullptr);
       if (max > 0 && CodePoints(*zh) > max) over.push_back(key);
     };
-    // Givers (chapter1.md 7): the Captain 6 (the main line and S1), Brother Aldwin 4, Corran 1.
+    // Givers (chapter1.md 7): the Captain 6 (the main line and S1), Brother Aldwin 5 (S7 since Wave 3), Corran 1.
     CHECK(d.FindNpc("quest_elder")->quests == std::vector<std::string>{"q_rf_burial_detail", "q_rf_black_blood",
                                                                        "q_rf_gnawed_field", "q_rf_ashwheat",
                                                                        "q_rf_marshal", "q_rf_last_toll"});
     CHECK(d.FindNpc("knell_chaplain")->quests == std::vector<std::string>{"q_rf_barrowmoss", "q_rf_tag_thief",
-                                                                          "q_rf_lanternwisp", "q_rf_hallowed_ground"});
+                                                                          "q_rf_lanternwisp", "q_rf_hallowed_ground",
+                                                                          "q_rf_the_pit"});
     CHECK(d.FindNpc("plains_wanderer")->quests == std::vector<std::string>{"q_rf_oathless"});
     // Every quest: name, quest-log line, offer, progress line (K1 progressKey) and turn-in line.
     std::vector<std::string> order;
@@ -2198,10 +2230,12 @@ TEST_SUITE("quests") {
       line(q.progressKey, 50);
       line(q.completeKey, 50);
     }
-    // The web slots' order (DR3): the main line and S1-S4 first; S5 / S6 hold the pet and escort slots further down.
+    // The web slots' order (DR3): the main line and S1-S4 first, then S7 (Wave 3: a new quest, placed after the zone's
+    // last web slot of the first block); S5 / S6 hold the pet and escort slots further down.
     CHECK(order == std::vector<std::string>{"q_rf_burial_detail", "q_rf_gnawed_field", "q_rf_ashwheat", "q_rf_marshal",
                                             "q_rf_last_toll", "q_rf_black_blood", "q_rf_barrowmoss", "q_rf_tag_thief",
-                                            "q_rf_oathless", "q_rf_lanternwisp", "q_rf_hallowed_ground"});
+                                            "q_rf_oathless", "q_rf_the_pit", "q_rf_lanternwisp",
+                                            "q_rf_hallowed_ground"});
     // M3 explores Ashwheat, then kills the Corpseherd; the prereq chain M1 -> M2 -> M3 -> M4 -> M5.
     const QuestDef* ash = d.FindQuest("q_rf_ashwheat");
     REQUIRE(ash->objectives.size() == 2);
@@ -3907,13 +3941,13 @@ TEST_SUITE("world") {
 TEST_SUITE("pets") {
   using namespace abyss::test::pets_fx;
 
-  TEST_CASE("embers: the Chapter 1 quests pay 23 in total (4.4.1; chapter1.md 7: 2 x 4 + 7 main, 1 x 5 + 3 side)") {
+  TEST_CASE("embers: the Chapter 1 quests pay 24 in total (4.4.1; chapter1.md 7: 2 x 4 + 7 main, 1 x 6 + 3 side)") {
     int32_t total = 0;
     for (const QuestDef& q : PD().Quests().quests) {
       if (q.zone != "emerald_plains") continue;
       total += EmbersForQuest(HT(), q.category, q.rewards.hasEmbers, q.rewards.embers);
     }
-    CHECK(total == 23);
+    CHECK(total == 24);  // 23 + S7 (Wave 3)
   }
 }  // TEST_SUITE
 
@@ -3990,8 +4024,9 @@ TEST_SUITE("data") {
   // Split from "monster tables": the roster size and the Chapter 1 spot checks.
   TEST_CASE("monster tables: roster size, the gnawer, the Corpseherd (M5), the emerald_plains list, mini-boss and hunts") {
     const MonsterTables& m = test::RealData().Monsters();
-    // 29 - the 4 web Chapter 1 defs + 12 roster defs + the Corpseherd + Valdras's roll-call standard-bearer (2F)
-    CHECK(m.defs.size() == 39);
+    // 29 - the 4 web Chapter 1 defs + 12 roster defs + the Corpseherd + Valdras's roll-call standard-bearer (2F) + the
+    // Pitwarden (3B: a sub-dungeon mini-boss definition)
+    CHECK(m.defs.size() == 40);
     const MonsterDef* gnawer = m.Find("gravegnawer");
     REQUIRE(gnawer);
     CHECK(gnawer->hp == 42);
@@ -4066,12 +4101,12 @@ TEST_SUITE("data") {
     CHECK(ep->regions[0].center == TilePos{15, 95});
     CHECK(ep->regions[0].radius == 16);
     CHECK(ep->regions[0].mood == MapTheme::BreachRim);
-    // The sealed Pit of the Faithful (Wave 3): a generator input of the re-baseline, a toast until K7.
+    // The Pit of the Faithful's entrance: a generator input of the re-baseline (sealed in Wave 1, open since Wave 3:
+    // "the Pit (chapter1.md 9.2): the record" below).
     REQUIRE(ep->subDungeonEntrances.size() == 1);
     CHECK(ep->subDungeonEntrances[0].pos == TilePos{17, 26});
     CHECK(ep->subDungeonEntrances[0].targetSubDungeon == "sub_rf_pit");
-    CHECK(ep->subDungeonEntrances[0].sealed);
-    CHECK(ep->subDungeonEntrances[0].sealedTextKey == "data.subDungeonSealed.entrance_rf_pit");
+    CHECK_FALSE(ep->subDungeonEntrances[0].sealed);
     MapTheme mood{};
     REQUIRE(w.moods.ThemeFor("emerald_plains", mood));
     CHECK(mood == MapTheme::March);
@@ -4083,7 +4118,7 @@ TEST_SUITE("data") {
   TEST_CASE("quests, npcs, dialogue, story, lore: table sizes and the Chapter 1 quests, elder, beats and lore") {
     const DataStore& d = test::RealData();
     const QuestTables& q = d.Quests();
-    CHECK(q.quests.size() == 58);
+    CHECK(q.quests.size() == 59);  // + S7 (3B)
     const QuestDef* burial = q.Find("q_rf_burial_detail");
     REQUIRE(burial);
     CHECK(burial->category == QuestCategory::Main);
@@ -4116,8 +4151,8 @@ TEST_SUITE("data") {
     CHECK(elder->FindNode(elder->startNodeId) != nullptr);
 
     const StoryScript& s = d.Story();
-    CHECK(s.cutscenes.size() == 25);  // - cs_ep_mark / cs_ep_whisper / cs_ep_finale + the six cs_rf_* beats
-    CHECK(s.triggers.size() == 19);
+    CHECK(s.cutscenes.size() == 26);  // - cs_ep_mark / cs_ep_whisper / cs_ep_finale + the six cs_rf_* beats + cs_rf_pit
+    CHECK(s.triggers.size() == 20);
     CHECK(s.triggers[0].subjectId == "q_rf_burial_detail");
     CHECK(s.BossIntroFor("valdras")->cutscene == "cs_boss_valdras");
     const Cutscene* brand = s.FindCutscene("cs_rf_brand");
@@ -4127,6 +4162,1225 @@ TEST_SUITE("data") {
     CHECK(s.ChapterFor("emerald_plains") != nullptr);
     CHECK(d.Lore().entries.size() == 24);
     CHECK(d.Lore().ForZone("emerald_plains").size() == 7);  // lore_rf_01..04 + the three echoes (chapter1.md 12)
+  }
+}  // TEST_SUITE
+
+// =====================================================================================================================
+// Wave 3 (package 3B): the Pit of the Faithful (chapter1.md 6 S7, 9.2; DECISIONS DR7 / DR8 *K7 as built*). The record
+// and its grid, the population as it stands on entry, S7 from the offer to the turn-in, the Pitwarden, the dressing.
+// The K7 engine itself is tested on a synthetic crypt (subdungeon_test.cpp); these pin what was authored.
+// =====================================================================================================================
+
+namespace {
+
+constexpr char kPit[] = "sub_rf_pit";
+constexpr char kPitQuest[] = "q_rf_the_pit";
+constexpr char kPitFlag[] = "rf_pit_cleansed";
+constexpr char kPitwarden[] = "sub_pitwarden";
+constexpr TilePos kPitStart{5, 5};
+constexpr TilePos kPitExit{5, 10};
+constexpr TilePos kPitReturn{17, 29};
+constexpr TilePos kPitEntrance{17, 26};
+constexpr TilePos kPitBoss{28, 26};
+// The five rooms at the places chapter1.md 9.2 lists.
+// The centres the bot's route clears (GameData/autopilot/ch1.ts): the passage past the Ash Steps, the Helm Wall, the
+// Tag Cellar, the Cut.
+constexpr std::array<TilePos, 4> kPitFightRooms = {TilePos{14, 5}, TilePos{24, 8}, TilePos{10, 24}, TilePos{28, 26}};
+constexpr TilePos kPitNicheSpot{20, 36};  // S7's explore spot, on the paving before the Flame Niche
+constexpr std::array<TilePos, 5> kPitRooms = {TilePos{5, 5}, TilePos{24, 8}, TilePos{10, 24}, TilePos{28, 26},
+                                              TilePos{20, 35}};
+
+const SubDungeonDef& PitDef() {
+  const SubDungeonDef* sd = test::RealData().World().FindSubDungeon(kPit);
+  REQUIRE(sd != nullptr);
+  REQUIRE(sd->hasMap);
+  return *sd;
+}
+
+// A game on the shipped data with the hero placed by hand (the bot's own walk is playthrough_test's).
+struct PitSim {
+  explicit PitSim(uint64_t seed = 11, ClassId cls = ClassId::Warrior) {
+    sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(cls, Difficulty::Normal, seed));
+    ctx = &sim->Context();
+    ctx->sys.story->FinishAllBeats();
+    sim->Step();
+  }
+  void Step(int n = 1) {
+    for (int i = 0; i < n; ++i) {
+      sim->Step();
+      for (const Event& e : sim->Events()) log.push_back(e);
+    }
+  }
+  // The events of a direct system call (a turn-in outside a step): read before the next step clears them.
+  void Drain() {
+    for (const Event& e : ctx->events.Items()) log.push_back(e);
+  }
+  const std::string& Zone() const { return ctx->session.currentMap; }
+  void Place(Vec2 p) { ctx->sys.locomotion->Teleport(p, TeleportReason::Debug); }
+  void AwaitZone(std::string_view id) {
+    for (int i = 0; i < 240 && (Zone() != id || ctx->session.transitioning); ++i) Step();
+    REQUIRE(Zone() == id);
+    REQUIRE_FALSE(ctx->session.transitioning);
+  }
+  // Down through the pit mouth with the interact action; the entry beat (cs_rf_pit, the first time) is played out.
+  // Down through the pit mouth, to the step the hero has control at the arrival tile (before any entry beat).
+  void Enter() {
+    REQUIRE(Zone() == test::ch1::kZone);
+    Place(kPitEntrance.Center() + Vec2(1, 0));
+    Step();
+    REQUIRE(ctx->sys.zone->Interact());
+    AwaitZone(kPit);
+  }
+  void GoIn() {
+    Enter();
+    Step(60);  // zone_entered: its beat is queued 900 ms after the entry
+    ctx->sys.story->FinishAllBeats();
+    Step();
+  }
+  void GoOut() {
+    REQUIRE(Zone() == kPit);
+    Place(kPitExit.Center());
+    AwaitZone(test::ch1::kZone);
+  }
+  std::vector<const MonsterInstance*> Alive(std::string_view defId = {}) const {
+    std::vector<const MonsterInstance*> out;
+    for (const MonsterInstance& m : ctx->sys.monsters->All()) {
+      if (m.IsAlive() && (defId.empty() || m.def.id == defId)) out.push_back(&m);
+    }
+    return out;
+  }
+  void Kill(EntityId id) {
+    DamageFlags f;
+    f.attacker = kHeroEntityId;
+    f.source = KillSource::HeroBasic;
+    ctx->sys.monsters->ApplyDamage(id, 1e9, f);
+  }
+  // A blow that does not kill (it provokes: the monster and, through its pack's alarm, its pack).
+  void Hit(EntityId id) {
+    DamageFlags f;
+    f.attacker = kHeroEntityId;
+    f.source = KillSource::HeroBasic;
+    ctx->sys.monsters->ApplyDamage(id, 1, f);
+  }
+  bool HasLog(std::string_view key) const {
+    for (const Event& e : log) {
+      if (const EvLog* l = std::get_if<EvLog>(&e); l != nullptr && l->text.key == key) return true;
+    }
+    return false;
+  }
+  // Takes S7 the way the route does: M1 and M2 turned in first (its prerequisite), then the quest from Aldwin.
+  void TakeS7() {
+    QuestSystem& qs = *ctx->sys.quests;
+    for (const char* main : {test::ch1::kQuestM1, test::ch1::kQuestM2}) {
+      REQUIRE(qs.Accept(main));
+      const QuestDef* def = test::RealData().FindQuest(main);
+      for (size_t i = 0; i < def->objectives.size(); ++i) {
+        qs.UpdateProgress(def->objectives[i].type, def->objectives[i].targetId, def->objectives[i].required);
+      }
+      REQUIRE(ctx->sys.questWorld->TurnIn(main, 0));
+    }
+    Step();
+    ctx->sys.story->FinishAllBeats();  // cs_rf_brand
+    Step();
+    REQUIRE(qs.Accept(kPitQuest));
+  }
+  bool Flag(std::string_view flag) const {
+    const std::vector<std::string>& f = ctx->session.worldFlags;
+    return std::find(f.begin(), f.end(), flag) != f.end();
+  }
+  template <class E>
+  std::vector<E> Events() const {
+    std::vector<E> out;
+    for (const Event& e : log) {
+      if (const E* x = std::get_if<E>(&e)) out.push_back(*x);
+    }
+    return out;
+  }
+
+  std::unique_ptr<GameSim> sim;
+  SimContext* ctx = nullptr;
+  std::vector<Event> log;
+};
+
+}  // namespace
+
+TEST_SUITE("world") {
+  TEST_CASE("the Pit (chapter1.md 9.2): the record - a hand-authored 40 x 40 under the burn pit, its label, its flag") {
+    const DataStore& data = test::RealData();
+    const WorldTables& w = data.World();
+    const SubDungeonDef& pit = PitDef();
+    CHECK(w.subDungeons.size() == 3);  // the web's two generated ones (never entered) and the Pit
+    CHECK(pit.parentZone == test::ch1::kZone);
+    CHECK(pit.cols == 40);
+    CHECK(pit.rows == 40);
+    CHECK(pit.playerStart == kPitStart);
+    CHECK(pit.exitPos == kPitExit);
+    CHECK(pit.returnPos == kPitReturn);
+    CHECK(pit.miniBossPos == kPitBoss);
+    CHECK(pit.miniBossId == kPitwarden);
+    CHECK(pit.cleansedFlag == kPitFlag);
+    CHECK(w.FindEnterableSubDungeon(kPit) == &pit);
+    CHECK(w.FindMapProper(kPit) == nullptr);  // no zone proper: not on the world map, not in the zone order
+    const MapDef* map = data.FindMap(kPit);
+    REQUIRE(map == &pit.map);
+    CHECK_FALSE(map->generated);
+    CHECK(map->hasPresentationTheme);
+    CHECK(map->presentationTheme == MapTheme::Pit);
+    CHECK(map->generatorTheme == MapTheme::Plains);  // the wall tile's art slot stays outcrop_plains (@pit)
+    CHECK(map->camps.empty());
+    REQUIRE(map->exits.size() == 1);
+    CHECK(map->exits[0].pos == kPitExit);
+    CHECK(map->exits[0].targetMap == test::ch1::kZone);
+    // The label on the banner (K7 as built: nobody is raised): S7's level to the Pitwarden's.
+    const QuestDef* s7 = data.FindQuest(kPitQuest);
+    const MonsterDef* warden = data.Monsters().Find(kPitwarden);
+    REQUIRE(s7 != nullptr);
+    REQUIRE(warden != nullptr);
+    CHECK(pit.levelMin == 5);
+    CHECK(pit.levelMax == 8);
+    CHECK(pit.levelMin == s7->level);
+    CHECK(pit.levelMax == warden->level);
+    // Its name, in the three locales (the zone banner, the map title, the enter line).
+    CHECK(pit.nameKey == "data.subDungeon.sub_rf_pit.name");
+    const I18n enStrings = test::quests_fx::EnglishStrings();
+    I18n twStrings;
+    REQUIRE(twStrings.LoadTable(test::ReadFile(test::DataDir() + "/i18n_zh-TW.json")));
+    const auto text = [](const I18n& table, LocaleId locale, const std::string& key) {
+      const std::string* t = table.Lookup(locale, key);
+      return t != nullptr ? *t : std::string();
+    };
+    CHECK(text(data.Strings(), LocaleId::ZhCN, pit.nameKey) == "信者之坑");
+    CHECK(text(enStrings, LocaleId::En, pit.nameKey) == "The Pit of the Faithful");
+    CHECK(text(twStrings, LocaleId::ZhTW, pit.nameKey) == "信者之坑");
+    // The way down: the Red Field's entrance, open since Wave 3 (it shipped sealed in Wave 1; the tile is the same
+    // generator input, so the golden map did not move).
+    const MapDef* ep = data.FindMap(test::ch1::kZone);
+    REQUIRE(ep != nullptr);
+    REQUIRE(ep->subDungeonEntrances.size() == 1);
+    const SubDungeonEntranceDef& e = ep->subDungeonEntrances[0];
+    CHECK(e.id == "entrance_rf_pit");
+    CHECK(e.pos == kPitEntrance);
+    CHECK(e.targetSubDungeon == kPit);
+    CHECK_FALSE(e.sealed);
+    CHECK(e.sealedTextKey.empty());
+    CHECK(data.Strings().Lookup(LocaleId::ZhCN, "data.subDungeonSealed.entrance_rf_pit") == nullptr);
+    // No random event rolls inside (no row: a row for a sub-dungeon is a data error), and its mood is `pit`.
+    CHECK(w.randomEvents.ForZone(kPit) == nullptr);
+    MapTheme mood{};
+    REQUIRE(w.moods.ThemeFor(kPit, mood));
+    CHECK(mood == MapTheme::Pit);
+    CHECK(w.moods.moods[EnumIndex(MapTheme::Pit)].defined);
+    CHECK(w.moods.moods[EnumIndex(MapTheme::PitCleansed)].defined);
+    const ZoneWeatherDef* weather = w.moods.WeatherFor(kPit);
+    REQUIRE(weather != nullptr);  // without a row it would borrow the plains pollen through its generator theme
+    CHECK(weather->type == "none");
+    CHECK(weather->ambience.empty());
+    CHECK(w.moods.moods[EnumIndex(MapTheme::PitCleansed)].moodWeather.ambience == "pit_embers");
+    CHECK(w.moods.moods[EnumIndex(MapTheme::Pit)].moodWeather.ambience.empty());
+    // The terrain style the Pit's tiles are painted with (the art lane's, copied into GameData/world.ts).
+    const JsonValue* styles = data.RawTable("terrain_styles.json");
+    REQUIRE(styles != nullptr);
+    const JsonValue* themes = styles->Find("themes");
+    REQUIRE(themes != nullptr);
+    const JsonValue* pitStyle = themes->Find("pit");
+    REQUIRE(pitStyle != nullptr);
+    for (const char* tile : {"0", "1", "2", "3", "5"}) {
+      CAPTURE(tile);
+      const JsonValue* ground = pitStyle->Find("ground");
+      REQUIRE(ground != nullptr);
+      CHECK(ground->Find(tile) != nullptr);
+    }
+  }
+
+  TEST_CASE("the Pit: the grid - five rooms at the listed places, one component, the stair in its alcove") {
+    const DataStore& data = test::RealData();
+    const SubDungeonDef& pit = PitDef();
+    const ZoneGrid grid = BuildZoneGrid(data, pit.map);
+    REQUIRE(grid.Cols() == 40);
+    REQUIRE(grid.Rows() == 40);
+    // Tile counts as authored (0 ash, 1 dug earth, 2 flagstone, 3 the seep, 4 wall, 5 the niche's paving).
+    std::array<int32_t, 7> count{};
+    int32_t walkable = 0;
+    for (int32_t r = 0; r < 40; ++r) {
+      for (int32_t c = 0; c < 40; ++c) {
+        ++count[static_cast<size_t>(grid.Tile(c, r))];
+        walkable += grid.Walkable(c, r) ? 1 : 0;
+        // The border is wall: nothing walks off the map.
+        if (r == 0 || c == 0 || r == 39 || c == 39) CHECK(grid.Tile(c, r) == TileType::Wall);
+      }
+    }
+    CHECK(count[static_cast<size_t>(TileType::Wall)] == 1020);
+    CHECK(count[static_cast<size_t>(TileType::Water)] == 4);
+    CHECK(count[static_cast<size_t>(TileType::Grass)] == 25);
+    CHECK(count[static_cast<size_t>(TileType::Dirt)] == 102);
+    CHECK(count[static_cast<size_t>(TileType::Camp)] == 21);
+    CHECK(count[static_cast<size_t>(TileType::Stone)] == 428);
+    CHECK(count[static_cast<size_t>(TileType::CampWall)] == 0);
+    CHECK(grid.Decorations().empty());
+    // The tag racks' eight tiles are flagstone the map blocks (set pieces do not block by themselves).
+    CHECK(walkable == 568);
+    for (const TilePos& t : {TilePos{6, 22}, TilePos{7, 22}, TilePos{12, 22}, TilePos{13, 22}, TilePos{6, 26},
+                             TilePos{7, 26}, TilePos{12, 26}, TilePos{13, 26}}) {
+      CAPTURE(t.col);
+      CAPTURE(t.row);
+      CHECK(grid.Tile(t.col, t.row) == TileType::Stone);
+      CHECK_FALSE(grid.Walkable(t.col, t.row));
+    }
+    // One component: every walkable tile is reached from the stair (4-neighbour flood from the exit), so nothing a
+    // hero can stand on is cut off from the way out.
+    std::vector<char> seen(40 * 40, 0);
+    std::vector<TilePos> queue{kPitExit};
+    seen[static_cast<size_t>(kPitExit.row * 40 + kPitExit.col)] = 1;
+    int32_t reached = 0;
+    while (!queue.empty()) {
+      const TilePos t = queue.back();
+      queue.pop_back();
+      ++reached;
+      for (const TilePos d : {TilePos{1, 0}, TilePos{-1, 0}, TilePos{0, 1}, TilePos{0, -1}}) {
+        const TilePos n{t.col + d.col, t.row + d.row};
+        if (!grid.Walkable(n.col, n.row) || seen[static_cast<size_t>(n.row * 40 + n.col)] != 0) continue;
+        seen[static_cast<size_t>(n.row * 40 + n.col)] = 1;
+        queue.push_back(n);
+      }
+    }
+    CHECK(reached == walkable);
+    // The rooms: each listed place is open floor, and the walk from the start through them in order and back to the
+    // stair is a path (the A* the hero walks).
+    const Pathfinder pf(grid);
+    TilePos at = kPitStart;
+    for (const TilePos& room : kPitRooms) {
+      CAPTURE(room.col);
+      CAPTURE(room.row);
+      CHECK(grid.Walkable(room.col, room.row));
+      std::vector<TilePos> path;
+      CHECK((room == at || pf.FindPath(at.col, at.row, room.col, room.row, path)));
+      at = room;
+    }
+    std::vector<TilePos> back;
+    CHECK(pf.FindPath(at.col, at.row, kPitExit.col, kPitExit.row, back));
+    CHECK(back.size() > 45);  // the Flame Niche is the far end: the walk out crosses the whole Pit (52 steps)
+    CHECK(grid.Tile(28, 26) == TileType::Dirt);   // the Cut is dug earth
+    CHECK(grid.Tile(20, 36) == TileType::Camp);   // the niche's paving
+    CHECK(grid.Tile(5, 9) == TileType::Grass);    // ash on the stair
+    // The stair: the exit tile stands in front of a straight wall row (the flight rises behind it), in a three-tile
+    // alcove two deep, so the exit's 1.5-tile trigger reaches no tile of the Ash Steps' floor and the arriving hero
+    // stands beyond its arming distance (sqrt 6): the stair is armed at once and left only by walking onto it.
+    for (int32_t c = 4; c <= 6; ++c) {
+      CHECK(grid.Tile(c, 11) == TileType::Wall);
+      CHECK(grid.Walkable(c, 10));
+      CHECK(grid.Walkable(c, 9));
+    }
+    CHECK_FALSE(grid.Walkable(3, 9));
+    CHECK_FALSE(grid.Walkable(7, 10));
+    for (int32_t r = 0; r <= 8; ++r) {
+      for (int32_t c = 0; c < 40; ++c) {
+        if (grid.Walkable(c, r)) CHECK(Dist(TilePos{c, r}.Center(), kPitExit.Center()) > 1.5);
+      }
+    }
+    CHECK(Dist(kPitStart.Center(), kPitExit.Center()) > std::sqrt(6.0));
+    // The Helm Wall's six tiles and the guardian's tile are open floor (K7 review: content tests the fixture cannot give).
+    for (int32_t c = 20; c <= 25; ++c) CHECK(grid.Walkable(c, 11));
+    // 3B review: the way from the passage to the door on is the room's west column (cols 18-19); every point of it
+    // level with the rank lies inside the first man's wake range with margin (the wall is not walked past).
+    for (int32_t c = 18; c <= 19; ++c) {
+      CHECK(grid.Walkable(c, 11));
+      CHECK(grid.Walkable(c, 13));  // the door on
+    }
+    CHECK(Dist(Vec2(17.5, 11.0), TilePos{20, 11}.Center()) <= 3.0 - 0.5);
+    // S7's explore spot stands on the niche's paving, and its radius does not reach the door (22-23, 32): the hero
+    // walks up to the niche.
+    CHECK(grid.Walkable(kPitNicheSpot.col, kPitNicheSpot.row));
+    CHECK(grid.Tile(kPitNicheSpot.col, kPitNicheSpot.row) == TileType::Camp);
+    CHECK(Dist(Vec2(22.0, 33.0), kPitNicheSpot.Center()) > 2.0);
+    CHECK(grid.Walkable(kPitBoss.col, kPitBoss.row));
+    // The wall behind the rank is the niche wall: its tiles face -row (the key-lit side at the W1 camera).
+    for (int32_t c = 20; c <= 30; ++c) {
+      CHECK(grid.Tile(c, 13) == TileType::Wall);
+      CHECK(grid.Walkable(c, 12));
+    }
+    // The return tile on the surface: open ground in the built Red Field (the core's nearest-walkable fallback is not
+    // leaned on), beside the pit mouth - clear of its prop, inside the entrance's 3-tile interact reach - and outside
+    // Knellwatch's safe radius like the entrance itself.
+    const MapDef* ep = data.FindMap(test::ch1::kZone);
+    REQUIRE(ep != nullptr);
+    const ZoneGrid surface = BuildZoneGrid(data, *ep);
+    CHECK(surface.Walkable(kPitReturn.col, kPitReturn.row));
+    CHECK(surface.Walkable(kPitEntrance.col, kPitEntrance.row));
+    const double fromMouth = Dist(kPitReturn.Center(), kPitEntrance.Center());
+    CHECK(fromMouth >= 2.5);
+    CHECK(fromMouth <= 3.0);
+    CHECK(Dist(kPitReturn.Center(), test::ch1::kCamp.Center()) > ep->safeZoneRadiusEffective);
+    std::vector<TilePos> up;
+    CHECK(Pathfinder(surface).FindPath(kPitReturn.col, kPitReturn.row, kPitEntrance.col, kPitEntrance.row, up));
+  }
+
+  TEST_CASE("the Pit: the population on entry - the rooms' packs at their own levels, the rank at attention, the dead") {
+    const SubDungeonDef& pit = PitDef();
+    // The spawn table as authored (chapter1.md 9.2).
+    REQUIRE(pit.map.spawns.size() == 5);
+    const auto entry = [&pit](size_t i, const char* id, int32_t n, TilePos at) {
+      CAPTURE(i);
+      const MapSpawnDef& s = pit.map.spawns[i];
+      CHECK(s.monsterId == id);
+      CHECK(s.count == n);
+      CHECK(s.pos == at);
+      CHECK(s.mix.empty());
+      CHECK(s.variants.empty());
+      CHECK_FALSE(s.leader.present);
+    };
+    entry(0, "breachclot", 4, TilePos{15, 4});
+    entry(1, "risen_footman", 6, TilePos{20, 11});
+    entry(2, "gravegnawer", 4, TilePos{10, 24});
+    entry(3, "risen_arbalest", 2, TilePos{10, 28});
+    entry(4, "risen_shieldbearer", 2, TilePos{26, 25});
+    // Two formations: the Helm Wall - wake range 3, a rank along +col, facing -row (270 degrees), rising when it wakes -
+    // and the Pitwarden's guard (3B review): his two shieldbearers either side of the way to him, (26,25) and (26,27),
+    // facing the door (180 degrees), standing already (no Rise), noticing at their own aggro range. Only that entry is
+    // his guard (one pack with him).
+    for (size_t i = 0; i < pit.map.spawns.size(); ++i) {
+      CHECK(pit.map.spawns[i].dormant.present == (i == 1 || i == 4));
+      CHECK(pit.map.spawns[i].guard == (i == 4));
+    }
+    const MapSpawnDormantDef& guard = pit.map.spawns[4].dormant;
+    CHECK(guard.wakeRange == test::RealData().Monsters().Find("risen_shieldbearer")->aggroRange);
+    CHECK_FALSE(guard.rise);
+    CHECK(guard.hasLine);
+    CHECK(guard.lineStep == TilePos{0, 2});
+    CHECK(guard.hasFace);
+    CHECK(guard.faceDeg == 180);
+    CHECK(test::RealData().Monsters().Find(kPitwarden)->packAggro == 12);
+    const MapSpawnDormantDef& wall = pit.map.spawns[1].dormant;
+    CHECK(wall.wakeRange == 3);
+    CHECK(wall.rise);
+    CHECK(wall.hasLine);
+    CHECK(wall.lineStep == TilePos{1, 0});
+    CHECK(wall.hasFace);
+    CHECK(wall.faceDeg == 270);
+    CHECK(test::RealData().Monsters().Find("risen_footman")->packAggro == 0);  // the wall wakes by the dormant rule
+
+    PitSim s;
+    s.GoIn();
+    CHECK(Dist(s.ctx->sys.hero->Position(), kPitStart.Center()) < 1e-9);
+    const SubDungeonView& view = s.sim->View().zone.subDungeon;
+    CHECK(view.inside);
+    CHECK(view.id == kPit);
+    CHECK(view.hostiles == 19);
+    CHECK(view.guardianAlive);
+    CHECK_FALSE(view.cleansed);
+    CHECK(s.sim->View().zone.levelMin == 5);
+    CHECK(s.sim->View().zone.levelMax == 8);
+    std::map<std::string, int32_t> perDef;
+    const auto all = s.Alive();
+    REQUIRE(all.size() == 19);
+    for (const MonsterInstance* m : all) {
+      CAPTURE(m->def.id);
+      ++perDef[m->def.id];
+      CHECK(m->noRespawn);
+      // Its own level and life: nobody is raised to the label (K7 as built, deviation 5).
+      const MonsterDef* def = test::RealData().Monsters().Find(m->def.id);
+      REQUIRE(def != nullptr);
+      CHECK(m->def.level == def->level);
+      if (m->affixes.empty()) CHECK(m->maxHp == def->hp);
+      CHECK(s.ctx->sys.zone->Walkable(RoundToTile(m->pos).col, RoundToTile(m->pos).row));
+      // In its room: within 7 tiles of one of the centres the bot's route clears (the Flame Niche holds nobody).
+      bool inRoom = false;
+      for (const TilePos& room : kPitFightRooms) inRoom = inRoom || Dist(m->pos, room.Center()) <= 7.0;
+      CHECK(inRoom);
+      CHECK(Dist(m->pos, kPitRooms[4].Center()) > 6.0);
+      // 3B review: the hero lands in quiet. Nothing stands within its notice range of the arrival tile, with margin -
+      // the breachclots too (they wait in the passage; on the Steps they met the hero before the entry beat).
+      CHECK(Dist(m->pos, kPitStart.Center()) > m->def.aggroRange + 3.0);
+      // Nor on the Ash Steps at all (2-11, 2-10): the room the entry beat plays in is empty.
+      CHECK_FALSE((m->pos.x <= 11.5 && m->pos.y <= 10.5));
+    }
+    CHECK(perDef["breachclot"] == 4);
+    CHECK(perDef["risen_footman"] == 6);
+    CHECK(perDef["gravegnawer"] == 4);
+    CHECK(perDef["risen_arbalest"] == 2);
+    CHECK(perDef["risen_shieldbearer"] == 2);
+    CHECK(perDef[kPitwarden] == 1);
+    CHECK(perDef.size() == 6);
+    // The Pitwarden: on his tile, the sub-dungeon mini-boss, elite with the Red Field's one affix.
+    const MonsterInstance* warden = s.Alive(kPitwarden).front();
+    CHECK(warden->role == MonsterRole::SubDungeonMiniBoss);
+    CHECK(warden->id == s.ctx->sys.monsters->MiniBoss());
+    CHECK(warden->homeTile == kPitBoss);
+    CHECK(warden->AffixCount() == 1);
+    // The rank: six footmen on (20..25, 11), dormant, facing -row; besides them only his guard is.
+    std::vector<const MonsterInstance*> rank = s.Alive("risen_footman");
+    std::sort(rank.begin(), rank.end(), [](const MonsterInstance* a, const MonsterInstance* b) { return a->pos.x < b->pos.x; });
+    for (size_t k = 0; k < rank.size(); ++k) {
+      CAPTURE(k);
+      CHECK(rank[k]->dormant);
+      CHECK(Dist(rank[k]->pos, TilePos{20 + static_cast<int32_t>(k), 11}.Center()) < 1e-9);
+      CHECK(rank[k]->heading.x == doctest::Approx(0.0).epsilon(1e-9));
+      CHECK(rank[k]->heading.y == doctest::Approx(-1.0));
+      CHECK(rank[k]->state == MonsterState::Idle);
+    }
+    std::vector<const MonsterInstance*> guards = s.Alive("risen_shieldbearer");
+    std::sort(guards.begin(), guards.end(), [](const MonsterInstance* a, const MonsterInstance* b) { return a->pos.y < b->pos.y; });
+    REQUIRE(guards.size() == 2);
+    for (size_t k = 0; k < guards.size(); ++k) {
+      CAPTURE(k);
+      CHECK(guards[k]->dormant);
+      CHECK_FALSE(guards[k]->dormantRise);
+      CHECK(Dist(guards[k]->pos, TilePos{26, 25 + 2 * static_cast<int32_t>(k)}.Center()) < 1e-9);
+      CHECK(guards[k]->heading.x == doctest::Approx(-1.0));
+      CHECK(guards[k]->state == MonsterState::Idle);
+      CHECK(guards[k]->packId != 0);
+      CHECK(guards[k]->packId == warden->packId);  // one pack with him
+      // Between the door (22-23, 24-25) and him: nearer the door than he is, either side of the line to him.
+      CHECK(Dist(guards[k]->pos, Vec2(23.0, 24.5)) < Dist(warden->pos, Vec2(23.0, 24.5)));
+    }
+    CHECK_FALSE(warden->dormant);
+    CHECK_FALSE(warden->spent);
+    for (const MonsterInstance* m : all) {
+      if (m->def.id != "risen_footman" && m->def.id != "risen_shieldbearer") CHECK_FALSE(m->dormant);
+    }
+    // The dead of the pit: seven seeded bodies (four by the Tag Cellar's racks, three in the Cut).
+    CHECK(pit.map.corpseSeeds.size() == 7);
+    int32_t seeded = 0;
+    for (const CorpseView& c : s.sim->View().corpses) seeded += c.seeded ? 1 : 0;
+    CHECK(seeded >= 3);  // the Cut's three are out of every feeder's reach; a gnawer may already be at one of the cellar's
+    CHECK(seeded <= 7);
+    // The rank wakes as one: a step within 3 tiles of its west end and all six rise (each its Rise), then come.
+    s.log.clear();
+    s.Place(Vec2(18.0, 11.0));  // 2 tiles from the first man, 7 from the last
+    s.Step(4);
+    int32_t rises = 0;
+    for (const EvPlayAnim& a : s.Events<EvPlayAnim>()) rises += a.action == AnimAction::Rise ? 1 : 0;
+    CHECK(rises == 6);
+    for (const MonsterInstance* m : s.Alive("risen_footman")) CHECK_FALSE(m->dormant);
+    // A second visit of an uncleansed Pit is a fresh one: everybody stands again, the rank dormant.
+    s.Place(kPitStart.Center());
+    s.Step();
+    s.GoOut();
+    CHECK(Dist(s.ctx->sys.hero->Position(), kPitReturn.Center()) < 1e-9);
+    s.GoIn();
+    CHECK(s.Alive().size() == 19);
+    for (const MonsterInstance* m : s.Alive("risen_footman")) CHECK(m->dormant);
+  }
+
+  // 3B review (D6 / ADV-CORE-4): the hero lands in quiet, on every seed. On the Ash Steps the breachclots stood 1.4-3.2
+  // tiles from the arrival tile (aggro 4) and were charging before the entry beat began.
+  TEST_CASE("the Pit: a quiet landing - nothing within its notice range of the arrival tile, nothing chasing at the beat") {
+    for (uint64_t seed = 11; seed <= 18; ++seed) {
+      CAPTURE(seed);
+      PitSim s(seed, seed % 2 == 0 ? ClassId::Mage : ClassId::Warrior);
+      s.Enter();
+      REQUIRE(Dist(s.ctx->sys.hero->Position(), kPitStart.Center()) < 1e-9);
+      for (const MonsterInstance* m : s.Alive()) {
+        CAPTURE(m->def.id);
+        const double notice = m->dormant ? m->dormantWakeRange : m->def.aggroRange;
+        CHECK(Dist(m->pos, kPitStart.Center()) > notice + 1.0);
+      }
+      // Up to the entry beat (900 ms after the entry) and through a second of it: nobody has noticed the hero.
+      s.Step(54);
+      for (const MonsterInstance* m : s.Alive()) CHECK((m->state == MonsterState::Idle || m->state == MonsterState::Patrol));
+      s.Step(60);
+      CHECK(s.ctx->sys.story->IsBusy());  // cs_rf_pit is playing
+      for (const MonsterInstance* m : s.Alive()) CHECK((m->state == MonsterState::Idle || m->state == MonsterState::Patrol));
+      CHECK(s.ctx->sys.hero->Hp() == s.ctx->sys.hero->MaxHp());
+      // And on a later visit (no beat): two seconds on the arrival tile, untouched.
+      s.ctx->sys.story->FinishAllBeats();
+      s.Step();
+      s.GoOut();
+      s.Enter();
+      s.Step(120);
+      for (const MonsterInstance* m : s.Alive()) CHECK((m->state == MonsterState::Idle || m->state == MonsterState::Patrol));
+      CHECK(s.ctx->sys.hero->Hp() == s.ctx->sys.hero->MaxHp());
+    }
+  }
+
+  // 3B review (D1): with the rank on (21..26, 11) the room's west column was exactly 3.000 tiles from its first man and
+  // the hero could walk from the passage to the door on without waking the wall.
+  TEST_CASE("the Pit: the Helm Wall is not walked past - the way from the passage to the door wakes all six") {
+    const auto dormantCount = [](PitSim& s) {
+      int32_t n = 0;
+      for (const MonsterInstance* m : s.Alive("risen_footman")) n += m->dormant ? 1 : 0;
+      return n;
+    };
+    // Down the west column, hugging the west wall (x = 17.6), on the column's centre line and on the door's east tile.
+    for (double x : {17.6, 18.0, 19.0}) {
+      CAPTURE(x);
+      PitSim s;
+      s.GoIn();
+      for (const MonsterInstance* m : s.Alive("breachclot")) s.Kill(m->id);  // the passage's clots are not this test's
+      s.Step();
+      s.Place(Vec2(x, 5.0));  // out of the passage, at the room's north-west corner: the rank still stands
+      s.Step(6);
+      CHECK(dormantCount(s) == 6);
+      s.log.clear();
+      for (double y = 5.0; y <= 14.0 + 1e-9; y += 0.2) {
+        s.Place(Vec2(x, y));
+        s.Step(2);
+      }
+      CHECK(dormantCount(s) == 0);
+      CHECK(s.Alive("risen_footman").size() == 6);
+      int32_t rises = 0;
+      for (const EvPlayAnim& a : s.Events<EvPlayAnim>()) rises += a.action == AnimAction::Rise ? 1 : 0;
+      CHECK(rises == 6);
+    }
+    // And on foot, the click a player makes: from the passage's mouth to the passage down to the Tag Cellar.
+    PitSim s;
+    s.GoIn();
+    for (const MonsterInstance* m : s.Alive("breachclot")) s.Kill(m->id);
+    s.Step();
+    s.Place(Vec2(17.0, 4.0));
+    s.Step(2);
+    REQUIRE(dormantCount(s) == 6);
+    s.sim->Submit(CmdMoveTo{Vec2(18.0, 13.0)});  // the door on
+    for (int i = 0; i < 900 && dormantCount(s) > 0; ++i) s.Step();
+    CHECK(dormantCount(s) == 0);
+    CHECK(s.ctx->sys.hero->Position().y < 13.0);  // woken before the hero was through the door
+  }
+
+  // 3B review (D4): the two shieldbearers were a plain entry - scattered, patrolling, a pack of their own without
+  // packAggro - and he had no pack: from the door he came alone on most seeds.
+  TEST_CASE("the Pit: the Pitwarden and his guard are one pack - provoke any of the three and the three come") {
+    for (uint64_t seed = 11; seed <= 14; ++seed) {
+      for (int who = 0; who < 2; ++who) {
+        CAPTURE(seed);
+        CAPTURE(who);
+        PitSim s(seed);
+        s.GoIn();
+        // In the corridor to the Cut: 9 tiles from him (his aggro is 7), 7 from the nearer shield (theirs is 5).
+        s.Place(Vec2(19.0, 24.5));
+        s.Step(30);
+        const MonsterInstance* warden = s.Alive(kPitwarden).front();
+        const EntityId wardenId = warden->id;
+        std::vector<EntityId> guards;
+        for (const MonsterInstance* m : s.Alive("risen_shieldbearer")) guards.push_back(m->id);
+        REQUIRE(guards.size() == 2);
+        CHECK(warden->state == MonsterState::Idle);
+        for (EntityId g : guards) {
+          CHECK(s.ctx->sys.monsters->Find(g)->dormant);
+          CHECK(s.ctx->sys.monsters->Find(g)->state == MonsterState::Idle);
+          // They hold their tiles: no scatter, no patrol.
+          CHECK(Dist(s.ctx->sys.monsters->Find(g)->pos, Vec2(26.0, s.ctx->sys.monsters->Find(g)->pos.y)) < 1e-9);
+        }
+        s.log.clear();
+        s.Hit(who == 0 ? wardenId : guards[0]);  // a shot from outside every notice range
+        s.Step(3);
+        const MonsterInstance* w = s.ctx->sys.monsters->Find(wardenId);
+        REQUIRE(w != nullptr);
+        CHECK(w->state != MonsterState::Idle);
+        CHECK(w->state != MonsterState::Patrol);
+        for (EntityId g : guards) {
+          const MonsterInstance* m = s.ctx->sys.monsters->Find(g);
+          REQUIRE(m != nullptr);
+          CHECK_FALSE(m->dormant);
+          CHECK(m->state != MonsterState::Idle);
+          CHECK(m->state != MonsterState::Patrol);
+        }
+        // Standing already, the guard needs no Rise (the Helm Wall's men do).
+        for (const EvPlayAnim& a : s.Events<EvPlayAnim>()) CHECK(a.action != AnimAction::Rise);
+        // The rest of the Pit did not hear it.
+        for (const MonsterInstance* m : s.Alive("risen_footman")) CHECK(m->dormant);
+      }
+    }
+  }
+
+  // 3B review (D8 / ADV-CORE-1): an uncleansed Pit is rebuilt on every entry, guardian included, and he paid his exp,
+  // gold, mini-boss loot and embers every time - without S7, or with it and six left standing, without limit.
+  TEST_CASE("the Pit: the Pitwarden pays once per save - killed again he counts for S7 and gives nothing") {
+    PitSim s;
+    Hero& hero = *s.ctx->sys.hero;
+    const auto killExp = [&s] {
+      int64_t n = 0;
+      for (const EvExpGained& x : s.Events<EvExpGained>()) n += x.source == ExpSource::Kill ? x.amount : 0;
+      return n;
+    };
+    const auto embers = [&s] {
+      int32_t n = 0;
+      for (const EvEmbersGained& x : s.Events<EvEmbersGained>()) n += x.amount;
+      return n;
+    };
+    // First kill, no quest: he pays - exp, gold, embers, his drops on the floor - and the save remembers.
+    s.GoIn();
+    CHECK(s.ctx->session.slainGuardians.empty());
+    const MonsterInstance* first = s.Alive(kPitwarden).front();
+    CHECK_FALSE(first->spent);
+    s.Place(Vec2(19.0, 24.5));
+    s.Step();
+    s.log.clear();
+    const auto gold0 = hero.Gold();
+    const size_t items0 = s.sim->View().groundItems.size();
+    s.Kill(first->id);
+    s.Drain();  // the kill's events (a direct call between two steps)
+    s.Step(3);
+    const int64_t firstExp = killExp();
+    CHECK(firstExp > 0);
+    CHECK(hero.Gold() >= gold0 + 20);
+    CHECK(embers() > 0);
+    CHECK(s.HasLog("zone.monsterKill"));
+    CHECK_FALSE(s.HasLog("zone.subDungeon.guardianSpent"));
+    CHECK(s.ctx->session.slainGuardians == std::vector<std::string>{kPit});
+    const size_t items1 = s.sim->View().groundItems.size();
+    CHECK(items1 >= items0);
+    // Out and in again, six times (the review's loop): he stands again - the Pit is not cleansed - spent. His kill
+    // gives nothing: no exp, no gold, no ember, nothing on the floor; the log line says so.
+    for (int loop = 0; loop < 6; ++loop) {
+      CAPTURE(loop);
+      s.Place(kPitStart.Center());
+      s.Step();
+      s.GoOut();
+      s.GoIn();
+      REQUIRE(s.Alive().size() == 19);
+      const MonsterInstance* again = s.Alive(kPitwarden).front();
+      CHECK(again->spent);
+      CHECK(again->role == MonsterRole::SubDungeonMiniBoss);
+      CHECK(again->AffixCount() == 1);  // still the officer he was
+      bool viewSpent = false;
+      for (const MonsterView& v : s.sim->View().monsters) viewSpent = viewSpent || (v.id == again->id && v.spent);
+      CHECK(viewSpent);
+      s.Place(Vec2(19.0, 24.5));
+      s.Step();
+      s.log.clear();
+      const auto gold = hero.Gold();
+      const int64_t exp = hero.Exp();
+      const int32_t level = hero.Level();
+      const size_t items = s.sim->View().groundItems.size();
+      const int32_t towerEmbers = s.ctx->sys.homestead->Tower().Embers();
+      s.Kill(again->id);
+      s.Drain();
+      s.Step(3);
+      CHECK(killExp() == 0);
+      CHECK(hero.Exp() == exp);
+      CHECK(hero.Level() == level);
+      CHECK(hero.Gold() == gold);
+      CHECK(embers() == 0);
+      CHECK(s.ctx->sys.homestead->Tower().Embers() == towerEmbers);
+      CHECK(s.sim->View().groundItems.size() == items);
+      CHECK(s.HasLog("zone.subDungeon.guardianSpent"));
+      CHECK_FALSE(s.HasLog("zone.monsterKill"));
+    }
+    // The regulars still pay (the field above respawns too); only the guardian's purse is counted once.
+    s.log.clear();
+    s.Kill(s.Alive("gravegnawer").front()->id);
+    s.Drain();
+    s.Step(2);
+    CHECK(killExp() > 0);
+    // A save keeps the record, and a load reads it before the Pit is built.
+    s.Place(kPitStart.Center());
+    s.Step();
+    s.GoOut();
+    const std::string save = s.sim->SaveGame(1760000000000);
+    CHECK(save.find("\"slainGuardians\":[\"sub_rf_pit\"]") != std::string::npos);
+    auto loaded = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(loaded != nullptr);
+    std::string err;
+    REQUIRE(loaded->LoadGame(save, &err) == SaveError::None);
+    CHECK(loaded->Context().session.slainGuardians == std::vector<std::string>{kPit});
+    CHECK(loaded->SaveGame(1760000000000) == save);
+    // S7 taken after all that: the spent Pitwarden's kill is the quest's kill (objective 0), and the cleanse follows.
+    s.TakeS7();
+    s.GoIn();
+    const MonsterInstance* quested = s.Alive(kPitwarden).front();
+    CHECK(quested->spent);
+    for (const MonsterInstance* m : s.Alive()) {
+      if (m->id != quested->id) s.Kill(m->id);
+    }
+    s.Step(2);
+    CHECK(s.ctx->sys.quests->Progress(kPitQuest)->objectives == std::vector<int32_t>{0, 0, 0});
+    s.log.clear();
+    s.Kill(quested->id);
+    s.Drain();
+    s.Step(2);
+    CHECK(s.ctx->sys.quests->Progress(kPitQuest)->objectives == std::vector<int32_t>{1, 1, 0});
+    CHECK(s.Flag(kPitFlag));
+    CHECK(killExp() == 0);
+    // A new game starts with no record.
+    PitSim fresh;
+    CHECK(fresh.ctx->session.slainGuardians.empty());
+  }
+
+  // 3B review (ADV-CORE-3): the cleanse left up to five hostiles fighting and did not cancel the Unburied's pending
+  // rises - in 11 of 12 seeds the dead stood up in a cleansed, lamp-lit Pit.
+  TEST_CASE("the Pit: the cleanse settles it - what still stood lies down, nothing rises after it") {
+    for (uint64_t seed = 11; seed <= 16; ++seed) {
+      CAPTURE(seed);
+      PitSim s(seed);
+      s.TakeS7();
+      s.GoIn();
+      // Everything but the Pitwarden, his two shields and three of the rank falls to plain blows (no crit, no fire:
+      // the Unburied among them may rise again within 3 s); then he falls, with five left.
+      std::vector<EntityId> keep;
+      for (const MonsterInstance* m : s.Alive("risen_shieldbearer")) keep.push_back(m->id);
+      const auto rank = s.Alive("risen_footman");
+      for (size_t i = 0; i < 3; ++i) keep.push_back(rank[i]->id);
+      const EntityId warden = s.Alive(kPitwarden).front()->id;
+      for (const MonsterInstance* m : s.Alive()) {
+        if (m->id != warden && std::find(keep.begin(), keep.end(), m->id) == keep.end()) s.Kill(m->id);
+      }
+      s.Step();
+      CHECK_FALSE(s.Flag(kPitFlag));
+      s.log.clear();
+      s.Kill(warden);
+      s.Step(2);
+      REQUIRE(s.Flag(kPitFlag));
+      const auto cleansed = s.Events<EvAreaCleansed>();
+      REQUIRE(cleansed.size() == 1);
+      CHECK(cleansed[0].remaining == 5);
+      // In the cleanse's own step the five collapsed: no kill (no exp, no credit), their bodies on the floor.
+      CHECK(s.Alive().empty());
+      CHECK(s.Events<EvMonsterCollapsed>().size() == static_cast<size_t>(cleansed[0].remaining));
+      CHECK(s.sim->View().zone.subDungeon.hostiles == 0);
+      CHECK(s.sim->View().zone.subDungeon.cleansed);
+      // The events' order in that step: the flag, the cleanse, the collapses, then the objective.
+      int32_t iFlag = -1, iCleansed = -1, iCollapse = -1, iQuest = -1;
+      for (size_t i = 0; i < s.log.size(); ++i) {
+        const int32_t at = static_cast<int32_t>(i);
+        if (const EvWorldFlag* f = std::get_if<EvWorldFlag>(&s.log[i]); f != nullptr && f->flag == kPitFlag) iFlag = at;
+        if (std::holds_alternative<EvAreaCleansed>(s.log[i])) iCleansed = at;
+        if (std::holds_alternative<EvMonsterCollapsed>(s.log[i]) && iCollapse < 0) iCollapse = at;
+        if (const EvQuestUpdate* q = std::get_if<EvQuestUpdate>(&s.log[i]); q != nullptr && q->questId == kPitQuest) iQuest = at;
+      }
+      CHECK(iFlag >= 0);
+      CHECK(iCleansed > iFlag);
+      CHECK(iCollapse > iCleansed);
+      CHECK(iQuest > iCollapse);
+      // Seven seconds on (the rise delay is 3 s): nobody has stood up.
+      s.log.clear();
+      s.Step(420);
+      CHECK(s.Alive().empty());
+      CHECK(s.Events<EvMonsterRaised>().empty());
+      CHECK(s.sim->View().zone.subDungeon.hostiles == 0);
+    }
+  }
+
+  // 3B review (ADV-CORE-2): after a death's respawn the hero is alive again while the fade to Knellwatch runs; a
+  // Pitwarden that fell while the hero lay dead cleansed the Pit behind the fading screen.
+  TEST_CASE("the Pit: a fallen hero cleanses nothing - not while dead, not on the fade home; the next visit starts over") {
+    PitSim s;
+    s.TakeS7();
+    s.GoIn();
+    Hero& hero = *s.ctx->sys.hero;
+    const EntityId warden = s.Alive(kPitwarden).front()->id;
+    for (const MonsterInstance* m : s.Alive()) {
+      if (m->id != warden) s.Kill(m->id);
+    }
+    s.Step(2);
+    s.log.clear();
+    hero.SetHp(0);
+    s.ctx->sys.combat->KillHero(HeroDeathCause::Other);
+    REQUIRE(hero.Life() == HeroLife::Dying);
+    s.Step(2);
+    s.Kill(warden);  // a tick, the beast, a bolt in flight: he falls after the hero did
+    // To Knellwatch: through the death timer, the respawn and the fade.
+    bool aliveInside = false;
+    for (int i = 0; i < 1200 && (s.Zone() != test::ch1::kZone || s.ctx->session.transitioning); ++i) {
+      s.Step();
+      aliveInside = aliveInside || (s.Zone() == kPit && hero.Life() == HeroLife::Alive);
+      CHECK_FALSE(s.Flag(kPitFlag));
+    }
+    REQUIRE(s.Zone() == test::ch1::kZone);
+    CHECK(aliveInside);  // the window the review found: alive again, still in the Pit, the zone change under way
+    CHECK(s.Events<EvAreaCleansed>().empty());
+    CHECK_FALSE(s.Flag(kPitFlag));
+    CHECK(s.ctx->sys.quests->Progress(kPitQuest)->status == QuestStatus::Active);
+    CHECK(s.ctx->sys.quests->Progress(kPitQuest)->objectives == std::vector<int32_t>{1, 0, 0});  // his kill counted
+    // Down again: the Pit stands again (not cleansed), the Pitwarden spent; with him dead once more and the rest
+    // down, the living hero cleanses it.
+    s.GoIn();
+    CHECK(s.Alive().size() == 19);
+    CHECK(s.Alive(kPitwarden).front()->spent);
+    for (const MonsterInstance* m : s.Alive()) s.Kill(m->id);
+    s.Step(2);
+    CHECK(s.Flag(kPitFlag));
+    CHECK(s.Events<EvAreaCleansed>().size() == 1);
+  }
+}  // TEST_SUITE
+
+TEST_SUITE("quests") {
+  TEST_CASE("S7 the Pit of the Faithful (chapter1.md 6 S7): data - Aldwin's, after M2, a kill and the cleanse, the point") {
+    const DataStore& data = test::RealData();
+    const QuestDef* q = data.FindQuest(kPitQuest);
+    REQUIRE(q != nullptr);
+    CHECK(q->zone == test::ch1::kZone);
+    CHECK(q->category == QuestCategory::Side);
+    CHECK(q->level == 5);
+    CHECK(q->prereqQuests == std::vector<std::string>{test::ch1::kQuestM2});
+    CHECK_FALSE(q->reacceptable);
+    CHECK_FALSE(q->hasQuestArea);  // no map-generator landmark: the golden map did not move (DR4)
+    CHECK(q->hunts.empty());
+    REQUIRE(q->objectives.size() == 3);
+    const QuestObjectiveDef& kill = q->objectives[0];
+    CHECK(kill.type == ObjectiveType::Kill);
+    CHECK(kill.targetId == kPitwarden);
+    CHECK(kill.required == 1);
+    CHECK(kill.zone == kPit);
+    CHECK_FALSE(kill.hasLocation);
+    const QuestObjectiveDef& cleanse = q->objectives[1];
+    CHECK(cleanse.type == ObjectiveType::ClearArea);
+    CHECK(cleanse.targetId == kPit);
+    CHECK(cleanse.required == 1);
+    CHECK(cleanse.maxRemaining == 5);
+    CHECK(cleanse.after == 0);
+    CHECK(ObjectiveZone(*q, kill) == kPit);
+    CHECK(ObjectiveZone(*q, cleanse) == kPit);
+    // 3B review: the Flame Niche is the quest's last objective - an explore spot on its paving, in the Pit's own grid
+    // (the exporter writes the authored `spot` as the location; the parent's generator never saw it).
+    const QuestObjectiveDef& niche = q->objectives[2];
+    CHECK(niche.type == ObjectiveType::Explore);
+    CHECK(niche.targetId == "zone_rf_flame_niche");
+    CHECK(niche.required == 1);
+    CHECK(niche.zone == kPit);
+    CHECK(ObjectiveZone(*q, niche) == kPit);
+    REQUIRE(niche.hasLocation);
+    CHECK(niche.location.col == kPitNicheSpot.col);
+    CHECK(niche.location.row == kPitNicheSpot.row);
+    CHECK(niche.location.radius == 2);
+    CHECK(q->rewards.exp == 300);
+    CHECK(q->rewards.gold == 50);
+    CHECK(q->rewards.items.empty());
+    CHECK(q->rewards.choices.empty());
+    CHECK(q->rewards.permanent.skillPoints == 1);
+    CHECK(q->rewards.permanent.maxLife == 0);
+    CHECK(q->rewards.permanent.statPoints == 0);
+    CHECK(q->setsFlags.empty());  // the flag is the sub-dungeon's (the cleanse sets it, not the turn-in)
+    // Brother Aldwin gives it (his fifth).
+    const NpcDef* giver = data.Npcs().GiverOf(kPitQuest);
+    REQUIRE(giver != nullptr);
+    CHECK(giver->id == "knell_chaplain");
+    CHECK(giver->quests.size() == 5);
+    CHECK(giver->quests.back() == kPitQuest);
+    // Its words, and the port's label for the new objective type.
+    const I18n enStrings = test::quests_fx::EnglishStrings();
+    const auto zh = [&data](const std::string& key) {
+      const std::string* t = data.Strings().Lookup(LocaleId::ZhCN, key);
+      return t != nullptr ? *t : std::string();
+    };
+    const auto en = [&enStrings](const std::string& key) {
+      const std::string* t = enStrings.Lookup(LocaleId::En, key);
+      return t != nullptr ? *t : std::string();
+    };
+    CHECK(zh("data.quest.q_rf_the_pit.name") == "信者之坑");
+    CHECK(en("data.quest.q_rf_the_pit.name") == "The Pit of the Faithful");
+    CHECK(zh("data.quest.q_rf_the_pit.offer") == "你醒来的那个坑，底下还有一层。火熄了，可坑底有东西在挖。下去看看——那是你的来处。");
+    CHECK(zh("data.quest.q_rf_the_pit.progress") == "坑底不见天。带着你掌心的光。");
+    CHECK(zh("data.quest.q_rf_the_pit.complete") == "坑底的石龛空了，五道焦痕围着它。……那团火，在下面等了你一千年。");
+    CHECK(en("data.quest.q_rf_the_pit.complete") ==
+          "The niche at the bottom is empty, with five burn marks round it. ...That fire waited a thousand years for you down there.");
+    CHECK(q->progressKey == "data.quest.q_rf_the_pit.progress");
+    CHECK(zh("data.quest.q_rf_the_pit.permanent") == "空龛余温");
+    CHECK(en("data.quest.q_rf_the_pit.permanent") == "The Empty Niche's Warmth");
+    CHECK(zh("data.questTarget.sub_pitwarden") == "掘坑官");
+    CHECK(en("data.questTarget.sub_pitwarden") == "The Pitwarden");
+    CHECK(zh("data.questTarget.sub_rf_pit") == "信者之坑");
+    CHECK(zh("data.questTarget.zone_rf_flame_niche") == "坑底的石龛");
+    CHECK(en("data.questTarget.zone_rf_flame_niche") == "The niche at the bottom");
+    // 3B review: the log's text says what the offer says (it does not name him), the same in both languages.
+    CHECK(zh("data.quest.q_rf_the_pit.desc") ==
+          "焚尸坑底下还有一层，有东西在下面挖。下去，放倒那个挖坑的，让坑底的死人躺下，再看看坑底留着什么。");
+    CHECK(en("data.quest.q_rf_the_pit.desc") ==
+          "There is another floor under the burn pit, and something is digging down there. Go down, bring the digger "
+          "down, let the dead at the bottom lie down, and see what is left at the very bottom.");
+    // 3B review: the sub-dungeon's system lines are the chapter's, not the web's 副本 / "dungeon" / "main map"; zh-TW
+    // has no Simplified 离 left in them.
+    CHECK(zh("zone.subDungeon.enter") == "下到{name}。");
+    CHECK(en("zone.subDungeon.enter") == "Down into {name}.");
+    CHECK(zh("zone.subDungeon.exit") == "回到坑口。");
+    CHECK(en("zone.subDungeon.exit") == "Back at the pit mouth.");
+    CHECK(zh("zone.teleport.toSubDungeonEntrance") == "回到石阶下。");
+    CHECK(en("zone.teleport.toSubDungeonEntrance") == "Back at the foot of the stair.");
+    CHECK(en("zone.subDungeon.guardianSpent") == "{monsterName} falls again. There is nothing left on him.");
+    I18n twStrings;
+    REQUIRE(twStrings.LoadTable(test::ReadFile(test::DataDir() + "/i18n_zh-TW.json")));
+    for (const char* key : {"zone.subDungeon.enter", "zone.subDungeon.exit", "zone.teleport.toSubDungeonEntrance",
+                            "zone.subDungeon.guardianSpent"}) {
+      CAPTURE(key);
+      const std::string* tw = twStrings.Lookup(LocaleId::ZhTW, key);
+      REQUIRE(tw != nullptr);
+      for (const char* word : {"副本", "主地", "离", "阶", "么"}) CHECK(tw->find(word) == std::string::npos);
+    }
+    CHECK(zh("sys.quest.objType.clear_area") == "净化");
+    CHECK(en("sys.quest.objType.clear_area") == "Cleanse");
+    CHECK(zh("data.monster.sub_pitwarden") == "掘坑官");
+    CHECK(en("data.monster.sub_pitwarden") == "The Pitwarden");
+  }
+
+  TEST_CASE("S7 played by hand: offered after M2, the Pitwarden then the cleanse, the stair, the turn-in and its point") {
+    PitSim s;
+    QuestSystem& qs = *s.ctx->sys.quests;
+    QuestWorld& qw = *s.ctx->sys.questWorld;
+    Hero& hero = *s.ctx->sys.hero;
+    // Not offered before M2 is turned in; offered right after.
+    CHECK_FALSE(qs.Accept(kPitQuest));
+    s.TakeS7();
+    // Down. The first entry plays cs_rf_pit (zone_entered); the guide leads to the Pitwarden.
+    s.log.clear();
+    s.GoIn();
+    bool pitBeat = false;
+    for (const EvStoryBeat& b : s.Events<EvStoryBeat>()) pitBeat = pitBeat || b.beatId == "cs_rf_pit";
+    CHECK(pitBeat);
+    const std::vector<std::string>& seen = s.ctx->sys.story->Progress().Seen();
+    CHECK(std::count(seen.begin(), seen.end(), std::string("cs_rf_pit")) == 1);
+    // Five left and the Pitwarden standing: no cleanse. (Everything but him, his two shields and three of the rank.)
+    const auto killAllOf = [&s](std::string_view id, size_t keep) {
+      std::vector<EntityId> ids;
+      for (const MonsterInstance* m : s.Alive(id)) ids.push_back(m->id);
+      for (size_t i = keep; i < ids.size(); ++i) s.Kill(ids[i]);
+    };
+    killAllOf("breachclot", 0);
+    killAllOf("gravegnawer", 0);
+    killAllOf("risen_arbalest", 0);
+    killAllOf("risen_footman", 2);
+    s.Step(2);
+    CHECK(s.Alive().size() == 5);
+    CHECK_FALSE(s.Flag(kPitFlag));
+    CHECK(qs.Progress(kPitQuest)->objectives == std::vector<int32_t>{0, 0, 0});
+    // The guide leads to him (the quest is tracked when it is the only one open).
+    qs.SetTracked(kPitQuest);
+    s.Step(2);
+    CHECK(s.sim->View().guide.questId == kPitQuest);
+    CHECK(s.sim->View().guide.objectiveIndex == 0);
+    // The Pitwarden falls: his kill counts, and with four left (<= 5) the Pit is cleansed in the same breath - the
+    // flag, EvAreaCleansed, the objective. The quest is not complete yet: the niche at the bottom is still to see.
+    s.log.clear();
+    s.Kill(s.Alive(kPitwarden).front()->id);
+    s.Step(2);
+    CHECK(qs.Progress(kPitQuest)->objectives == std::vector<int32_t>{1, 1, 0});
+    CHECK(qs.Progress(kPitQuest)->status == QuestStatus::Active);
+    CHECK(s.Flag(kPitFlag));
+    const auto cleansed = s.Events<EvAreaCleansed>();
+    REQUIRE(cleansed.size() == 1);
+    CHECK(cleansed[0].zoneId == kPit);
+    CHECK(cleansed[0].questId == kPitQuest);
+    CHECK(cleansed[0].flag == kPitFlag);
+    CHECK(cleansed[0].remaining == 4);
+    CHECK(s.sim->View().zone.subDungeon.cleansed);
+    // The four that still stood lay down with the cleanse (3B review): a cleansed Pit holds no hostile.
+    CHECK(s.Alive().empty());
+    CHECK(s.Events<EvMonsterCollapsed>().size() == 4);
+    // 3B review (D2): the guide now leads on into the Flame Niche - not back to the stair - and the quest completes on
+    // the paving before the empty niche, the room Aldwin's turn-in line describes.
+    s.Step(30);
+    const GuideTarget& toNiche = s.sim->View().guide;
+    CHECK(toNiche.questId == kPitQuest);
+    CHECK(toNiche.objectiveIndex == 2);
+    CHECK(toNiche.kind != GuideTargetKind::Exit);
+    CHECK(Dist(toNiche.pos, kPitNicheSpot.Center()) < 1e-9);
+    s.Place(Vec2(22.5, 33.0));  // through the door: not there yet (the explore check runs twice a second)
+    s.Step(40);
+    CHECK(qs.Progress(kPitQuest)->objectives == std::vector<int32_t>{1, 1, 0});
+    s.log.clear();
+    s.Place(Vec2(20.0, 35.0));  // on the paving, a step from the niche
+    s.Step(40);
+    CHECK(qs.Progress(kPitQuest)->objectives == std::vector<int32_t>{1, 1, 1});
+    CHECK(qs.Progress(kPitQuest)->status == QuestStatus::Completed);
+    CHECK(s.HasLog("zone.quest.exploreFound"));
+    // Only now does the arrow turn to the way out (the giver stands in the parent zone).
+    s.Step(30);
+    CHECK(s.sim->View().guide.kind == GuideTargetKind::Exit);
+    // Up the stair to the return tile; S7 goes to Aldwin: 300 exp, 50 gold, one ember, and the skill point for good.
+    s.Place(kPitStart.Center());
+    s.Step();
+    s.GoOut();
+    CHECK(Dist(hero.Position(), kPitReturn.Center()) < 1e-9);
+    const int32_t skillBefore = hero.FreeSkillPoints();
+    const int32_t levelBefore = hero.Level();
+    const auto goldBefore = hero.Gold();
+    const int32_t embersBefore = s.ctx->sys.homestead->Tower().Embers();
+    s.log.clear();
+    REQUIRE(qw.TurnIn(kPitQuest, 0));
+    s.Drain();
+    s.Step();
+    CHECK(qs.IsTurnedIn(kPitQuest));
+    CHECK(hero.Gold() == goldBefore + 50);
+    // The permanent point, on top of the one each level gained from the 300 exp brings.
+    CHECK(hero.FreeSkillPoints() == skillBefore + 1 + (hero.Level() - levelBefore));
+    CHECK(s.ctx->sys.homestead->Tower().Embers() == embersBefore + 1);
+    int64_t questExp = 0;
+    for (const EvExpGained& x : s.Events<EvExpGained>()) questExp += x.source == ExpSource::Quest ? x.amount : 0;
+    CHECK(questExp == 300);
+    const auto perm = s.Events<EvPermanentReward>();
+    REQUIRE(perm.size() == 1);
+    CHECK(perm[0].questId == kPitQuest);
+    CHECK(s.ctx->session.permanentRewards.skillPoints == 1);
+    CHECK(s.ctx->session.permanentRewards.Claimed(kPitQuest, Difficulty::Normal));
+    // The cleansed Pit: open, empty, its dead still lying there; the entry beat does not play again.
+    s.log.clear();
+    s.GoIn();
+    CHECK(s.Alive().empty());
+    CHECK(s.sim->View().zone.subDungeon.cleansed);
+    CHECK(s.sim->View().zone.subDungeon.hostiles == 0);
+    CHECK_FALSE(s.sim->View().corpses.empty());
+    for (const EvStoryBeat& b : s.Events<EvStoryBeat>()) CHECK(b.beatId != "cs_rf_pit");
+    s.GoOut();
+    // And a save made now keeps the flag (the cleanse is in the quest log: turned in).
+    const std::string save = s.sim->SaveGame(1760000000000);
+    auto loaded = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(loaded != nullptr);
+    std::string err;
+    REQUIRE(loaded->LoadGame(save, &err) == SaveError::None);
+    const std::vector<std::string>& flags = loaded->Context().session.worldFlags;
+    CHECK(std::find(flags.begin(), flags.end(), std::string(kPitFlag)) != flags.end());
+  }
+}  // TEST_SUITE
+
+TEST_SUITE("monsters") {
+  TEST_CASE("the Pitwarden (monsters.md 2.0 / 2.2): the officer with the spade - numbers, Dig and the sweep, his body") {
+    const DataStore& data = test::RealData();
+    const MonsterDef* w = data.Monsters().Find(kPitwarden);
+    REQUIRE(w != nullptr);
+    CHECK(w->level == 8);
+    CHECK(w->hp == 1500);  // the 2.0 row says 420 (DECISIONS DR9 *3B review*: a guardian that registers for a Lv 9-10 hero)
+    // A Red Field definition: a hand-authored sub-dungeon's guardian has its parent zone as home (the exporter's
+    // derived field; the web's generated sub-dungeons' guardians have none).
+    CHECK(w->homeZone == test::ch1::kZone);
+    for (const std::string& id : data.Monsters().subDungeonBosses) {
+      if (id != kPitwarden) CHECK(data.Monsters().Find(id)->homeZone.empty());
+    }
+    CHECK(w->damage == 28);  // the 2.0 row says 17 (DR9 *3B review*)
+    CHECK(w->defense == 11);
+    CHECK(w->packAggro == 12);  // one pack with his guard: a shieldbearer provoked anywhere in the Cut brings him
+    CHECK(w->speed == 40);
+    CHECK(w->aggroRange == 7);
+    CHECK(w->attackRange == doctest::Approx(1.8));
+    CHECK(w->attackSpeedMs == 1500);
+    CHECK(w->expReward == 110);
+    CHECK(w->goldMin == 20);
+    CHECK(w->goldMax == 40);
+    CHECK(w->elite);
+    CHECK(w->isMiniBoss);
+    CHECK(w->isSubDungeonMiniBoss);
+    CHECK_FALSE(w->isRanged);
+    CHECK(w->family == "unburied");
+    CHECK(w->hitCapHeroMaxHpPct == 35);
+    CHECK(w->corpse.leaves == CorpseLeaves::Remains);  // his fall is the cleanse's beat: never raised, never eaten
+    CHECK_FALSE(w->riseAgain.present);
+    CHECK(w->phases.empty());
+    CHECK(w->spriteKey == "monster_sub_pitwarden");
+    CHECK(std::find(w->sources.begin(), w->sources.end(), MonsterSource::SubDungeonBoss) != w->sources.end());
+    // Dig, then the sweep (data order = the order of use on a tie; Dig has the higher priority and opens the fight).
+    REQUIRE(w->abilities.size() == 2);
+    const MonsterAbilityDef& dig = w->abilities[0];
+    CHECK(dig.id == "dig");
+    CHECK(dig.kind == AbilityKind::Line);
+    CHECK(dig.clip == "Cast01");
+    CHECK(dig.windupMs == 800);
+    CHECK(dig.cooldownMs == 12000);
+    CHECK(dig.initialCooldownMs == 0);
+    CHECK(dig.rangeMax == 4);
+    CHECK(dig.shape.length == 4);
+    CHECK(dig.shape.width == 1);
+    CHECK(dig.dmgMul == doctest::Approx(1.2));
+    CHECK(dig.status.present);
+    CHECK(dig.status.type == StatusType::Slow);
+    CHECK(dig.status.value == 30);
+    CHECK(dig.status.ms == 2500);
+    CHECK(dig.priority == 2);
+    CHECK(dig.rangeMax > w->attackRange * 1.2);  // a ranged special: it starts between swings, at a hero walking in
+    const MonsterAbilityDef& sweep = w->abilities[1];
+    CHECK(sweep.id == "spade_sweep");
+    CHECK(sweep.kind == AbilityKind::Cone);
+    CHECK(sweep.clip == "Attack02");
+    CHECK(sweep.windupMs == 700);  // the mini-boss windup floor
+    CHECK(sweep.cooldownMs == 6000);
+    CHECK(sweep.shape.radius == doctest::Approx(2.2));
+    CHECK(sweep.shape.arcDeg == 100);
+    CHECK(sweep.dmgMul == doctest::Approx(1.3));
+    CHECK(sweep.priority == 1);
+    // His art ships (3C): the ability clips exist on his asset, and their contact beats are the authored windups, so
+    // both play at rate 1.
+    const AssetEntryDef* art = data.Assets().FindByGameId("monster_sub_pitwarden");
+    REQUIRE(art != nullptr);
+    for (const MonsterAbilityDef& a : w->abilities) {
+      CAPTURE(a.id);
+      const AnimClipDef* clip = art->FindClip(a.clip);
+      REQUIRE(clip != nullptr);
+      REQUIRE(clip->hasContactMs);
+      CHECK(clip->contactMs == doctest::Approx(a.windupMs).epsilon(0.001));
+    }
+    // The two who stand before him block and hold a wall (their own W2 rules, unchanged).
+    CHECK(data.Monsters().Find("risen_shieldbearer")->block.present);
+  }
+}  // TEST_SUITE
+
+TEST_SUITE("world") {
+  TEST_CASE("the Pit: the dressing - the open pit mouth above; niches, lamps, curtains, racks and the Flame Niche below") {
+    const DataStore& data = test::RealData();
+    const SubDungeonDef& pit = PitDef();
+    // The surface: the open mouth on the entrance (the Wave 1 grate is its fallback).
+    const SetPieceZoneDef* field = data.SetPieces().ForZone(test::ch1::kZone);
+    REQUIRE(field != nullptr);
+    const SetPieceDef* mouth = nullptr;
+    for (const SetPieceDef& d : field->pieces) {
+      if (d.anchor == SetPieceAnchorKind::Entrance) mouth = &d;
+      CHECK_FALSE(d.onWall);
+      CHECK(d.gameId != "setpiece_pit_mouth_sealed");
+    }
+    REQUIRE(mouth != nullptr);
+    CHECK(mouth->id == "pit_mouth");
+    CHECK(mouth->gameId == "setpiece_pit_mouth_open");
+    CHECK(mouth->fallbackIds == std::vector<std::string>{"setpiece_pit_mouth_sealed"});
+    CHECK(mouth->ref == "entrance_rf_pit");
+    CHECK(data.Assets().FindByGameId("setpiece_pit_mouth_open") != nullptr);
+    // The Pit: counts by art id.
+    const SetPieceZoneDef* zone = data.SetPieces().ForZone(kPit);
+    REQUIRE(zone != nullptr);
+    std::map<std::string, int32_t> perId;
+    int32_t walls = 0;
+    for (const SetPieceDef& d : zone->pieces) {
+      ++perId[d.gameId];
+      walls += d.onWall ? 1 : 0;
+      CHECK_FALSE(d.hasRing);
+      CHECK(data.Assets().FindByGameId(d.gameId) != nullptr);
+    }
+    CHECK(perId["setpiece_pit_lamp"] == 14);          // they light one by one when the Pit is cleansed
+    // Eight behind the rank and two on the east wall; 3B review: three on the Ash Steps and three along the passage,
+    // the helms the entry beat's third line speaks of.
+    CHECK(perId["setpiece_pit_helm_niche"] == 16);
+    CHECK(perId["setpiece_pit_tag_curtain"] == 11);
+    CHECK(perId["setpiece_pit_tag_strand"] == 28);
+    CHECK(perId["setpiece_pit_tag_rack"] == 4);
+    CHECK(perId["setpiece_pit_wall_pier"] == 8);
+    CHECK(perId["setpiece_pit_ash_drift"] == 5);
+    CHECK(perId["setpiece_pit_flame_niche"] == 1);
+    CHECK(perId.count("setpiece_pit_lamp_lit") == 0); // the lit lamp is the cleanse's swap, not a placement
+    CHECK(perId.size() == 8);
+    CHECK(zone->pieces.size() == 87);
+    CHECK(walls == 78);  // everything but the racks and the ash drifts hangs on a wall tile
+    // The Flame Niche: on the south wall of its room, facing -row (the key-lit side) and the door; the helm niches
+    // behind the rank face the same way.
+    const SetPieceFrame frame{-90.0, data.World().constants.cameraYawDeg};
+    std::vector<SetPiecePlacement> placed;
+    ExpandSetPieces(*zone, pit.map, data, frame, placed);
+    REQUIRE(placed.size() == zone->pieces.size());
+    int32_t niches = 0, entryNiches = 0;
+    for (const SetPiecePlacement& p : placed) {
+      // 3B review (D7): helms in sight of the arrival tile. On the Steps' south wall, east of the stair, facing the
+      // room; the nearest inside the hero's light (5.6 tiles: the `pit` mood's radius), all inside the camera's frame.
+      if (p.def->gameId == "setpiece_pit_helm_niche" && p.def->area == "pit_ash_steps" && p.pos.y == 9) {
+        ++entryNiches;
+        CHECK(p.yawDeg == doctest::Approx(180.0));
+        CHECK(Dist(p.pos, kPitStart.Center()) <= 7.5);
+      }
+      if (p.def->gameId == "setpiece_pit_flame_niche") {
+        CHECK(p.pos == Vec2(20, 38));
+        CHECK(p.yawDeg == doctest::Approx(180.0));
+        const Vec2 front = SetPieceFront(p, frame);
+        CHECK(front.x == doctest::Approx(0.0).epsilon(1e-9));
+        CHECK(front.y == doctest::Approx(-1.0));
+      }
+      if (p.def->gameId == "setpiece_pit_helm_niche" && p.pos.y == 13) {
+        ++niches;
+        CHECK(p.yawDeg == doctest::Approx(180.0));
+        CHECK(p.pos.x >= 21);
+        CHECK(p.pos.x <= 28);
+      }
+      if (p.def->gameId == "setpiece_pit_tag_rack") CHECK(p.yawDeg == doctest::Approx(0.0));
+    }
+    CHECK(niches == 8);
+    CHECK(entryNiches == 3);
+    double nearestHelm = 1e9;
+    for (const SetPiecePlacement& p : placed) {
+      if (p.def->gameId == "setpiece_pit_helm_niche") nearestHelm = (std::min)(nearestHelm, Dist(p.pos, kPitStart.Center()));
+    }
+    CHECK(nearestHelm <= 5.6);
   }
 }  // TEST_SUITE
 

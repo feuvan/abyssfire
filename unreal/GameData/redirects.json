@@ -10,7 +10,8 @@
     "src/data/maps/emerald_plains.ts": "unreal/GameData/maps/emerald_plains.ts",
     "src/data/loreCollectibles.ts": "unreal/GameData/loreCollectibles.ts",
     "src/data/story/script.ts": "unreal/GameData/story/script.ts",
-    "src/data/homestead.ts": "unreal/GameData/homestead.ts"
+    "src/data/homestead.ts": "unreal/GameData/homestead.ts",
+    "src/data/subDungeons.ts": "unreal/GameData/subDungeons.ts"
   },
   "snapshots": {
     "unreal/GameData/quests/all_quests.ts": "9f526004ea8df774b8aee979df8304c81c113d50fd8ca768e261d8d4c293e53d",
@@ -21,6 +22,7 @@
     "unreal/GameData/maps/emerald_plains.ts": "a57f833191b4ec99369b7cca3423ec60af1ec73325e3e49f9fe011dd89fd45d8",
     "unreal/GameData/loreCollectibles.ts": "8e5e9f09bedbc2b8866bec968c542bd3558e4716b701eae2841eaef682e67151",
     "unreal/GameData/story/script.ts": "a58538893ee4ff3c36d58690481e11616563235157674a337ebcffe0457b927c",
-    "unreal/GameData/homestead.ts": "d4a79f3e02dd761c2b4833fbce89f9d3901e2bd7eea4e42699715bd1826e07b1"
+    "unreal/GameData/homestead.ts": "d4a79f3e02dd761c2b4833fbce89f9d3901e2bd7eea4e42699715bd1826e07b1",
+    "unreal/GameData/subDungeons.ts": "44f26897f65359f426ae0d8ebcc0f3d721df366d13db27f5f537e8c9722196ac"
   }
 }

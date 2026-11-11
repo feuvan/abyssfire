@@ -21,6 +21,8 @@
 // A Raised body (MonsterRole::Raised, K3) pays no rewards: step 1 skips its Spirit 'kill', exp, gold (no Loot draw)
 // and kill heal, and steps 2 (pet exp), 6 (embers, garden, expedition), 8 (quest drops) and 9 (loot) skip it; it still
 // counts as a kill (achievements, quest kill objectives, story triggers, totalKills).
+// A spent sub-dungeon guardian (MonsterKilledMsg::spent, K7 3B review: killed before on this save) pays nothing either:
+// steps 1, 2, 6 and 9 skip it; step 8 (quest drops) and the counters run.
 #include "abyss/base/Platform.h"
 
 #include "SimImpl.h"
@@ -31,13 +33,13 @@ void SimImpl::Wire() {
   // ---- kill pipeline ----
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { combat->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
-    if (m.role != MonsterRole::Raised) pets->OnKill(m.level);
+    if (m.role != MonsterRole::Raised && !m.spent) pets->OnKill(m.level);
   });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { achievements->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { questWorld->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { story->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
-    if (m.role != MonsterRole::Raised) homestead->OnMonsterKilled(m);
+    if (m.role != MonsterRole::Raised && !m.spent) homestead->OnMonsterKilled(m);
   });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { OnMonsterKilledDifficulty(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
@@ -48,7 +50,7 @@ void SimImpl::Wire() {
     combat->OnMonsterDeathEffects(m);
   });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
-    if (m.role != MonsterRole::Raised) groundLoot->OnMonsterKilled(m);
+    if (m.role != MonsterRole::Raised && !m.spent) groundLoot->OnMonsterKilled(m);
   });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { audio->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {

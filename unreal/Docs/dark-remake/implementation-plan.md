@@ -2317,6 +2317,212 @@ block; DECISIONS DR8 *K7 as built*, DR7 note).**
    loads at the pit mouth" should not lean on the fallback); its `levelRange` spans S7's level and the Pitwarden's;
    the six Helm Wall tiles and the guardian's tile are walkable in `BuildZoneGrid(sub_rf_pit)`.
 
+**3B outcomes (Content W3 as built, 2026-11; pending review; DECISIONS DR7 *3B note*, DR9 *3B*, DR15 *3B*;
+chapter1.md §7, §9.2 *as built*, §19; monsters.md §2.0 / §2.2 *as built*).**
+*(The review round below changes some of what this block records as built: the breachclots' place, the rank's tiles,
+the guard, the Pitwarden's numbers, S7's objectives, the piece count, Valdras's life, the acceptance. Where the two
+disagree, *3B review fixes* is the state of the tree.)*
+- **Scope.** The Pit of the Faithful is in the data and the bot plays it: the map, its population, the Pitwarden, S7,
+  `cs_rf_pit`, the cleanse flag, the strings, the mood and terrain data, the dressing, the route step. `Data/**`
+  re-exported (autopilot_routes, i18n x3, index, maps, minibosses, monsters, npcs, quest_hunts, quests, set_pieces,
+  story, terrain_styles, zone_moods); **no golden map moved** (S7 adds no generator landmark; unsealing is not a
+  generator input). The UE module is untouched (another lane owned it): what it needs is *3D notes from 3B* below.
+- **The record.** `GameData/subDungeons.ts` is the redirect of `src/data/subDungeons.ts` (3A's snapshot digest; ten
+  modules redirected): the web's two generated records verbatim, `sub_rf_pit` (`GameData/maps/sub_rf_pit.ts`) and the
+  Pitwarden in `SubDungeonMiniBosses`. The map is forty character rows (`#` wall 4, `.` flagstone 2, `,` ash 0, `:` dug
+  earth 1, `=` paving 5, `~` the seep 3, `o` flagstone under a rack, blocked): 40 x 40, 568 walkable tiles in one
+  component, 1020 wall tiles, the border all wall. Rooms, corridors, the stair alcove, the racks and the seeds:
+  chapter1.md §9.2 *as built*. `theme: plains` (the wall's art slot), `presentationTheme: pit`, `levelRange [5, 8]`,
+  `cleansedFlag: rf_pit_cleansed`, start (5,5), exit (5,10) returning to (17,29) (three tiles south of the pit mouth:
+  clear of its prop, inside its interact reach), seed 99903.
+- **Population** (19 + the guardian, at their own levels): 4 `breachclot` (9,4); the Helm Wall, 6 `risen_footman` from
+  (21,11) `dormant {wakeRange 3, line {1, 0}, faceDeg 270}`; 4 `gravegnawer` (10,24) and 2 `risen_arbalest` (10,28); 2
+  `risen_shieldbearer` (26,26); `sub_pitwarden` at (28,26). Seven corpse seeds. Every W2 system runs on them as on the
+  surface (Ashnumb, the Unburied rise, the gnawers' pack and feeding, the kite, the block and its wall).
+- **The Pitwarden** (`sub_pitwarden`, monsters.md §2.2 *as built*): the §2.0 row with 840 HP; `dig` (line 4 x 1,
+  `Cast01` 800 ms, x1.2, slow 30 % 2.5 s, 12 s, `rangeMax` 4: his opener) and `spade_sweep` (cone r 2.2 / 100 deg,
+  `Attack02` 700 ms, x1.3, 6 s, first after 2.5 s); the hit cap; remains; elite; no phases; no rise-again. His derived
+  `homeZone` is `emerald_plains`: the exporter gives the guardian of a **hand-authored** sub-dungeon its parent zone
+  (the web's two generated guardians keep null), so every "Chapter 1 definition" loop of the tests sees him.
+- **S7** `q_rf_the_pit` (Brother Aldwin's fifth; prereq M2; Lv 5; side): `[kill sub_pitwarden (zone sub_rf_pit),
+  clear_area sub_rf_pit (maxRemaining 5, after 0)]`, 300 exp / 50 gold / 1 ember, `permanent {skillPoints: 1}` (空龛余温 /
+  The Empty Niche's Warmth), its five lines. Placed after `q_rf_oathless` in the quest array (the zone's first block).
+  Totals: 12 quests, 3040 exp, 560 gold, 24 embers.
+- **Story.** `cs_rf_pit` (narrate, focus on the hero, narrate, whisper, wait) on `zone_entered sub_rf_pit`: once, the
+  first entry. 26 cutscenes, 20 triggers.
+- **The cleanse and its consumers.** `rf_pit_cleansed` is the sub-dungeon's flag (K7: set by S7's `clear_area`, never a
+  `setsFlags` entry). Spawns: a cleansed Pit spawns nothing (core); its seven seeded bodies still lie there. Mood:
+  `zone_moods` `pit` and `pit_cleansed` with their fog, light scale, windup tint and (cleansed) the ambience
+  `pit_embers`; `themeByZone.sub_rf_pit = pit`; weather none. Lamps: fourteen `setpiece_pit_lamp` pieces - the swap to
+  `setpiece_pit_lamp_lit` and the mood switch are presentation (3D).
+- **Strings** (zh-CN + en, zh-TW converted): S7's name / log line / offer / progress / complete / reward name, the two
+  quest targets, `data.subDungeon.sub_rf_pit.name`, `data.monster.sub_pitwarden`, `story.cs_rf_pit.1 / .3 / .4`, the
+  port string `sys.quest.objType.clear_area` (净化 / Cleanse). `data.subDungeonSealed.entrance_rf_pit` is gone with the
+  seal. zh-TW: 龛 → 龕 added to `zhTWExtra.ts`. Fonts: the eight Noto subsets rebuilt (排, 龕).
+- **Terrain.** `terrain_styles.json` `themes.pit` = the art manifest's `terrain.pit.dataStyle` (3C's handoff).
+- **Dressing** (`set_pieces.json` zone `sub_rf_pit`, 81 pieces; the surface piece `pit_mouth` now draws
+  `setpiece_pit_mouth_open`, fallback the sealed grate). New set-piece field **`onWall`** (`setPieces.ts`, the
+  exporter, `SetPieceData.h` / `LoadSetPieces.cpp`, `SetPieces.cpp`): a wall overlay - a `tile` anchor on a wall tile
+  (integer, no ring), a `tile` facing on a 4-neighbour that is open floor; its yaw is taken from the wall tile, so an
+  offset slides it along the wall (the tag strands, four to a tile). 72 of the 81 are overlays.
+- **The bot** (`AutoPilot.cpp`, `AutoPilotData.h`, `LoadAutoPilot.cpp`, `DataStore.cpp`; no content id in the bot, no
+  per-class rule). New step kind **`dungeon`** `{entrance, rooms, radius, visit?, until, tries, maxSec}` (appended to
+  `stepKinds`): walk onto the entrance, press interact (every 2 s, six times at most), then inside: for each room in
+  order hunt every monster within `radius` of its tile (the room is done when none is left there or the step's
+  condition holds), loot and equip after each room, a last sweep of whatever still lives, the `visit` tiles, out by the
+  exit (to the first room first when the exit is not armed). A death (the hero wakes at the parent's camp, the
+  sub-dungeon stands again) or an early exit goes down again, `tries` times in all. The route: after `home_m2` and a
+  town trip, `dungeon entrance_rf_pit rooms (7,5) (24,8) (10,24) (28,26) radius 7 visit (20,35) until questDone S7
+  tries 3`, checkpoint `pit`, home by the hearth (`goTo (15,18)`), S7 to Aldwin, checkpoint `pit_turned_in`, a town
+  trip. Finalize and the exporter check the step (the entrance is the zone's and unsealed, its target hand-authored,
+  rooms and visit tiles walkable; the exporter also: every spawn anchor and the guardian within `radius` of a room).
+  `AutoPilotStats` gains `dungeonVisits` (enter / cleanse / leave times, deaths, kills, the largest hit and 1 s burst
+  taken inside), `areasCleansed` and `dormantWakes` (a monster dormant before a frame and awake or dead after it: one
+  the waking hit kills plays no Rise). `ABYSS_PT_STATS` lines end with `dungeons=<id>:<clear s>:<inside s>:<deaths>:
+  <kills>:<max hit %>:<max burst %>;` and `wakes=<n>`.
+- **Balance** (DECISIONS DR9 *3B*, the evidence per number: chapter1.md §19). The regulars' exp is round(0.5 x the
+  design) (was 0.75); Valdras 10000 HP (9000), the Corpseherd 700 (600), the Pitwarden 840 (the row's 420). New
+  acceptance in the sweep test, per class and bot model: Dig in at least 95 % of the guardian's fights, the sweep in at
+  least 60 %, deaths inside in at most 2 % of the runs (10 % reaction-limited, one of slack). GCC, bases 1000-10000 x
+  20 seeds x 3 classes, both models: 1200 runs, every one passing; Clang bases 1000 / 7000 in both models: final saves
+  (266) and stats lines identical to GCC's.
+
+  | Bot model, class | End level 13 / 14 | Exp | Pit cleansed after (s): median, p10-p90, max | Inside (s): median, max | Deaths in the Pit | Pitwarden fight (s): median, p10-p90, max | Dig / sweep seen | Largest hit / 1 s burst inside (% of life) |
+  |---|---|---|---|---|---|---|---|---|
+  | frame-perfect, warrior | 95 / 105 | 4509-5081 | 30.2, 27.5-32.9, 37.5 | 51.1, 61.0 | 0 | 3.2, 2.2-4.8, 7.3 | 100 % / 99 % | 4.5 / 4.7 |
+  | frame-perfect, mage | 98 / 102 | 4505-5071 | 30.8, 27.6-33.4, 36.3 | 51.4, 57.7 | 0 | 5.4, 4.0-6.7, 9.2 | 100 % / 100 % | 6.4 / 6.4 |
+  | frame-perfect, rogue | 80 / 120 | 4507-5276 | 30.5, 26.0-39.6, 48.0 | 51.5, 74.5 | 0 | 7.0, 4.6-15.3, 24.8 | 100 % / 100 % | 6.9 / 6.9 |
+  | reaction-limited, warrior | 84 / 116 | 4490-5219 | 30.1, 27.2-32.3, 37.2 | 51.0, 60.2 | 0 | 3.6, 2.2-4.9, 7.7 | 100 % / 96 % | 8.2 / 8.2 |
+  | reaction-limited, mage | 93 / 107 | 4505-5118 | 30.8, 27.3-33.2, 36.6 | 51.3, 57.3 | 0 | 5.5, 4.0-6.9, 8.3 | 100 % / 100 % | 6.6 / 6.6 |
+  | reaction-limited, rogue | 86 / 114 | 4501-5111 | 29.9, 26.2-40.0, 57.1 | 51.2, 77.4 | 0 | 7.1, 4.6-15.8, 30.2 | 100 % / 100 % | 8.2 / 8.7 |
+
+  (200 runs a row. "Cleansed after" counts from the entry and includes the entry beat, about 6 s. Every run went down
+  once: no retry, the wall's six woke in each.) Whole runs: 108-182 kills; one death in each 600 (the rogue of seed
+  1000, on the surface, outside the named fights); the largest hit 12.8 % / 21.8 % of the hero's life and the largest
+  1 s burst 27.2 % (frame-perfect / reaction-limited). Valdras: medians 37.3 / 49.7 / 140.5 s frame-perfect (per sweep
+  34.7-44.9 / 45.8-58.1 / 122.0-157.3; 90th percentile at most 204 s; the longest 223.7 s) and 37.2 / 54.5 / 124.5 s
+  reaction-limited (34.4-43.6 / 49.2-66.2 / 116.0-145.8; the longest 199.7 s); no death to him, no reset. The
+  Corpseherd: her opening raise in every fight, Keen in 84 / 87 / 99 % and 84 / 89 / 99 % (per sweep 65-100 %).
+  Before the retune (the 2F-review numbers with the Pit, base 1000): 5029-5680 exp, Lv 14 (67) / 15 (1), the
+  warrior's Valdras median 23.8 s, his Keen 57 %. With the exp alone retuned (ten sweeps): 4457-5219 exp, Lv 13 / 14,
+  but the warrior's Valdras median 26.4-37.9 s per sweep (two under 30), his Keen 60-80 %, the Pitwarden (420) dead
+  in 1.4 / 2.9 / 3.5 s with the sweep seen in 60-90 % of the warrior's fights per sweep.
+- **Tests.** `content_ch1_test.cpp`: seven new cases (the record and its label, flag and strings; the grid: tile
+  counts, one component, the rooms and the A* walk through them, the stair's alcove, the Helm Wall's tiles; the
+  population on entry: counts, the rank's tiles and facing, dormant until 3 tiles; S7's data; **S7 played by hand** -
+  not offered before M2, `cs_rf_pit` once, no cleanse with the Pitwarden standing, the kill and the cleanse in one
+  step with four left, the stair to the return tile, the turn-in's 300 exp / 50 gold / ember / skill point, the
+  cleansed Pit empty with its dead, the flag in a saved game -; the Pitwarden's numbers, abilities and clip beats; the
+  dressing: counts by art id, overlays on walls, the niche's and the niches' yaw) and the re-pins (roster exp and
+  life, difficulty rows, hunts, affix rows, the quest table 12 / 3040 / 560, givers, order, embers 24, table sizes,
+  the entrance unsealed, S7's permanent reward). `playthrough_test.cpp`: S7 at `home_m2_turned_in`, the `pit`
+  checkpoint (completed, flag, back at the return tile, the beat, one cleanse, the wall's six woke, the last visit
+  cleansed without a death), `pit_turned_in`, quest exp 3040, embers 24, the skill point claimed and spent, the
+  sweep's Pit acceptance. `setpieces_test.cpp`: `onWall` in the loader (and its two shape errors), the shipped
+  overlays (wall tile under, open floor in front, the kit's yaw, a walk-over reason), the Pit's own route legs.
+  `data_test`, `monsters_test`, `TestContent.h` (`kPinnedIds` 77) re-pinned; the K6 replay digest re-pinned
+  (`f2b1dcac81e171c3`, GCC = Clang: the content's numbers); the K2-K5 and K7 digests unchanged. Fixtures:
+  `content_hooks_test` and `subdungeon_test` rewrite or re-point the zone's entrances, so they load the routes
+  without their `dungeon` steps (`TestUtil.h` `RoutesWithoutDungeonSteps`); `subdungeon_test`'s "unknown mood" case
+  takes the mood's row out of `zone_moods.json` (the shipped table now has `pit`), and its "generated sub-dungeons"
+  loop accepts the shipped hand-authored one. `PresentationTests` (the UE helpers' tests; the module itself is
+  untouched): `telegraph_test`'s "only Chapter 1 definitions telegraph" counts the guardian of the Red Field's
+  sub-dungeon as one (its `homeZone`); `audio_voice_test`'s roster check passes on that field unchanged. Totals: core
+  927 cases, GCC 248129 assertions, Clang 248065 (the world suite's known gap of 64); presentation 165 cases, 15153
+  assertions on both.
+- **Deviations and interpretations** (all pending review). (1) The exp factor, Valdras's and the Corpseherd's life:
+  DR9 *3B*. (2) The Pitwarden's 840 HP against monsters.md's 420; his multipliers (x1.2 / x1.3), the slow's 2.5 s and
+  his loot table are authored here (the design names none). (3) **The Flame Niche turn-in beat** is Aldwin's complete
+  line and the room after the cleanse, not a cutscene in the niche: S7 is turned in to its giver, and a beat in the
+  room needs a trigger the core lacks (`area_cleansed` or a region entered). (4) No story decoration in the Pit (the
+  UE build counts unresolved art; the kit has no reading prop). (5) The stair's alcove, the seeds by the racks, the
+  niches on the −row wall: chapter1.md §19. (6) The task text's "Lv 8-9" is the label `[5, 8]` (DR8 *K7 as built* (8)).
+  (7) `onWall` and the `dungeon` step are schema additions outside `REMAKE_SCHEMA` (both tables are remake-only:
+  `set_pieces.json`, `autopilot_routes.json`); the facing rule for overlays is a core change in `SetPieces.cpp`.
+  (8) After the Pit the route walks home by the hearth and ends with a town trip: the straight lines from the pit
+  mouth to Aldwin and from Aldwin toward Ashwheat cross Knellwatch's bell frame (`setpieces_test`). (9) S7's "a free
+  respec once the respec UI exists" is **not** in the data (`rewards.permanent` is `{skillPoints: 1}`,
+  `respecTokens` 0): no respec flow exists. When it does, adding `respecTokens: 1` to S7 reaches only heroes who have
+  not claimed S7 on that difficulty (a claim is once per quest and difficulty): the respec package must grant the
+  token to earlier claims on load, or the token is added now and waits in the save - a design call, left open.
+- **Remainders.** (1) The Pit is as easy for the bot as the field above it (the largest hit inside is 8 % of the
+  hero's life): a Lv 5-8 area played at Lv 9-10 by a bot in found gear. The Pitwarden's second Dig (12 s) is seen in
+  61 of the rogue's 200 frame-perfect fights (52 reaction-limited) and in none of the warrior's or the mage's. (2) Keen's 60 % floor has thin margin in single
+  sweeps (65 % at the lowest), as it had after the 2F review. (3) The bell frame stands on the natural line between
+  the pit mouth and Aldwin: set pieces do not block (DR15), so a player's click-path can pass through it; a
+  `blockingCells` footprint is the core + golden change DR15 deferred. (4) A cutscene at the Flame Niche needs a new
+  trigger kind.
+
+**3B review fixes (round 1, 2026-11; pending review; DECISIONS DR7 / DR8 / DR9 *3B review*; chapter1.md §9.2, §19
+*3B review*).** Fourteen findings (nine from the content review, five from the adversarial core review; two pairs
+describe one defect). All verified on the shipped data before the fix; none was "not real".
+- **D1 (major) the Helm Wall could be walked past.** The rank stood on (21..26, 11) with wake range 3 and the way
+  from the passage to the door on is the room's west column: exactly 3.000 tiles from the first man, so a hero woke
+  nobody (or, on a float equality, everybody). The rank now stands on (20..25, 11): the column is at most 2.5 tiles
+  away. Content test: the column walked at x = 17.6, 18 and 19 in 0.2-tile steps, and on foot with `CmdMoveTo`, wakes
+  all six (six Rise events) before the hero is through the door.
+- **D2 (major) nothing sent the player into the Flame Niche.** S7 gains a third objective, an explore spot on the
+  niche's paving ((20,36), r 2). The guide leads there after the cleanse and turns to the stair only once the quest is
+  complete. New remake field: an objective's `spot` (exported as `location`; types.ts explains why not `location`:
+  the web generator would make it a landmark of the parent's grid, and the first export of this fix did move the
+  golden map). The bot's step waits for objective 1 (the cleanse), then visits (20,37).
+- **D3 (major) the retune was accepted only on routes that take the Pit.** `playthrough_test.cpp` plays the chapter
+  without S7 (three default runs, a route-shape test, and the sweep under `ABYSS_PT_NO_PIT=1`). No Valdras life total
+  fits DR9's band on both routes (evidence in DR9 *3B review*): the band stays the full route's, Valdras goes to 10400
+  for the full route's warrior floor, and the route without the Pit is held to a 210 s median / 275 s 90th percentile.
+  **A decision for the design owner**: the rogue who skips the Pit fights Valdras for three minutes at the median.
+- **D4 (major) the Pitwarden's shieldbearers were not bound to him.** New core field `MapSpawnDef::guard` (schema
+  `subDungeon.spawnGuard`): the guardian joins the guard entry's pack. In the data the two are a dormant formation
+  without Rise at (26,25) / (26,27) facing the door, wake range 5 (their aggro), and he has `packAggro` 12. Tests: on
+  four seeds a blow on him, or on a guard, from outside every notice range brings all three; the rest of the Pit does
+  not hear it; a generic fixture case and three refusal rows in `subdungeon_test.cpp`.
+- **D5 / ADV-CORE-5 (major / minor) the Pit was the easiest stretch of the chapter and no test could tell.** Decision
+  taken here, for the design owner to confirm (option (c) of the finding with a real fight at the end, not (a) or
+  (b)): the rooms before the Cut stay at the roster's own levels and the docs say plainly that they are no threat to
+  a Lv 9-10 hero; the Pitwarden becomes the fight - 1500 HP, 28 damage, his guard with him - and the sweep gains two
+  floors (his fight at least 5 s at the median; the largest hit inside at least 2.5 % of life at the median).
+  Measured: 6 / 10 / 20 s and 3.8-7.6 % (was 3 / 5 / 7 s and 0.6-2.8 %). An elite sergeant leading the Helm Wall was
+  tried and dropped (no measurable effect, one more deviation from the design's six footmen). Raising the roster to
+  the label (`raiseToLevel`) is not done: it moves DR9's exp totals.
+- **D6 / ADV-CORE-4 (minor) the hero arrived inside the breachclots' aggro range.** The clots stand in the passage
+  ((15,4): the jitter keeps them on its tiles, 8 tiles or more from the arrival tile); the Ash Steps are empty. Test,
+  eight seeds, two classes: at arrival nothing is within its notice range + 1, nobody has left idle when the entry
+  beat begins or a second into it, and a later visit stands two seconds untouched.
+- **D7 (minor) the entry beat spoke of helmets nobody could see.** Six more helm niches: three on the Steps' south
+  wall east of the stair (the nearest 5 tiles from the arrival tile, inside the 5.6-tile light) and three along the
+  passage. The line is unchanged. 87 pieces (was 81).
+- **D8 / ADV-CORE-1 (minor / major) the Pitwarden was a repeatable farm.** Core: he pays once per save (DR8 *3B
+  review* 10; `slainGuardians` in the save). Data: his web `lootTable` is the Corpseherd's, no richer - but the core
+  reads no monster loot table (drops follow the mini-boss rule), so the table was never the leak; the repeat was.
+  Test: the review's six-loop probe - first kill pays, six more give no exp, gold, ember or ground item and log the
+  spent line; the regulars still pay; the record survives a save / load; S7 taken afterwards is completed by the
+  spent guardian's kill.
+- **D9 (minor) system lines out of voice.** `zone.subDungeon.enter` / `.exit`, `zone.teleport.toSubDungeonEntrance`
+  re-voiced in the remake strings (which also gives them the remake's zh-TW conversion: no 离 left); S7's log text
+  aligned across languages and with the offer; new `zone.subDungeon.guardianSpent`. No new glyph (fonts `--check`).
+- **ADV-CORE-2 (minor) the cleanse could fire for a hero who died.** `CheckClearArea` waits while a zone change is
+  under way. Test: the hero dies, the guardian is killed afterwards, the respawn and the fade run - no cleanse, no
+  flag, the kill objective counted; the next visit starts over (the guardian spent) and cleanses.
+- **ADV-CORE-3 (minor) the dead stood up in a cleansed Pit.** `MonsterSystem::SettleCleansed` (DR8 *3B review* 11).
+  Test, six seeds: five left at the cleanse collapse in its step (flag, cleanse, collapses, objective, in that
+  order), and nobody stands up in the seven seconds after.
+- **Not done, recorded.** A pending on-death effect of a monster killed just before the cleanse (a fuse, a puddle)
+  still plays out; a projectile already in flight from a monster that then collapses still lands. Neither spawns a
+  hostile. The Pit's regulars are worth their exp on every visit of an uncleansed Pit.
+- **Tests.** 938 test cases (was 927): `content_ch1_test.cpp` + 6 Pit cases (quiet landing, the wall not walked past,
+  the guard's pack, pays once, the cleanse settles, a fallen hero cleanses nothing) and the re-pins (the population,
+  S7's data and hand-played case, the Pitwarden, the dressing, Valdras's rows); `subdungeon_test.cpp` + the guard
+  case, the cleanse cases re-pinned to the settle rule, the K7 replay digest re-pinned (10366311907818012538, GCC =
+  Clang); `world_state_test.cpp` K6 digest re-pinned (da60fb9cd095b94a: Valdras's life); `playthrough_test.cpp` + the
+  three runs without the Pit, the route-shape case, the sweep's floors and the no-Pit ceilings.
+- **Sweeps** (final tree; DR9 *3B review* has the table): GCC bases 1000-10000 x 20 seeds x 3 classes, both bot
+  models, both routes - 2400 runs, 40 sweeps, all passing; Clang bases 1000 / 7000, both models, both routes - 8
+  sweeps passing, final saves and stats lines byte-identical to GCC's.
+- **Public core headers changed** (the compile-check lane re-runs against them): `MapData.h` (`MapSpawnDef::guard`),
+  `Monster.h`, `MonsterSystem.h`, `GameplayBus.h`, `Snapshot.h` (`MonsterView::spent`), `Session.h`, `SaveData.h`.
+  Nothing in `Source/Abyssfire/**` or `CompileCheck/**` was edited; what U6 can use is *3D notes from the 3B review*
+  (35-42).
+
 **3C outcomes (A13 as built, 2026-11; art review round 1 applied — `Art/blender/README.md` §33 *Art review (3C), round 1*).**
 - **The Pitwarden.** `monsters/pitwarden.py` → `SK_Mon_Pitwarden` (`monster_sub_pitwarden`; 6979 / 2994 toon
   triangles, budget 7k / 3k), `SM_MonWeapon_PitSpade`, `T_UI_Portrait_Pitwarden`. Clips (ms; **the beat the core's
@@ -2441,7 +2647,9 @@ it: every new enum value falls into an existing `default:`).**
     and `nameKey` its name: the zone banner and the map title work as for a zone; the minimap has no camps. The world
     map should show the hero in `parentZone`.
 15. **The cleanse.** `EvAreaCleansed {zoneId, questId, objectiveIndex, flag, remaining, pos}` starts the sequence of
-    note 5 (`pos` = the hero, for "nearest lamp first"); `EvWorldFlag{flag}` precedes it in the same step.
+    note 5 (`pos` = the hero, for "nearest lamp first"); `EvWorldFlag{flag}` precedes it in the same step. *3B
+    review:* `remaining` monsters (at most the objective's `maxRemaining`) then collapse in that same step, one
+    `EvMonsterCollapsed{entity, raiser = none}` each, before the objective's `EvQuestUpdate` (note 36).
 16. **Dormant monsters.** `MonsterView::dormant` (true until it wakes): hold a still pose (the clip's first `Idle`
     frame or an attention pose), no idle fidget, facing `heading`; on waking the core sends `EvPlayAnim{Rise}` (the K3
     Rise the actor already maps) and roots the monster for the clip. An entry wakes as one (3A review): the Helm
@@ -2463,6 +2671,83 @@ it: every new enum value falls into an existing `default:`).**
     step writes the parent camp (the core maps the position), and in the background the fade simply waits for the
     foreground (the sim is frozen). Worth one autotest probe: die in the Pit, deactivate the window, reactivate -
     the hero stands at Knellwatch.
+
+**3D notes from 3B (the Pit's data, as authored; none of it is handled in the UE module yet).**
+22. **The zone to build.** Inside, `ZoneView::mapId` is `sub_rf_pit` and `DataStore::FindMap` returns its map: a
+    hand-built grid like `ember_tower`'s (`generated: false`, `tiles` / `collisions` digit rows, no decorations, no
+    camps, one exit). Tile ids: 0 ash, 1 dug earth, 2 flagstone, 3 the seep (water art, blocking), 4 wall, 5 paving;
+    `terrain_styles.json` `themes.pit` is in the data (note 8's first handoff is done).
+23. **1020 wall tiles.** The rooms are cut out of solid rock: most wall tiles touch no floor. Build a block only on a
+    wall tile with a walkable or water tile among its eight neighbours (240 of the 1020) and close the rest with a
+    flat black cap or nothing, or the Pit is a thousand 2 m blocks and the rooms sit in trenches.
+24. **No skirt, no sky.** `BuildSkirt` plants the grove ring round every zone: skip it when `zone.subDungeon.inside`
+    (the Pit is underground; beyond the walls is black).
+25. **The stair's yaw.** The exit portal's yaw is computed from the map centre; the Pit's stair (exit (5,10), a
+    three-tile alcove, the wall row (4-6, 11) behind it) must face the floor: toward −row. Use the walkable side of
+    the exit tile (the neighbour opposite the wall) for `exit_portal@pit` (note 3).
+26. **Set pieces.** `SetPieces().ForZone("sub_rf_pit")` returns 87 pieces (3B review: six more helm niches, on the
+    Ash Steps' south wall and along the passage; 81 before) and `ExpandSetPieces` already gives each
+    its tile position and yaw (78 are `onWall`: they stand on a wall tile's centre - leave the wall block under them -
+    and their yaw is note 4's `atan2(−dc, dr)`; the 28 tag strands share seven tiles, four to a tile, with offsets
+    ±0.11 / ±0.33 along the wall and explicit variants). The four racks stand on (6.5,22), (12.5,22), (6.5,26),
+    (12.5,26), yaw 0; their tiles are blocked in the map. Ids are stable (`pit_<room>_lamp_<x>`, `pit_flame_niche`,
+    ...): the lamp swap can key on `gameId == setpiece_pit_lamp`.
+27. **Lamps, mood, cleanse.** Fourteen lamps. On `EvAreaCleansed` light them nearest-first from `pos` (note 5) and
+    cross-fade the mood `pit` → `pit_cleansed` (both in `zone_moods.json` with fog, light scale and windup tint;
+    `moodWeather.pit_cleansed` is the ambience `pit_embers`); on an entry with `ZoneView::subDungeon.cleansed` start
+    in `pit_cleansed` with every lamp lit. `BaseMood` reads `themeByZone` (`sub_rf_pit: pit`), so the uncleansed mood
+    needs no code; the cleansed one does. Weather: none.
+28. **The surface.** The pit mouth's piece id is now `pit_mouth` (was `pit_mouth_sealed`; nothing in the module names
+    it), art `setpiece_pit_mouth_open` with the sealed grate as fallback (note 7 is data now). The hero returns to
+    (17,29), three tiles south of it.
+29. **The entry beat.** `cs_rf_pit` plays 900 ms after the first entry (two narrations, a focus on the hero, a
+    whisper): no speaker stands in the Pit, no portrait is needed.
+30. **The Pitwarden.** Role `SubDungeonMiniBoss`, elite with one rolled affix; `dig` plays `Cast01` with its line
+    telegraph (4 x 1, contact 800 ms) and `spade_sweep` `Attack02` (cone, 700 ms): both at the clip's own beat (play
+    rate 1). His body is `remains` and stays.
+31. **Quest card.** (3B review: S7 has a third objective, an `explore` of `zone_rf_flame_niche` - label
+    `data.questTarget.zone_rf_flame_niche`, 坑底的石龛 / The niche at the bottom - done on the Flame Niche's paving;
+    note 39.) S7's second objective is `ObjectiveType::ClearArea` (label `sys.quest.objType.clear_area`: 净化 /
+    Cleanse / 淨化, in the data now); its reward line carries a permanent reward (`rewards.permanent.skillPoints`),
+    named by `data.quest.q_rf_the_pit.permanent` like S1's and S6's.
+32. **The autotest.** The chapter route goes down the Pit (step kind `dungeon`, checkpoints `pit` and
+    `pit_turned_in`); `AutoPilotStats::dungeonVisits` / `areasCleansed` / `dormantWakes` are there for the report.
+    `AutoPilotStepKind::Dungeon` is appended last; the module names no step kind today.
+33. **Dormant rank.** Six footmen at (20..25, 11) (3B review: one tile west of 3B's 21..26) facing 270 deg (−row),
+    their backs to the niche wall (note 16).
+34. **Bodies.** Seven husks lie in the Pit on every entry, cleansed or not (corpse seeds: the K3 corpse layer draws
+    them as on the surface).
+
+**3D notes from the 3B review (core and data changes of the review round; nothing in the UE module handles them yet,
+and nothing breaks without them).**
+35. **The Pitwarden's guard.** The two shieldbearers at (26,25) and (26,27) are `MonsterView::dormant` like the Helm
+    Wall's men (note 16: a still pose, facing `heading` - here 180 deg, the door) but wake **without** a Rise: no
+    `EvPlayAnim{Rise}` comes, they simply start to move. They and the Pitwarden share a `packId`; the three aggro
+    together (three `MonsterAggroMsg` vocalisations within a step: stagger or cap them if they stack).
+36. **The cleanse settles the Pit.** In the cleanse's step, after `EvAreaCleansed`, every monster still alive falls:
+    `EvPlayAnim{Death}` + `EvMonsterCollapsed{entity, raiser = kNoEntity}` each (the K3 collapse the corpse layer
+    already draws for a raiser's death; here there is no raiser) and its body stays as a spent corpse. No kill float,
+    no loot. `ZoneView::subDungeon.hostiles` is 0 from that step on and no body rises afterwards, so the lamp
+    sequence never plays over a fight. Worth a dedicated read in the presentation: the collapse is the "dead lie
+    down" beat (story-bible), at most five bodies, all in the cleanse's first frame - a short stagger per body
+    (nearest first, like the lamps) is the presentation's to add.
+37. **A spent guardian.** `MonsterView::spent` (a sub-dungeon guardian this save has killed before; he stands again
+    while the Pit is not cleansed). His kill emits no exp / gold floating text, no `EvEmbersGained`, no ground items,
+    and the log line `zone.subDungeon.guardianSpent` ({monsterName}) in place of `zone.monsterKill`. Nothing is
+    required; a dimmer name plate or no elite sigil for `spent` would tell the player before the fight.
+38. **System lines.** `zone.subDungeon.enter` / `.exit` and `zone.teleport.toSubDungeonEntrance` are re-voiced in the
+    data (Down into {name}. / Back at the pit mouth. / Back at the foot of the stair.); keys unchanged.
+39. **The guide inside, after the cleanse.** With S7 tracked the arrow goes entrance → the Pitwarden → (the cleanse) →
+    the explore spot on the Flame Niche's paving ((20,36); the ordinary objective arrow, `objectiveIndex` 2) → `exit`
+    once the quest is complete. The quest card shows three rows.
+40. **Saves.** `slainGuardians` is a new optional save field, written and read by the core (`SaveIO`); the module
+    passes saves through and needs nothing.
+41. **The autotest route.** The `dungeon` step's rooms start at the passage ((14,5)), it visits (20,37) and its
+    `until` is S7's objective 1 (the cleanse); `AutoPilotStats::dormantWakes` is 8 on a clean run (the rank's six and
+    the two guards). No API change.
+42. **A quiet landing.** Nothing stands on the Ash Steps: on the first entry `cs_rf_pit` (note 29) plays in an empty
+    room with three helm niches in the hero's light ((8,9) is 5 tiles from the arrival tile); the first fight is in
+    the passage east of it.
 
 ### Phase 4 — later chapters
 

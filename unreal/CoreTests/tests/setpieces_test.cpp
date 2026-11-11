@@ -146,6 +146,15 @@ std::vector<std::pair<Vec2, Vec2>> SpRouteLegs(const DataStore& data, const MapD
           walk(q->defendTarget.pos.Center() + Vec2(DetCos(a), DetSin(a)) * s.standOff);
         }
         break;
+      case AutoPilotStepKind::Dungeon:
+        // K7: to the entrance, then (the visit happens in the sub-dungeon's own grid: SpDungeonLegs) back at its
+        // return tile.
+        for (const SubDungeonEntranceDef& e : map.subDungeonEntrances) {
+          if (e.id != s.entrance) continue;
+          walk(e.pos.Center());
+          if (const SubDungeonDef* sd = data.World().FindEnterableSubDungeon(e.targetSubDungeon)) at = sd->returnPos.Center();
+        }
+        break;
       case AutoPilotStepKind::PortalHome: {
         double best = 1e18;
         for (const MapCampDef& c : map.camps) {
@@ -160,6 +169,32 @@ std::vector<std::pair<Vec2, Vec2>> SpRouteLegs(const DataStore& data, const MapD
       }
       default: break;
     }
+  }
+  return legs;
+}
+
+// K7: the legs the bot walks inside a hand-authored sub-dungeon - the dungeon step of its parent zone's route that goes
+// in through an entrance onto it: the start, the rooms in order, the visit tiles, the exit. Empty when no route plays it.
+std::vector<std::pair<Vec2, Vec2>> SpDungeonLegs(const DataStore& data, const SubDungeonDef& sd) {
+  std::vector<std::pair<Vec2, Vec2>> legs;
+  const AutoPilotRoute* route = data.AutoPilotRoutes().ForZone(sd.parentZone);
+  const MapDef* parent = data.World().FindMapProper(sd.parentZone);
+  if (route == nullptr || parent == nullptr) return legs;
+  for (const AutoPilotStep& s : route->steps) {
+    if (s.kind != AutoPilotStepKind::Dungeon) continue;
+    bool leadsHere = false;
+    for (const SubDungeonEntranceDef& e : parent->subDungeonEntrances) {
+      leadsHere = leadsHere || (e.id == s.entrance && e.targetSubDungeon == sd.id);
+    }
+    if (!leadsHere) continue;
+    Vec2 at = sd.playerStart.Center();
+    const auto walk = [&](Vec2 to) {
+      legs.emplace_back(at, to);
+      at = to;
+    };
+    for (const TilePos& t : s.tiles) walk(t.Center());
+    for (const TilePos& t : s.visit) walk(t.Center());
+    walk(sd.exitPos.Center());
   }
   return legs;
 }
@@ -242,13 +277,21 @@ TEST_SUITE("world") {
        "walkOver": "why", "yieldsToDefendTarget": true, "note": "n"},
       {"id": "b", "gameId": "g", "anchor": {"kind": "camp", "camp": 1, "prop": "campfire"},
        "ring": {"count": 4, "radius": 2, "startDeg": 10, "skip": [1], "variants": [0, 1]},
-       "facing": {"kind": "ringCentre"}}
+       "facing": {"kind": "ringCentre"}},
+      {"id": "c", "gameId": "g", "anchor": {"kind": "tile", "col": 12, "row": 7}, "offset": [0, 0.25],
+       "facing": {"kind": "tile", "col": 11, "row": 7}, "onWall": true}
     ]}}})";
     const DataLoadReport report = SpLoadWith(json, store);
     REQUIRE_MESSAGE(report.Ok(), report.Summary());
     const SetPieceZoneDef* z = store.SetPieces().ForZone(zone);
     REQUIRE(z != nullptr);
-    REQUIRE(z->pieces.size() == 2);
+    REQUIRE(z->pieces.size() == 3);
+    // Wave 3: a wall overlay (the crypt kit) - on a tile anchor, facing the floor tile next to it; false by default.
+    CHECK_FALSE(z->pieces[0].onWall);
+    CHECK_FALSE(z->pieces[1].onWall);
+    CHECK(z->pieces[2].onWall);
+    CHECK(z->pieces[2].facing == SetPieceFacingKind::Tile);
+    CHECK(z->pieces[2].toward.x == doctest::Approx(11));
     const SetPieceDef& a = z->pieces[0];
     CHECK(a.fallbackIds == std::vector<std::string>{"f1", "f2"});
     CHECK(a.variant == 1);
@@ -309,6 +352,22 @@ TEST_SUITE("world") {
                               "echoes": ["nope"]})"),
                      "is no echo lore"));
     CHECK(SpHasError(load(R"({"id": "a", "gameId": "g", "anchor": {"kind": "sky"}, "facing": {"kind": "camera"}})"), "unknown value 'sky'"));
+    // Wave 3 wall overlays: an integer tile anchor without a ring, facing a 4-neighbour tile.
+    CHECK(SpHasError(load(R"({"id": "a", "gameId": "g", "anchor": {"kind": "tile", "col": 1.5, "row": 1},
+                              "facing": {"kind": "tile", "col": 2.5, "row": 1}, "onWall": true})"),
+                     "anchored on a wall tile"));
+    CHECK(SpHasError(load(R"({"id": "a", "gameId": "g", "anchor": {"kind": "camp", "camp": 1},
+                              "facing": {"kind": "tile", "col": 2, "row": 1}, "onWall": true})"),
+                     "anchored on a wall tile"));
+    CHECK(SpHasError(load(R"({"id": "a", "gameId": "g", "anchor": {"kind": "tile", "col": 1, "row": 1},
+                              "facing": {"kind": "camera"}, "onWall": true})"),
+                     "faces the floor tile next to its wall tile"));
+    CHECK(SpHasError(load(R"({"id": "a", "gameId": "g", "anchor": {"kind": "tile", "col": 1, "row": 1},
+                              "facing": {"kind": "tile", "col": 2, "row": 2}, "onWall": true})"),
+                     "faces the floor tile next to its wall tile"));
+    CHECK_FALSE(SpHasIssue(load(R"({"id": "a", "gameId": "g", "anchor": {"kind": "tile", "col": 1, "row": 1},
+                                    "facing": {"kind": "tile", "col": 1, "row": 0}, "onWall": true})").errors,
+                           "onWall"));
     DataStore store;
     const DataLoadReport unknownZone = SpLoadWith(R"({"schemaVersion": 1, "zones": {"atlantis": {"pieces": []}}})", store);
     CHECK(SpHasWarning(unknownZone, "unknown zone 'atlantis'"));
@@ -502,7 +561,7 @@ TEST_SUITE("world") {
     }
     const SetPieceFrame frame{-90.0, data.World().constants.cameraYawDeg};
     size_t pieces = 0;
-    size_t checkedRoutes = 0;
+    size_t checkedRoutes = 0, checkedDungeons = 0, wallPieces = 0;
     for (const SetPieceZoneDef& z : data.SetPieces().zones) {
       CAPTURE(z.zone);
       const MapDef* map = data.FindMap(z.zone);
@@ -516,8 +575,10 @@ TEST_SUITE("world") {
       CHECK(placements.size() == expected);
       pieces += placements.size();
 
-      // the bot's route through this zone (if it has one)
+      // the bot's route through this zone (if it has one); a hand-authored sub-dungeon is walked by the dungeon step of
+      // its parent's route (K7)
       const AutoPilotRoute* route = data.AutoPilotRoutes().ForZone(z.zone);
+      const SubDungeonDef* subDungeon = data.World().FindEnterableSubDungeon(z.zone);
       std::set<std::pair<int32_t, int32_t>> routeTiles;
       if (route != nullptr) {
         size_t routed = 0;
@@ -526,6 +587,14 @@ TEST_SUITE("world") {
         CHECK(legs.size() > 10);
         CHECK(routed * 10 >= legs.size() * 9);  // the legs are real walks (not unreachable)
         ++checkedRoutes;
+      } else if (subDungeon != nullptr) {
+        size_t routed = 0;
+        const std::vector<std::pair<Vec2, Vec2>> legs = SpDungeonLegs(data, *subDungeon);
+        routeTiles = SpRouteTiles(grid, legs, routed);
+        CHECK(legs.size() >= 2);
+        CHECK(routed == legs.size());  // every room, visit tile and the exit is reached from the one before
+        ++checkedRoutes;
+        ++checkedDungeons;
       }
       const std::vector<std::pair<std::string, TilePos>> points = SpInteractionPoints(data, *map);
       // generated decorations by tile
@@ -547,6 +616,7 @@ TEST_SUITE("world") {
         CAPTURE(d.id);
         CAPTURE(p.member);
         CHECK(grid.InBounds(JsRoundInt(p.pos.x), JsRoundInt(p.pos.y)));
+        if (d.onWall) ++wallPieces;
         // art: the id (its theme variant first in a themed zone) or a fallback; partners too; the variant exists. The
         // meshes checked: the placement's variant, or every variant when the presentation picks one by tile hash.
         std::vector<std::string> ids{d.gameId};
@@ -588,8 +658,20 @@ TEST_SUITE("world") {
             CAPTURE(t.row);
             REQUIRE(grid.InBounds(t.col, t.row));
             CHECK(grid.Tile(t.col, t.row) != TileType::Water);
-            CHECK(grid.Tile(t.col, t.row) != TileType::Wall);
+            // Open ground - unless it is a wall overlay (Wave 3), whose own tile is the wall it hangs on.
+            if (!d.onWall) CHECK(grid.Tile(t.col, t.row) != TileType::Wall);
             CHECK_MESSAGE(blockingDecor.count({t.col, t.row}) == 0, "a blocking decoration stands inside the piece");
+          }
+          if (d.onWall) {
+            // A wall overlay: anchored on a wall tile, its front on the open floor tile next to it (the kit's yaw
+            // atan2(-dc, dr) follows from the facing), and proud of the wall: it names why the floor in front is free.
+            const TilePos own{JsRoundInt(d.tile.x), JsRoundInt(d.tile.y)};
+            const TilePos faced{JsRoundInt(d.toward.x), JsRoundInt(d.toward.y)};
+            CHECK(grid.Tile(own.col, own.row) == TileType::Wall);
+            CHECK(grid.Walkable(faced.col, faced.row));
+            const double want = std::atan2(-(d.toward.x - d.tile.x), d.toward.y - d.tile.y) * 180.0 / kPi;
+            CHECK(SpAngleDiff(p.yawDeg, want) < 1e-6);
+            CHECK_FALSE(d.walkOver.empty());
           }
           if (!d.walkOver.empty()) continue;
           // not walk-over: no route tile, no interaction point under it (with the hero's body pad)
@@ -609,5 +691,8 @@ TEST_SUITE("world") {
     }
     CHECK(pieces > 0);
     CHECK(checkedRoutes > 0);
+    // Wave 3: the Pit of the Faithful is dressed (its wall overlays) and walked (the route's dungeon step).
+    CHECK(checkedDungeons == 1);
+    CHECK(wallPieces > 0);
   }
 }

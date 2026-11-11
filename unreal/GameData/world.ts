@@ -17,6 +17,9 @@
  * after the chapter, the Breach Rim region), its fog, light scale and weather, the camp kit and terrain style `march`,
  * and the seven elite affixes re-voiced and recoloured off the hero's ember hue (DR5). The Ember Tower keeps the warm
  * plains look (its mood theme stays `plains`; it keeps the plains pollen it used to borrow from emerald_plains).
+ *
+ * Wave 3 (package 3B, chapter1.md §9.2): the Pit of the Faithful's terrain style `pit` (the art lane's), its moods `pit`
+ * and `pit_cleansed` with their fog, light scale, wind-up tints and the cleansed embers, and the Pit's mood theme.
  */
 import type { AchievementDefinition, CampTheme, RemakeEliteAffixDefinition } from './types';
 import type { ZoneEventData } from '@web/systems/RandomEventSystem';
@@ -106,6 +109,15 @@ export interface RemakeWindupTint {
   elite: number;
 }
 
+/**
+ * A terrain style as the remake writes it: the web's TerrainTheme, its outcrop widened by the Pit's `cryptWall` (the wall
+ * tile there is a dressed crypt block, Art `outcrop_plains@pit`, not a boulder; the kind is an art input the runtime
+ * does not read).
+ */
+export type RemakeTerrainTheme = Omit<TerrainTheme, 'outcrop'> & {
+  outcrop: Omit<TerrainTheme['outcrop'], 'kind'> & { kind: TerrainTheme['outcrop']['kind'] | 'cryptWall' };
+};
+
 export interface RemakeOverrides {
   /** achievements.json `achievements` (AchievementSystem ACHIEVEMENTS), by id. */
   readonly achievements?: EntryOverride<AchievementDefinition>;
@@ -155,7 +167,7 @@ export interface RemakeOverrides {
     readonly zoneAffixCounts?: EntryOverride<[number, number]>;
   };
   /** terrain_styles.json `themes` (TerrainStyles TERRAIN_THEMES), by theme. */
-  readonly terrainStyles?: EntryOverride<TerrainTheme>;
+  readonly terrainStyles?: EntryOverride<RemakeTerrainTheme>;
   /**
    * status_effects.json (K6), by status type: `add` only (the web's six keep their rules): the remake's statuses the core
    * knows (`ashnumb`). Feature `status.ashnumb` (checked by the exporter's combat.ts).
@@ -212,7 +224,7 @@ const UNBURIED_AFFIX: RemakeEliteAffixDefinition = {
 // water with an oily sheen. Bases from the art lane's reference march ground (Art/blender/README.md "Review": ash grass
 // #4C4940, mud #3A332D, stone #55524C, camp ash #47423C; water lifted to #262A30 below); the layer kinds and ranks are the plains ones.
 // No bones (DR6: no exposed bone in Chapter 1). ──
-const MARCH_TERRAIN: TerrainTheme = {
+const MARCH_TERRAIN: RemakeTerrainTheme = {
   ground: {
     0: {
       base: 0x4c4940, rank: 4, lip: 0x5e5a50,
@@ -275,6 +287,70 @@ const MARCH_TERRAIN: TerrainTheme = {
   outcrop: { kind: 'mossBoulder', rock: 0x5a5852, cap: 0x4c4940, accent: 0x7a2a26, extra: 0x3e3b35, shadow: 0x1e1c1a },
   // The pew palisade: charred timber, iron bands, the crusade's crimson.
   palisade: { kind: 'darkStakes', wood: 0x3a2e24, band: 0x5e5248, accent: 0x5e1012 },
+};
+
+// ── Terrain style `pit` (the Pit of the Faithful, sub_rf_pit; chapter1.md §9.2): the art lane's style, copied from
+// Art/Export/manifest.json `terrain.pit.dataStyle` (Art/blender/environment/terrain_pit.py authors it; plan *3D notes*
+// item 8). Tile ids as the Pit's map paints them: 0 ash drifted over the flags (also what a wall tile paints: it spills
+// from every wall's foot), 1 dug earth (the Cut; the darkest walkable tile, L* 20.7: the breach clot still reads on it),
+// 2 flagstone, 3 the seep (still, black, a violet sheen), 5 the niche's finer paving. The floor is no darker than the
+// march's: the Pit's darkness is the grade and the hero's light radius (the `pit` mood below; DR17). ──
+const PIT_TERRAIN: RemakeTerrainTheme = {
+  ground: {
+    0: {
+      base: 0x3a3733, rank: 4, lip: 0x4a4640,
+      layers: [
+        { kind: 'patch', count: 4, colors: [0x403d38, 0x35322f, 0x44413c], r: [14, 28] },
+        { kind: 'patch', count: 2, colors: [0x4c4842, 0x312e2b], r: [4, 8] },
+        { kind: 'pebble', count: 5, color: 0x4e4a44, shade: 0x26231f, light: 0x625d55, size: [1, 1.9] },
+      ],
+      details: ['stones', 'crackStar', 'stones'],
+      accents: [0x6a655c, 0x57534c],
+    },
+    1: {
+      base: 0x36312c, rank: 1,
+      layers: [
+        { kind: 'patch', count: 4, colors: [0x312c28, 0x3b3530], r: [10, 22] },
+        // Spade cuts.
+        { kind: 'crack', count: 2, color: 0x1e1a17, light: 0x463e36, len: [8, 14], width: 2 },
+        { kind: 'pebble', count: 8, color: 0x403830, shade: 0x221e1b, light: 0x50473d, size: [1.1, 2.2] },
+      ],
+      details: ['stones', 'crackStar', 'stones'],
+      accents: [0x50473d],
+    },
+    2: {
+      base: 0x363330, rank: 2,
+      layers: [
+        { kind: 'slabs', cells: 2, mortar: 0x1c1a19, mortarW: 0.035, jitter: 0.085, bevelLight: 0x46423e, bevelShade: 0x2a2826 },
+        { kind: 'patch', count: 3, colors: [0x403d39], r: [3, 7] },
+      ],
+      details: ['crackStar', 'stones', 'crackStar'],
+      accents: [0x403d39],
+    },
+    3: {
+      base: 0x101114, rank: 0,
+      layers: [
+        { kind: 'patch', count: 3, colors: [0x0d0e11, 0x15161a], r: [14, 26] },
+        { kind: 'wave', count: 3, color: 0x2e2440, len: [6, 11], alpha: 0.35 },
+      ],
+      details: ['stones'],
+      accents: [0x1e1a24],
+      liquid: { shallow: 0x17191d, foam: 0x2a2c31, bank: 0x1a1715 },
+    },
+    5: {
+      base: 0x3b3834, rank: 2,
+      layers: [
+        { kind: 'slabs', cells: 3, mortar: 0x211f1d, mortarW: 0.03, jitter: 0.06, bevelLight: 0x4b4843, bevelShade: 0x2f2d2a },
+        { kind: 'patch', count: 3, colors: [0x45423d], r: [3, 7] },
+      ],
+      details: ['crackStar', 'stones'],
+      accents: [0x45423d],
+    },
+  },
+  // The crypt block: dressed stone under a black earth top; the accent is the tarnished bronze of the tags.
+  outcrop: { kind: 'cryptWall', rock: 0x4a4642, cap: 0x131110, accent: 0x8a6e44, extra: 0x36332f, shadow: 0x0c0a0c },
+  // No camp down there; the march's charred stakes, darker (the slot must exist).
+  palisade: { kind: 'darkStakes', wood: 0x2a221c, band: 0x4a4238, accent: 0x5e1012 },
 };
 
 export const REMAKE_OVERRIDES: RemakeOverrides = {
@@ -349,7 +425,9 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
   },
   zoneMoods: {
     // emerald_plains (赤幡原) takes the march mood; ember_tower keeps plains.
-    themeByZone: { replace: { emerald_plains: 'march' } },
+    // Wave 3: the Pit of the Faithful takes the `pit` mood (a sub-dungeon without a row would fall back to its
+    // generator theme's mood, plains).
+    themeByZone: { replace: { emerald_plains: 'march' }, add: { sub_rf_pit: 'pit' } },
     // chapter1.md §15 (P14 applies 55 % of a mood).
     moods: {
       add: {
@@ -370,13 +448,32 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
           haze: 0x2a1a36, hazeAlpha: 0.14,
           saturation: 0.60, contrast: 1.15, lift: [-0.012, -0.014, 0.010], gain: [0.010, 0.0, 0.030],
         },
+        // Wave 3 (chapter1.md §9.2; DR17): the Pit of the Faithful. No sky: a cold, near-black grade in which the hero's
+        // light radius is the main light. The numbers of that radius and of the lamps' pools are the art contract's
+        // (Art/Export/VFX/vfx_recipes.json `dark.pit.lightRadius`: ambient .21 / .23 / .30 of the kit's values, a pool
+        // of r 5.6 tiles round the hero), which U6 implements in the materials; this row is the mood beside it (fog,
+        // vignette, the grade's cast) and the fallback's darkness.
+        pit: {
+          ambient: 0x5a6078, ambientAlpha: 0.40, vignette: 0x040305, vignetteAlpha: 0.72,
+          haze: 0x24262e, hazeAlpha: 0.10,
+          saturation: 0.58, contrast: 1.16, lift: [-0.014, -0.012, -0.004], gain: [-0.010, -0.004, 0.018],
+        },
+        // After `rf_pit_cleansed` (S7's clear_area; chapter1.md §8 *Saved world state*): the embers rise, the lamps
+        // light and the grade warms (`dark.pit.cleanse`: ambient .52 / .44 / .36, a pool per lit lamp, over 6 s).
+        pit_cleansed: {
+          ambient: 0xc8a078, ambientAlpha: 0.28, vignette: 0x100a06, vignetteAlpha: 0.50,
+          haze: 0x5a4634, hazeAlpha: 0.08,
+          saturation: 0.78, contrast: 1.08, lift: [0.006, 0.002, -0.006], gain: [0.024, 0.010, -0.004],
+        },
       },
     },
     weather: {
       // Falling ash over the march (ember motes near the breach are the region's).
       replace: { emerald_plains: { type: 'none', ambience: 'ashfall', tint: 0xcfcac0 } },
-      // The homestead keeps the plains pollen it borrowed from emerald_plains through its theme.
-      add: { ember_tower: { type: 'none', ambience: 'pollen', tint: 0xffe8a0 } },
+      // The homestead keeps the plains pollen it borrowed from emerald_plains through its theme. The Pit has no weather
+      // and no ambience of its own (its generator theme is plains: without a row it would borrow the pollen); its embers
+      // come with the cleansed mood (moodWeather below).
+      add: { ember_tower: { type: 'none', ambience: 'pollen', tint: 0xffe8a0 }, sub_rf_pit: { type: 'none' } },
     },
     // Plains-themed places that have no weather of their own (sub-dungeons, floors) keep the plains pollen.
     weatherByTheme: { replace: { plains: 'ember_tower' }, add: { march: 'emerald_plains' } },
@@ -394,14 +491,20 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
         march: { color: 0x4e525c, maxOpacity: 0.40, density: 1.15 },
         march_dawn: { color: 0x6a6660, maxOpacity: 0.30, density: 0.95 },
         breach_rim: { color: 0x3a2a48, maxOpacity: 0.45, density: 1.25 },
+        pit: { color: 0x1a1c24, maxOpacity: 0.50, density: 1.30 },
+        pit_cleansed: { color: 0x3a2e24, maxOpacity: 0.32, density: 1.00 },
       },
     },
     // R18 override: the dark grade would leave the fake lights at the 0.12 floor (march's formula value is 0.134).
-    lightScale: { add: { march: 0.32, march_dawn: 0.22, breach_rim: 0.40 } },
+    // The Pit: the hero's halo and the lit lamps are the light (0.50); cleansed, the warm ambient carries more (0.30).
+    lightScale: { add: { march: 0.32, march_dawn: 0.22, breach_rim: 0.40, pit: 0.50, pit_cleansed: 0.30 } },
     moodWeather: {
       add: {
         march_dawn: { type: 'none', ambience: 'dust_motes' },
         breach_rim: { type: 'none', ambience: 'sparks', tint: 0xb02fd0 },
+        // The cleansed Pit: embers rising from the floor for good (Art recipe `ambient.pit_embers`; the cleanse's own
+        // burst is `prop.pit_cleanse.embers`, UE's sequence on EvAreaCleansed).
+        pit_cleansed: { type: 'none', ambience: 'pit_embers' },
       },
     },
     // DR5 hazard language on the body: the wind-up ramps to warning-crimson (the telegraph rim #D11F2E), elites to the
@@ -411,13 +514,15 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
         march: { normal: 0xd11f2e, elite: 0xff3a48 },
         march_dawn: { normal: 0xd11f2e, elite: 0xff3a48 },
         breach_rim: { normal: 0xd11f2e, elite: 0xff3a48 },
+        pit: { normal: 0xd11f2e, elite: 0xff3a48 },
+        pit_cleansed: { normal: 0xd11f2e, elite: 0xff3a48 },
       },
     },
   },
   eliteAffixes: {
     definitions: { replace: affixDefinitions, add: { unburied: UNBURIED_AFFIX } },
   },
-  terrainStyles: { add: { march: MARCH_TERRAIN } },
+  terrainStyles: { add: { march: MARCH_TERRAIN, pit: PIT_TERRAIN } },
   // monsters.md §4 (Wave 2, K6): 麻灰 Ashnumb, from breach-blood contact: each stack -10 % healing received, at most 5,
   // slowed 20 % at 5; one shared 6 s timer refreshed by every landed hit; the antidote cleanses it.
   statusEffects: {

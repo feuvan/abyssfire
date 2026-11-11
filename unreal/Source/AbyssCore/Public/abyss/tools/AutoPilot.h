@@ -4,7 +4,8 @@
 // Its script is data: a route of autopilot_routes.json (exported from unreal/GameData/autopilot/*.ts,
 // implementation-plan.md 6; DataStore::AutoPilotRoutes) whose steps it interprets one by one - checkpoints, notes and
 // tasks (talk, dialogue tree, quest card, shop, gather, hunt by def ids, boss by role, clues, explore, escort, defend,
-// walk, town portal, equip). No content id is spelled in the bot (the K1 grep gate, content_hooks_test.cpp).
+// walk, town portal, equip, and - K7 - a sub-dungeon cleared room by room). No content id is spelled in the bot (the K1
+// grep gate, content_hooks_test.cpp).
 //
 // It plays only through the public contract: it reads the Snapshot and the Events and sends Commands - the commands
 // the UE input layer and UI send (CmdMoveTo / CmdAttackTarget / CmdCastSkill / CmdInteract / CmdPickUp /
@@ -132,6 +133,20 @@ struct AutoPilotFight {
   std::vector<AbilityUse> abilities;
 };
 
+// A visit of a hand-authored sub-dungeon (dark remake 3B, K7: the sweep reports the Pit's clear time and what it cost):
+// from the zone's entry to the moment the hero is in another zone again (the stair, the town portal, or a death, which
+// restarts the parent zone at its camp).
+struct AutoPilotDungeonVisit {
+  std::string id;              // the sub-dungeon
+  double enterMs = 0;          // sim ms of the entry
+  double cleansedMs = -1;      // sim ms of its EvAreaCleansed (< 0: not cleansed in this visit)
+  double leaveMs = -1;         // sim ms of the next zone's entry (< 0: still inside)
+  int heroDeaths = 0;          // the hero's deaths inside
+  int kills = 0;               // monsters killed inside
+  double maxHitTakenPct = 0;   // as AutoPilotStats::maxHitTakenPct / maxBurstTakenPct, inside only
+  double maxBurstTakenPct = 0;
+};
+
 // Counters of what the bot did and saw (all from events and its own commands).
 struct AutoPilotStats {
   int deaths = 0, levelUps = 0, kills = 0, potionsDrunk = 0, itemsPicked = 0, equipChanges = 0, saveRequests = 0;
@@ -161,6 +176,10 @@ struct AutoPilotStats {
   // permanent rewards granted, phase rows entered.
   int raised = 0, selfRises = 0, blocks = 0, flees = 0, supportCasts = 0, corpsesEaten = 0, onDeathFuses = 0;
   int ashnumbHits = 0, ashnumbMaxStacks = 0, championAmbushes = 0, worldFlags = 0, permanentRewards = 0, phases = 0;
+  // Dark remake 3B (K7): the sub-dungeon visits in entry order, areas cleansed (EvAreaCleansed) and dormant monsters
+  // woken (dormant before a frame, awake or dead after it; a re-entered sub-dungeon's fresh rank counts again).
+  std::vector<AutoPilotDungeonVisit> dungeonVisits;
+  int areasCleansed = 0, dormantWakes = 0;
 };
 
 using AutoPilotSubmit = std::function<void(const Command&)>;

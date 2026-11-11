@@ -2,8 +2,9 @@
  * The UE set-piece layer (implementation-plan.md §2.1 / §4 U4; dark-remake chapter1.md §1, §2, §5, §9.1, §10): authored
  * prop groups the Unreal build places at tiles when it builds a zone — Knellwatch's bell frame, hearth dressing and Name
  * Wall, Ashwheat's cottages and burned bridge, the Sheepfold's wagon ring, the Breach Rim's dais, ash circles and banner
- * ring, the helmet stakes of the Dead Ranks approach, the Boneyard Gate and the sealed Pit mouth. Exported to
- * `Data/set_pieces.json` by unreal/Tools/export-data/src/tables/setpieces.ts.
+ * ring, the helmet stakes of the Dead Ranks approach, the Boneyard Gate and the open Pit mouth; and, since Wave 3, the
+ * dressing of the Pit of the Faithful itself (zone `sub_rf_pit`: helm niches, lamps, tag curtains, racks, piers, the
+ * Flame Niche). Exported to `Data/set_pieces.json` by unreal/Tools/export-data/src/tables/setpieces.ts.
  *
  * Presentation only: set pieces are **not** map-generator inputs (the golden maps do not move) and **not** walkability
  * (non-blocking by default, DECISIONS DR15). The core reads the table for checks and the placement maths
@@ -31,6 +32,9 @@
  *   lore spot).
  * - `yieldsToDefendTarget`: hidden while a quest's defend target (the same gate art) stands on it; the target takes the
  *   piece's yaw.
+ * - `onWall` (Wave 3, the crypt kit): the piece is an overlay on a **wall** tile (its anchor), its front turned to the
+ *   floor tile it faces (`facing: {kind: 'tile'}` on a neighbour: the actor yaw is then the kit's atan2(-dc, dr)); the
+ *   wall block under it stays. Every other piece stands on open ground (CoreTests setpieces_test checks both).
  */
 
 export type SetPieceTile = readonly [col: number, row: number];
@@ -97,6 +101,8 @@ export interface SetPieceDef {
   readonly occluder?: boolean;
   readonly walkOver?: string;
   readonly yieldsToDefendTarget?: boolean;
+  /** A wall overlay: anchored on a wall tile, facing a floor neighbour (the crypt kit's niches, lamps, curtains). */
+  readonly onWall?: boolean;
   /** Design note (exported). */
   readonly note?: string;
 }
@@ -141,13 +147,15 @@ const RED_FIELD: SetPieceZone = {
       anchor: { kind: 'camp', camp: 1 }, offset: [-4.45, 0.32], facing: { kind: 'front', deg: 0 }, occluder: true,
       note: 'hundreds of bronze name-tags on the inner west palisade between its torches, facing into the camp',
     },
-    // ── The burn pit: the sealed Pit mouth at entrance_rf_pit (inert until Wave 3; the core's sealed-entrance toast). ──
+    // ── The burn pit: the Pit mouth at entrance_rf_pit, open since Wave 3 (the way down into sub_rf_pit; Wave 1 drew
+    // the sealed grate here: same anchor, yaw and footprint, plan *3D notes* item 7). ──
     {
-      id: 'pit_mouth_sealed', area: 'burn_pit', gameId: 'setpiece_pit_mouth_sealed',
+      id: 'pit_mouth', area: 'burn_pit', gameId: 'setpiece_pit_mouth_open', fallbackIds: ['setpiece_pit_mouth_sealed'],
       anchor: { kind: 'entrance', id: 'entrance_rf_pit' }, facing: { kind: 'camera' },
       effects: [{ socket: 'smoke', recipe: 'camp.torch@march' }],
-      walkOver: 'a walk-over grate on the sealed entrance tile (its socket entrance is the entrance point)',
-      note: 'still smoking: the march brazier\'s smoulder (no light) at socket smoke',
+      walkOver: 'the pit mouth on the entrance tile: the hero walks to its rim and climbs down (socket entrance is the ' +
+        'entrance point, ladder_top where the ladder leaves the hole)',
+      note: 'the fire is out; the march brazier\'s smoulder (no light) still rises at socket smoke',
     },
     // ── The Boneyard Gate (M5's defend target, chapter1.md §5). ──
     {
@@ -256,4 +264,101 @@ const RED_FIELD: SetPieceZone = {
   ],
 };
 
-export const SET_PIECE_ZONES: readonly SetPieceZone[] = [RED_FIELD];
+// ── The Pit of the Faithful (sub_rf_pit; chapter1.md §9.2, maps/sub_rf_pit.ts). The floor and the wall blocks are the
+// map's tiles (terrain style `pit`, `outcrop_plains@pit`) and the stair is the exit's own art (`exit_portal@pit`); here is
+// the dressing of the crypt kit (Art/blender/environment/crypt_pit.py, vignette_pit.py): overlays on wall tiles facing the
+// floor - every one on a wall whose face looks toward -row (key-lit at the W1 camera) or -col (the shade band), the
+// two sides the camera sees -, the Tag Cellar's free-standing racks (their tiles are blocked in the map) and ash
+// drifts. The lamps are `setpiece_pit_lamp`: UE swaps each for `setpiece_pit_lamp_lit` when the Pit is cleansed
+// (vfx_recipes.json `dark.pit.cleanse`: nearest first, 420 ms apart). ──
+const WALL_NOTE = 'an overlay on the wall tile\'s face: it hangs proud of the block, above the floor';
+/** A crypt overlay on wall tile (col, row), its front to the floor tile (col + dc, row + dr). */
+const onWall = (id: string, area: string, gameId: string, col: number, row: number, dc: number, dr: number,
+  more: Partial<SetPieceDef> = {}): SetPieceDef => ({
+  id, area, gameId, anchor: { kind: 'tile', col, row }, facing: { kind: 'tile', col: col + dc, row: row + dr },
+  onWall: true, walkOver: WALL_NOTE, ...more,
+});
+/** A niche lamp (unlit until `rf_pit_cleansed`): sockets flame (the wick) and light (the pool, 0.75 m out on the floor). */
+const lamp = (id: string, area: string, col: number, row: number, dc: number, dr: number): SetPieceDef =>
+  onWall(`${area}_lamp_${id}`, area, 'setpiece_pit_lamp', col, row, dc, dr);
+/** The kit's corner piece: wall ends, door jambs, inner corners (four-sided: any 90 degree yaw). */
+const pier = (id: string, area: string, col: number, row: number, dc: number, dr: number): SetPieceDef =>
+  onWall(`${area}_pier_${id}`, area, 'setpiece_pit_wall_pier', col, row, dc, dr, { occluder: true });
+/** Ash drifted over the flags: ground cover (variant 0 has no ink hull), walk-over. */
+const ashDrift = (id: string, area: string, col: number, row: number, variant: number, deg: number): SetPieceDef => ({
+  id: `${area}_ash_${id}`, area, gameId: 'setpiece_pit_ash_drift', variant, anchor: { kind: 'tile', col, row },
+  facing: { kind: 'yaw', deg }, walkOver: 'ash drifted over the floor (ground cover, 7 cm)',
+});
+const range = (from: number, to: number): number[] => Array.from({ length: to - from + 1 }, (_, k) => from + k);
+
+const PIT: SetPieceZone = {
+  zone: 'sub_rf_pit',
+  pieces: [
+    // ── The Ash Steps (5,5): the stair alcove's jambs, ash at the stair's foot and in the far corner. ──
+    pier('stair_w', 'pit_ash_steps', 3, 9, 0, -1),
+    pier('stair_e', 'pit_ash_steps', 7, 9, 0, -1),
+    lamp('s', 'pit_ash_steps', 9, 9, 0, -1),
+    lamp('e', 'pit_ash_steps', 12, 7, -1, 0),
+    pier('door', 'pit_ash_steps', 12, 6, -1, 0),
+    // The first helms (3B review): the entry beat's third line speaks of rows of helmets set into the walls, and the
+    // Helm Wall is two rooms on. Three niches on the Steps' south wall, east of the stair - (8,9) is 5 tiles from the
+    // arrival tile, inside the hero's light - and three along the passage's south face, on the way to the wall itself.
+    ...[8, 10, 11].map((col, k) => onWall(`pit_ash_steps_niche_${k + 1}`, 'pit_ash_steps', 'setpiece_pit_helm_niche',
+      col, 9, 0, -1, { variant: k % 2 })),
+    ...[13, 15, 17].map((col, k) => onWall(`pit_ash_steps_niche_p${k + 1}`, 'pit_ash_steps', 'setpiece_pit_helm_niche',
+      col, 6, 0, -1, { variant: (k + 1) % 2 })),
+    ashDrift('foot_w', 'pit_ash_steps', 3.6, 7.4, 0, 40),
+    ashDrift('foot_e', 'pit_ash_steps', 6.5, 7.3, 1, 200),
+    ashDrift('alcove', 'pit_ash_steps', 5.0, 9.2, 0, 150),
+    ashDrift('corner', 'pit_ash_steps', 2.6, 2.6, 1, 80),
+    // ── The Helm Wall (24,8): kettle helms in the niches of the south wall (A / B alternating), behind the rank of six
+    // (row 11, cols 20-25); two more niches and the lamps on the east wall. ──
+    pier('door', 'pit_helm_wall', 20, 13, 0, -1),
+    ...range(21, 28).map((col, k) => onWall(`pit_helm_wall_niche_${k + 1}`, 'pit_helm_wall', 'setpiece_pit_helm_niche',
+      col, 13, 0, -1, { variant: k % 2 })),
+    lamp('s', 'pit_helm_wall', 29, 13, 0, -1),
+    onWall('pit_helm_wall_niche_e1', 'pit_helm_wall', 'setpiece_pit_helm_niche', 31, 8, -1, 0, { variant: 0 }),
+    onWall('pit_helm_wall_niche_e2', 'pit_helm_wall', 'setpiece_pit_helm_niche', 31, 12, -1, 0, { variant: 1 }),
+    lamp('e1', 'pit_helm_wall', 31, 6, -1, 0),
+    lamp('e2', 'pit_helm_wall', 31, 10, -1, 0),
+    // ── The passage down to the Tag Cellar. ──
+    lamp('bend', 'pit_passage', 20, 16, -1, 0),
+    // ── The Tag Cellar (10,24): tag curtains on the south wall, single strands (four to a tile, the three variants in
+    // turn) on the east wall either side of the door, four racks in two rows with an aisle between. ──
+    ...range(4, 16).filter(col => col !== 7 && col !== 13).map(col => onWall(`pit_tag_cellar_curtain_${col}`,
+      'pit_tag_cellar', 'setpiece_pit_tag_curtain', col, 30, 0, -1)),
+    lamp('s1', 'pit_tag_cellar', 7, 30, 0, -1),
+    lamp('s2', 'pit_tag_cellar', 13, 30, 0, -1),
+    ...[19, 20, 21, 22, 27, 28, 29].flatMap(row => [-0.33, -0.11, 0.11, 0.33].map((along, k) =>
+      onWall(`pit_tag_cellar_strand_${row}_${k + 1}`, 'pit_tag_cellar', 'setpiece_pit_tag_strand', 17, row, -1, 0,
+        { offset: [0, along], variant: (row + k) % 3 }))),
+    pier('door_n', 'pit_tag_cellar', 17, 23, -1, 0),
+    pier('door_s', 'pit_tag_cellar', 17, 26, -1, 0),
+    ...([[6.5, 22], [12.5, 22], [6.5, 26], [12.5, 26]] as const).map(([col, row], k): SetPieceDef => ({
+      id: `pit_tag_cellar_rack_${k + 1}`, area: 'pit_tag_cellar', gameId: 'setpiece_pit_tag_rack',
+      anchor: { kind: 'tile', col, row }, facing: { kind: 'yaw', deg: 0 }, occluder: true,
+      note: 'free-standing, 2 x 1 along the row; its two tiles are blocked in the map (maps/sub_rf_pit.ts `o`)',
+    })),
+    // ── The Pitwarden's Cut (28,26). ──
+    pier('door', 'pitwardens_cut', 24, 32, 0, -1),
+    lamp('s1', 'pitwardens_cut', 27, 32, 0, -1),
+    lamp('s2', 'pitwardens_cut', 32, 32, 0, -1),
+    lamp('e', 'pitwardens_cut', 35, 26, -1, 0),
+    pier('e', 'pitwardens_cut', 35, 22, -1, 0),
+    ashDrift('corner', 'pitwardens_cut', 33.4, 30.6, 1, 120),
+    // ── The Flame Niche (20,35): the empty niche on the south wall, facing -row and the door (pivot on the middle of
+    // its three wall tiles; its two steps project 0.9 m over the floor row in front), a lamp either side. Sockets
+    // niche, turn_in and mark_1..5: where the cleanse's `prop.pit_cleanse.niche` / `.mark` play (UE, EvAreaCleansed). ──
+    onWall('pit_flame_niche', 'pit_flame_niche', 'setpiece_pit_flame_niche', 20, 38, 0, -1, {
+      occluder: true,
+      walkOver: 'the niche stands on the wall; its two steps (0.31 m) reach over the floor row in front and are walked on',
+      note: 'an empty niche shaped like a flame, five burn marks round it (chapter1.md §9.2): what S7\'s turn-in line ' +
+        'speaks of',
+    }),
+    lamp('w', 'pit_flame_niche', 17, 38, 0, -1),
+    lamp('e', 'pit_flame_niche', 23, 38, 0, -1),
+    lamp('side', 'pit_flame_niche', 26, 35, -1, 0),
+  ],
+};
+
+export const SET_PIECE_ZONES: readonly SetPieceZone[] = [RED_FIELD, PIT];

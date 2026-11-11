@@ -858,10 +858,150 @@
         "shadow": 1973274
       },
       "palisade": {"kind": "darkStakes", "wood": 3812900, "band": 6181448, "accent": 6164498}
+    },
+    "pit": {
+      "ground": {
+        "0": {
+          "base": 3815219,
+          "rank": 4,
+          "lip": 4867648,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [4209976, 3486255, 4473148],
+              "r": [14, 28]
+            },
+            {
+              "kind": "patch",
+              "count": 2,
+              "colors": [4999234, 3223083],
+              "r": [4, 8]
+            },
+            {
+              "kind": "pebble",
+              "count": 5,
+              "color": 5130820,
+              "shade": 2499359,
+              "light": 6446421,
+              "size": [1, 1.9]
+            }
+          ],
+          "details": ["stones", "crackStar", "stones"],
+          "accents": [6972764, 5722956]
+        },
+        "1": {
+          "base": 3551532,
+          "rank": 1,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [3222568, 3880240],
+              "r": [10, 22]
+            },
+            {
+              "kind": "crack",
+              "count": 2,
+              "color": 1972759,
+              "light": 4603446,
+              "len": [8, 14],
+              "width": 2
+            },
+            {
+              "kind": "pebble",
+              "count": 8,
+              "color": 4208688,
+              "shade": 2235931,
+              "light": 5261117,
+              "size": [1.1, 2.2]
+            }
+          ],
+          "details": ["stones", "crackStar", "stones"],
+          "accents": [5261117]
+        },
+        "2": {
+          "base": 3552048,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 2,
+              "mortar": 1841689,
+              "mortarW": 0.035,
+              "jitter": 0.085,
+              "bevelLight": 4604478,
+              "bevelShade": 2762790
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [4209977],
+              "r": [3, 7]
+            }
+          ],
+          "details": ["crackStar", "stones", "crackStar"],
+          "accents": [4209977]
+        },
+        "3": {
+          "base": 1052948,
+          "rank": 0,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [855569, 1381914],
+              "r": [14, 26]
+            },
+            {
+              "kind": "wave",
+              "count": 3,
+              "color": 3023936,
+              "len": [6, 11],
+              "alpha": 0.35
+            }
+          ],
+          "details": ["stones"],
+          "accents": [1972772],
+          "liquid": {"shallow": 1513757, "foam": 2763825, "bank": 1709845}
+        },
+        "5": {
+          "base": 3881012,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 3,
+              "mortar": 2170653,
+              "mortarW": 0.03,
+              "jitter": 0.06,
+              "bevelLight": 4933699,
+              "bevelShade": 3091754
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [4538941],
+              "r": [3, 7]
+            }
+          ],
+          "details": ["crackStar", "stones"],
+          "accents": [4538941]
+        }
+      },
+      "outcrop": {
+        "kind": "cryptWall",
+        "rock": 4867650,
+        "cap": 1249552,
+        "accent": 9072196,
+        "extra": 3552047,
+        "shadow": 789004
+      },
+      "palisade": {"kind": "darkStakes", "wood": 2761244, "band": 4866616, "accent": 6164498}
     }
   },
   "remake": {
     "source": ["unreal/GameData/world.ts"],
-    "added": ["terrainStyles.march"]
+    "added": ["terrainStyles.march", "terrainStyles.pit"]
   }
 }

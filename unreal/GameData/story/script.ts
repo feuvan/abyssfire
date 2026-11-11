@@ -97,6 +97,18 @@ export const CUTSCENES: Record<string, Cutscene> = {
       { kind: 'wait', ms: 1200 },
     ],
   },
+  // The first step onto the floor under the burn pit (zone_entered sub_rf_pit, Wave 3; chapter1.md §8). No speaker
+  // stands down there: narration, the hero in frame, the whisper.
+  cs_rf_pit: {
+    id: 'cs_rf_pit',
+    steps: [
+      { kind: 'narrate', text: 'story.cs_rf_pit.1' },
+      { kind: 'focus', target: 'player' },
+      { kind: 'narrate', text: 'story.cs_rf_pit.3' },
+      { kind: 'whisper', text: 'story.cs_rf_pit.4' },
+      { kind: 'wait', ms: 800 },
+    ],
+  },
   // The bell rings by itself: the siege of the Boneyard Gate begins (on accepting q_rf_last_toll).
   cs_rf_siege: {
     id: 'cs_rf_siege',
@@ -448,7 +460,7 @@ export const BOSS_INTROS: BossIntro[] = [
 
 // ─── When each beat plays ───
 export const STORY_TRIGGERS: StoryTrigger[] = [
-  // Chapter 1 (chapter1.md §8 "Triggers"; cs_rf_pit waits for the Pit, Wave 3).
+  // Chapter 1 (chapter1.md §8 "Triggers").
   { on: 'quest_turned_in', questId: 'q_rf_burial_detail', cutscene: 'cs_rf_brand' },
   { on: 'quest_turned_in', questId: 'q_rf_ashwheat', cutscene: 'cs_rf_whisper' },
   { on: 'quest_accepted', questId: 'q_rf_last_toll', cutscene: 'cs_rf_siege' },
@@ -457,6 +469,8 @@ export const STORY_TRIGGERS: StoryTrigger[] = [
   // the kill that counts plays the beat.
   { on: 'monster_killed', monsterId: 'miniboss_corpseherd', cutscene: 'cs_rf_herd', whileQuest: 'q_rf_ashwheat' },
   { on: 'monster_killed', monsterId: 'valdras', cutscene: 'cs_rf_marshal_falls', whileQuest: 'q_rf_marshal' },
+  // Wave 3: the first entry of the Pit of the Faithful (a sub-dungeon is a zone for the trigger, K7).
+  { on: 'zone_entered', zoneId: 'sub_rf_pit', cutscene: 'cs_rf_pit' },
   { on: 'quest_turned_in', questId: 'q_talk_hermit', cutscene: 'cs_tf_hermit' },
   { on: 'quest_turned_in', questId: 'q_seal_dark_source', cutscene: 'cs_tf_finale' },
   { on: 'quest_turned_in', questId: 'q_reforge_artifact', cutscene: 'cs_am_hammer' },

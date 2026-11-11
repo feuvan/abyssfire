@@ -125,6 +125,7 @@ void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
   // Dark remake K6: the world flags and the permanent rewards granted (SerializeSave writes them only when not empty).
   out.worldFlags = session.worldFlags;
   out.permanentRewards = session.permanentRewards;
+  out.slainGuardians = session.slainGuardians;  // K7 (3B review)
 }
 
 SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
@@ -183,6 +184,8 @@ SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
   NormalizeWorldFlags(session.worldFlags);
   session.permanentRewards = s.permanentRewards;
   session.permanentRewards.Normalize();
+  session.slainGuardians = s.slainGuardians;  // K7 (3B review): before the zone entry spawns a guardian
+  NormalizeWorldFlags(session.slainGuardians);
 
   // 3.5 order: 1 hero (no position) -> 3 items (equipment before deriving maxima, FIX Q8) -> 4 quests / story / echo ->
   // 5 homestead -> 6 pets -> 7 achievements -> 9 settings / difficulty -> 11-12 dialogue + id sets.

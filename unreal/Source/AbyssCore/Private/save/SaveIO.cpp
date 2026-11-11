@@ -341,6 +341,7 @@ SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMess
   savejson::ReadWorldFlags(raw.Get("worldFlags"), s.worldFlags);
   savejson::ReadPermanentRewards(raw.Get("permanentRewards"), s.permanentRewards);
   savejson::ReadBossAffixes(raw.Get("bossAffixes"), s.bossAffixes);  // 2F review
+  savejson::ReadWorldFlags(raw.Get("slainGuardians"), s.slainGuardians);  // K7 (3B review): a sorted id set, as flags
 
   out = std::move(s);
   if (errorMessage != nullptr) errorMessage->clear();
@@ -475,6 +476,10 @@ std::string SerializeSave(const SaveData& s, bool pretty) {
     w.Key("bossAffixes");
     savejson::WriteBossAffixes(w, s.bossAffixes);
   }
+  if (!s.slainGuardians.empty()) {  // K7 (3B review)
+    w.Key("slainGuardians");
+    savejson::WriteWorldFlags(w, s.slainGuardians);
+  }
   w.EndObject();
   std::string out = w.Take();
   ABYSS_ASSERT(!out.empty(), "SerializeSave produced incomplete JSON");
@@ -534,6 +539,8 @@ int32_t ApplyContentVersion(const DataStore& data, SaveData& s) {
   // MonsterSystem records the boss's def id (a sub-dungeon boss too, which has no tree): the monster must still exist.
   dropped += SaveIoDropIf(s.miniBossDialogueSeen, [&](const std::string& id) { return data.FindMonster(id) != nullptr; });
   dropped += SaveIoDropIf(s.bossAffixes, [&](const BossAffixPin& p) { return data.FindMonster(p.monsterId) != nullptr; });
+  dropped += SaveIoDropIf(s.slainGuardians,
+                          [&](const std::string& id) { return data.World().FindSubDungeon(id) != nullptr; });
   // Q1 keys "<npcId>|<nodeId>|<choiceIndex>": the NPC's tree still has that node and that choice.
   dropped += SaveIoDropIf(s.dialogueOnce, [&](const std::string& key) {
     const size_t a = key.find('|');

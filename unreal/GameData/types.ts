@@ -365,10 +365,18 @@ export type RemakeQuestHunt = Web.QuestHunt & { abilities?: RemakeMonsterAbility
  * guardian's kill), the sub-dungeon's mini-boss is not alive and at most `maxRemaining` (0..1000, default 0) monsters
  * are. The sub-dungeon's `cleansedFlag` is set then (the core emits EvWorldFlag and EvAreaCleansed), and from then on
  * it spawns nothing. One clear_area per sub-dungeon.
+ *
+ * `spot` (3B review; rides on `quest.objectiveZone`): the explore spot of an objective whose `zone` is a sub-dungeon,
+ * in that sub-dungeon's grid. It is authored apart from the web's `location` because the web map generator
+ * (src/data/maps/index.ts externalLandmarks) keeps every `location` of the quest's zone walkable in the *parent's*
+ * generated grid: a spot inside a sub-dungeon is not a landmark of the parent, and the golden map must not move
+ * (DECISIONS DR4). The exporter writes it as the objective's `location` (the core reads no other field); an objective
+ * has one or the other.
  */
 export interface QuestObjective extends Omit<Web.QuestObjective, 'type'> {
   type: Web.QuestObjective['type'] | 'clear_area';
   zone?: string;
+  spot?: { col: number; row: number; radius: number };
   maxRemaining?: number;
   after?: number;
 }
@@ -436,6 +444,13 @@ export type MapSpawn = Web.MapData['spawns'][number] & {
    * until they wake.
    */
   dormant?: RemakeDormant;
+  /**
+   * [W3] 3B review (feature `subDungeon.spawnGuard`; MapData.h MapSpawnDef::guard): the entry is the guard of its
+   * sub-dungeon's guardian (`miniBoss`): he joins the entry's pack, so a member that is provoked alarms him when he has
+   * a `packAggro`, and his alarm reaches the members that have one or still stand dormant. Only on a spawn of a
+   * hand-authored sub-dungeon, at most one entry.
+   */
+  guard?: boolean;
   /**
    * [W2] K6 spawn variants (feature `map.spawnVariants`; chapter1.md §8: after `rf_chapter_dawn` the trench and Dead
    * Ranks spawn Gravegnawers): the first whose world flag is set replaces the entry's mix / monsterId with `count`

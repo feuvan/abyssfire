@@ -26,6 +26,8 @@ export const CH1_WORLD_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   'data.monster.bonegorger': ['饕骸者', 'Bonegorger'],
   'data.monster.miniboss_corpseherd': ['尸牧婆', 'The Corpseherd'],
   'data.monster.valdras': ['焚旗元帅·瓦德拉斯', 'Lord-Marshal Valdras'],
+  // Wave 3 (3B): the Pit of the Faithful's guardian (monsters.md §2.2).
+  'data.monster.sub_pitwarden': ['掘坑官', 'The Pitwarden'],
   // Wave 2 (2F): Valdras's P2 standard-bearer (chapter1.md §11 Roll Call), a standard-bearer by name and look.
   'data.monster.rollcall_standard_bearer': ['亡旗手', 'Dead Standard-Bearer'],
   // Hunts (quest_hunts.json).
@@ -92,9 +94,19 @@ export const CH1_WORLD_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   'data.storyDeco.story_rf_penitents_altar.desc': ['石盆里的沟槽一路斜向裂口。槽里积着灰，和干了的黑。',
     "The basin's groove runs downhill toward the Breach. Ash has settled in it, and something dried black."],
 
-  // ── The Pit of the Faithful, sealed until Wave 3 (chapter1.md S7 "Before W3") ──
+  // ── The Pit of the Faithful (chapter1.md §9.2; open since Wave 3: the Wave 1 sealed toast is gone with the seal) ──
   'data.subDungeonEntrance.entrance_rf_pit': ['信者之坑', 'The Pit of the Faithful'],
-  'data.subDungeonSealed.entrance_rf_pit': ['坑口还在冒烟。等火熄了，再下去。', 'The pit mouth is still smoking. Wait for the fire to die.'],
+  // The sub-dungeon's name: the zone banner, the map title and the enter line (`zone.subDungeon.enter`).
+  'data.subDungeon.sub_rf_pit.name': ['信者之坑', 'The Pit of the Faithful'],
+  // The sub-dungeon system lines (3B review). Wave 3 makes the web's three reachable for the first time, and they
+  // spoke of 副本 / "dungeon" and 主地图 / "main map" (and the web's zh-TW converter leaves 离 as it is). Re-voiced
+  // for the chapter (story-bible §11): terse, where the hero is. The portal inside ends on the stair, so its line is
+  // the stair's. `guardianSpent`: a guardian killed again on the same save pays nothing (the core logs this in place
+  // of the kill line's "+0EXP +0G").
+  'zone.subDungeon.enter': ['下到{name}。', 'Down into {name}.'],
+  'zone.subDungeon.exit': ['回到坑口。', 'Back at the pit mouth.'],
+  'zone.teleport.toSubDungeonEntrance': ['回到石阶下。', 'Back at the foot of the stair.'],
+  'zone.subDungeon.guardianSpent': ['{monsterName}又倒下了。他身上已经什么都不剩。', '{monsterName} falls again. There is nothing left on him.'],
 
   // ── New NPCs (chapter1.md §3); the kept role keys are re-voiced in ./ch1Npcs.ts ──
   'data.npc.knell_chaplain.name': ['奥德温修士', 'Brother Aldwin'],

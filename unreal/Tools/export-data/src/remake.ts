@@ -56,6 +56,7 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
   { kind: 'quest', path: 'rewards.permanent', feature: 'quest.permanentRewards', wave: 2 },
   { kind: 'quest', path: 'hunts[].abilities', feature: 'quest.huntAbilities', wave: 2 },
   { kind: 'quest', path: 'objectives[].zone', feature: 'quest.objectiveZone', wave: 3 },
+  { kind: 'quest', path: 'objectives[].spot', feature: 'quest.objectiveZone', wave: 3 },
   { kind: 'quest', path: 'objectives[].maxRemaining', feature: 'quest.clearArea', wave: 3 },
   { kind: 'quest', path: 'objectives[].after', feature: 'quest.clearArea', wave: 3 },
   { kind: 'map', path: 'presentationTheme', feature: 'map.presentationTheme', wave: 1 },
@@ -81,6 +82,10 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
   { kind: 'subDungeon', path: 'spawns[].variants', feature: 'subDungeon.map', wave: 3 },
   { kind: 'subDungeon', path: 'spawns[].dormant', feature: 'subDungeon.map', wave: 3 },
   { kind: 'subDungeon', path: 'cleansedFlag', feature: 'subDungeon.cleansedFlag', wave: 3 },
+  // 3B review: the guardian's guard entry (MapSpawnDef::guard). The spawn type is shared, so a map's spawn is
+  // registered too; tables/maps.ts refuses it there, as DataStore::Finalize does.
+  { kind: 'map', path: 'spawns[].guard', feature: 'subDungeon.spawnGuard', wave: 3 },
+  { kind: 'subDungeon', path: 'spawns[].guard', feature: 'subDungeon.spawnGuard', wave: 3 },
   { kind: 'npc', path: 'lines', feature: 'npc.lines', wave: 2 },
   { kind: 'npc', path: 'visibleWhen', feature: 'npc.visibleWhen', wave: 2 },
   { kind: 'cutscene', path: 'steps[].anim', feature: 'story.focusAnim', wave: 1 },

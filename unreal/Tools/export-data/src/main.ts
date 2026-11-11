@@ -79,6 +79,9 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * spawn fields: LoadWorld.cpp -> SubDungeonDef::map, the zone ZoneRuntime enters) and its `cleansedFlag`, and the map
  * spawn `dormant` block (MonsterSystem: no patrol, the wake range, the Rise on waking). Shapes are checked first by
  * tables/quests.ts (checkK7Quest) and tables/maps.ts (checkSubDungeon).
+ *
+ * 3B review: a sub-dungeon spawn's `guard` (LoadWorld.cpp -> MapSpawnDef::guard; MonsterSystem::
+ * SpawnSubDungeonMiniBoss: the guardian joins that entry's pack). Checked by tables/maps.ts (checkSubDungeon).
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
@@ -95,6 +98,7 @@ export const REMAKE_SCHEMA: readonly string[] = [
   'events.ambushChampion', 'quest.huntAbilities',
   'events.ambushVariants',
   'quest.objectiveZone', 'quest.clearArea', 'subDungeon.map', 'subDungeon.cleansedFlag', 'map.spawnDormant',
+  'subDungeon.spawnGuard',
 ];
 
 export interface RunOptions {

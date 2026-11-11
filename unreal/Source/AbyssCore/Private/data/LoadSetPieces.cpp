@@ -2,6 +2,7 @@
 // the anchors, quests and lore against the other tables.
 #include "abyss/base/Platform.h"
 
+#include <cmath>
 #include <set>
 
 #include "JsonReader.h"
@@ -119,6 +120,17 @@ SetPieceDef SpReadPiece(const JNode& p) {
   d.occluder = p.Bool("occluder", false);
   d.walkOver = p.Str("walkOver", "");
   d.yieldsToDefendTarget = p.Bool("yieldsToDefendTarget", false);
+  // A wall overlay (the crypt kit): on a wall tile, facing the floor tile next to it.
+  d.onWall = p.Bool("onWall", false);
+  if (d.onWall) {
+    const bool onTile = d.anchor == SetPieceAnchorKind::Tile && !d.hasRing && d.offset.x * d.offset.y == 0.0 &&
+                        d.tile.x == std::floor(d.tile.x) && d.tile.y == std::floor(d.tile.y);
+    const double step = std::fabs(d.toward.x - d.tile.x) + std::fabs(d.toward.y - d.tile.y);
+    if (!onTile) p.Child("onWall").Error("an onWall piece is anchored on a wall tile (an integer tile anchor, no ring)");
+    if (d.facing != SetPieceFacingKind::Tile || step != 1.0) {
+      p.Child("onWall").Error("an onWall piece faces the floor tile next to its wall tile (facing tile on a 4-neighbour)");
+    }
+  }
   d.note = p.Str("note", "");
   return d;
 }

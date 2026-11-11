@@ -4,7 +4,8 @@
  * Chapter1 scenario plays the route of the starting zone and its Smoke scenario the same route up to `smokeEnd`.
  *
  * A route is content: every id it names is checked here against the content the export loads (quests, NPCs and their
- * dialogue trees, the zone's monsters, hunts, mini-boss and story boss, map bounds, clue and explore locations), and
+ * dialogue trees, the zone's monsters, hunts, mini-boss and story boss, map bounds, clue and explore locations, a
+ * dungeon step's entrance, rooms and visit tiles against its hand-authored sub-dungeon), and
  * every quest of the route's zone must be accepted by one of its steps, so a content change that strands the bot fails
  * the export instead of the playthrough. The C++ loader (LoadAutoPilot.cpp) and DataStore::Finalize check the shape and
  * the ids again.
@@ -19,13 +20,14 @@ import type { ApCondition, ApStep, ApTile, AutoPilotRoute } from '../../../../Ga
 import type { QuestDefinition } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, plain, type TableResult } from '../util';
+import { isHandAuthored, subDungeons } from '../subdungeons';
 
 const ROUTES: readonly AutoPilotRoute[] = [CH1_ROUTE];
 
 /** Step kinds the core's interpreter knows (AutoPilotStepKind in AutoPilotData.h, same spelling and order). */
 export const STEP_KINDS = ['checkpoint', 'note', 'waitIdle', 'talk', 'closePanels', 'tree', 'visit', 'shop', 'townTrip',
   'gather', 'hunt', 'boss', 'clues', 'explore', 'escort', 'defend', 'goTo', 'portalHome', 'equipUpgrades',
-  'smokeEnd'] as const satisfies readonly ApStep['kind'][];
+  'smokeEnd', 'dungeon'] as const satisfies readonly ApStep['kind'][];
 
 const quests = new Map((AllQuests as QuestDefinition[]).map(q => [q.id, q]));
 
@@ -172,6 +174,35 @@ function checkRoute(r: AutoPilotRoute): void {
         assert(s.arrive > 0 && s.maxSec > 0, `${where}: arrive and maxSec > 0`);
         break;
       case 'smokeEnd': ++smokeEnds; break;
+      case 'dungeon': {
+        // K7: an open entrance of the route's zone into a hand-authored sub-dungeon; the rooms and visit tiles are
+        // walkable tiles of its grid, and the rooms cover its population (every spawn anchor and the guardian).
+        const entrance = (map as { subDungeonEntrances?: { id: string; targetSubDungeon: string; sealed?: boolean }[] })
+          .subDungeonEntrances?.find(e => e.id === s.entrance);
+        assert(entrance, `${where}: no entrance '${s.entrance}' in ${r.zone}`);
+        const sd = subDungeons()[entrance.targetSubDungeon];
+        assert(!entrance.sealed && isHandAuthored(sd), `${where}: '${s.entrance}' is sealed or leads to no hand-authored sub-dungeon`);
+        const walkable = (t: ApTile) => {
+          const row = sd.tiles?.[t[1]];
+          const blocked = sd.collisions ? sd.collisions[t[1]]?.[t[0]] !== true : [3, 4, 6].includes(row?.[t[0]] ?? 4);
+          return row !== undefined && t[0] >= 0 && t[0] < row.length && !blocked;
+        };
+        assert(s.rooms.length > 0, `${where}: no rooms`);
+        for (const t of [...s.rooms, ...(s.visit ?? [])]) {
+          assert(Array.isArray(t) && t.length === 2 && t.every(n => Number.isInteger(n)), `${where}: a tile is [col, row]`);
+          assert(walkable(t), `${where}: [${t}] is no walkable tile of ${sd.id}`);
+        }
+        assert(s.radius > 0, `${where}: radius > 0`);
+        const inRoom = (p: { col: number; row: number }) => s.rooms.some(t => Math.hypot(t[0] - p.col, t[1] - p.row) <= s.radius);
+        for (const [i2, sp] of sd.spawns.entries()) {
+          assert(inRoom(sp), `${where}: spawn ${i2} of ${sd.id} at (${sp.col},${sp.row}) lies in no room (radius ${s.radius})`);
+        }
+        assert(inRoom(sd.miniBoss), `${where}: the guardian of ${sd.id} stands in no room`);
+        conditions(s.until, where);
+        assert(Number.isInteger(s.tries) && s.tries >= 1, `${where}: tries >= 1`);
+        assert(s.maxSec > 0, `${where}: maxSec > 0`);
+        break;
+      }
     }
   });
   assert(smokeEnds <= 1, `autopilot route ${r.id}: more than one smokeEnd`);

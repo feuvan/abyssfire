@@ -51,6 +51,10 @@ struct MonsterKilledMsg {
   bool crit = false;
   // Dark remake K6: MonsterInstance::guaranteedLoot (a champion leader's drop; Normal = none), GroundLootSystem drops it.
   ItemQuality guaranteedLoot = ItemQuality::Normal;
+  // Dark remake K7 (3B review): MonsterInstance::spent - a sub-dungeon guardian killed again. The kill counts (quest
+  // objectives, the cleanse, achievements' counters) and pays nothing: no Spirit, exp, gold (no Loot draw), kill heal,
+  // pet exp, embers or loot.
+  bool spent = false;
 };
 
 // A monster started chasing the hero: Idle / Patrol / Returning -> Chase (aggro range, provoke M2, taunt, ambush spawn).

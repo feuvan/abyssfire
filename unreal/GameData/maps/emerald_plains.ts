@@ -21,6 +21,8 @@ import type { MapData } from '../types';
  * (after `rf_chapter_dawn` the trench, the Broken Redoubt and the Dead Ranks spawn gravegnawers, §8 *Saved world state*
  * and the 2F review; not Valdras's entry)
  * and the Sheepfold's six seated dead (§10: corpse seeds for Call the Flock).
+ *
+ * Wave 3 (package 3B): the Pit entrance is unsealed (below); the Pit itself is ./sub_rf_pit.ts.
  */
 export const EmeraldPlainsMap: MapData = {
   id: 'emerald_plains',
@@ -102,8 +104,10 @@ export const EmeraldPlainsMap: MapData = {
     },
   ],
 
-  // ─── The Pit of the Faithful (信者之坑, Wave 3): sealed until sub-dungeon travel (K7) ───
+  // ─── The Pit of the Faithful (信者之坑): the way down, open since Wave 3 (K7 travel; ../maps/sub_rf_pit.ts) ───
   // A generator input (the one re-baseline, DR4): four tiles below where the hero woke, outside camp 1's safe radius.
+  // Wave 1 shipped it sealed (`sealed` + its toast are not generator inputs: unsealing moves no golden map). The Pit
+  // is there for every hero; S7 `q_rf_the_pit` (Brother Aldwin, after M2) is the errand that sends one down.
   subDungeonEntrances: [
     {
       id: 'entrance_rf_pit',
@@ -111,8 +115,6 @@ export const EmeraldPlainsMap: MapData = {
       col: 17,
       row: 26,
       targetSubDungeon: 'sub_rf_pit',
-      sealed: true,
-      sealedTextKey: 'data.subDungeonSealed.entrance_rf_pit',
     },
   ],
 

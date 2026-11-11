@@ -388,6 +388,20 @@ EntityId MonsterSystem::SpawnSubDungeonMiniBoss(const SubDungeonDef& sd) {
   p.role = MonsterRole::SubDungeonMiniBoss;
   p.rollAffixes = true;
   p.affixZone = sd.parentZone;  // rolled with the parent zone's affix count
+  // 3B review: he pays once per save. A guardian this hero has killed before stands again (an uncleansed sub-dungeon
+  // is rebuilt on every entry) spent: his kill counts and gives nothing (MonsterKilledMsg::spent).
+  p.spent = ctx_.session.GuardianSlain(sd.id);
+  // 3B review: the guard entry's pack is his (MapSpawnDef::guard; the population spawned before him, no draw here).
+  const ZoneRuntime* zone = ctx_.sys.zone;
+  if (zone != nullptr && zone->HasZone()) {
+    const std::vector<MapSpawnDef>& spawns = zone->Map().spawns;
+    for (const MonsterInstance& g : monsters_) {
+      if (g.spawnEntry < 0 || static_cast<size_t>(g.spawnEntry) >= spawns.size() || g.packId == 0) continue;
+      if (!spawns[static_cast<size_t>(g.spawnEntry)].guard) continue;
+      p.packId = g.packId;
+      break;
+    }
+  }
   miniBoss_ = Spawn(p);
   return miniBoss_;
 }
@@ -522,6 +536,7 @@ EntityId MonsterSystem::Spawn(const MonsterSpawnParams& p) {
   m.dormantRise = p.dormantRise;
   if (p.hasFacing) m.heading = p.facing;
   m.guaranteedLoot = p.guaranteedLoot;
+  m.spent = p.spent;  // K7 (3B review)
   m.huntId = p.huntId;
   m.visualScale = p.visualScale;
   if (p.rollAffixes) {
@@ -1137,6 +1152,12 @@ HitWeight MonsterSystem::ApplyDamage(EntityId id, double amount, const DamageFla
     msg.element = flags.element;
     msg.crit = flags.isCrit;
     msg.guaranteedLoot = m->guaranteedLoot;
+    // K7 (3B review): a sub-dungeon guardian pays once per save. The record is made before the handlers run (a save
+    // requested by one of them has it); `spent` is what this kill is.
+    msg.spent = m->spent;
+    if (m->role == MonsterRole::SubDungeonMiniBoss) {
+      if (const SubDungeonDef* sd = ZoneSubDungeon()) ctx_.session.SetGuardianSlain(sd->id);
+    }
     ctx_.bus.Publish(msg);  // `m` may dangle from here on (hunt reveals grow the list)
     return weight;
   }
@@ -1201,8 +1222,13 @@ void MonsterSystem::OnMonsterKilled(const MonsterKilledMsg& msg) {
     gold = ctx_.sys.combat->LastKillReward().gold;
   }
   const std::string nameKey = m != nullptr ? m->def.nameKey : "data.monster." + msg.defId;
-  ctx_.events.Log(MakeLoc("zone.monsterKill", {KeyArg("monsterName", nameKey), {"exp", ToStr(exp)}, {"gold", ToStr(gold)}}),
-                  LogType::Loot);
+  if (msg.spent) {  // K7 (3B review): he had paid; the line says so in place of "+0EXP +0G"
+    ctx_.events.Log(MakeLoc("zone.subDungeon.guardianSpent", {KeyArg("monsterName", nameKey)}), LogType::System);
+  } else {
+    ctx_.events.Log(
+        MakeLoc("zone.monsterKill", {KeyArg("monsterName", nameKey), {"exp", ToStr(exp)}, {"gold", ToStr(gold)}}),
+        LogType::Loot);
+  }
   // Respawn decision.
   if (msg.monster == miniBoss_) {
     miniBoss_ = kNoEntity;  // never respawns within the visit (M7)
@@ -1487,6 +1513,16 @@ void MonsterSystem::Collapse(EntityId id) {
   m = Find(id);
   if (m != nullptr) AddBody(*m, m->pos, true);
   CollapseRaisedOf(id);
+}
+
+void MonsterSystem::SettleCleansed() {
+  rises_.clear();
+  phaseSummons_.clear();
+  std::vector<EntityId> ids;
+  for (const MonsterInstance& m : monsters_) {
+    if (m.IsAlive()) ids.push_back(m.id);
+  }
+  for (EntityId id : ids) Collapse(id);  // a no-op for one that fell with its raiser meanwhile
 }
 
 int32_t MonsterSystem::RaisedAliveOf(EntityId raiser) const {
@@ -1851,6 +1887,7 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     v.consumingCorpse = m.consumeCorpse;
     v.phase = m.phase;  // K4
     v.packId = m.packId;  // K5
+    v.spent = m.spent;    // K7 (3B review)
     v.packLeader = m.packLeader;
     v.fleeUntilMs = m.state == MonsterState::Flee ? m.fleeUntilMs : 0;
     v.kiting = m.kiting;

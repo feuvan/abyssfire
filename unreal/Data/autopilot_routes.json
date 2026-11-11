@@ -21,7 +21,8 @@
     "goTo",
     "portalHome",
     "equipUpgrades",
-    "smokeEnd"
+    "smokeEnd",
+    "dungeon"
   ],
   "routes": [
     {
@@ -177,11 +178,45 @@
         {
           "kind": "visit",
           "npc": "knell_chaplain",
-          "accept": ["q_rf_hallowed_ground"]
+          "accept": ["q_rf_hallowed_ground", "q_rf_the_pit"]
         },
         {"kind": "checkpoint", "id": "home_m2_turned_in"},
         {"kind": "waitIdle", "maxSec": 120},
         {"kind": "checkpoint", "id": "home_m2"},
+        {"kind": "townTrip", "npc": "merchant"},
+        {"kind": "note", "text": "== the Pit of the Faithful"},
+        {
+          "kind": "dungeon",
+          "entrance": "entrance_rf_pit",
+          "rooms": [
+            [14, 5],
+            [24, 8],
+            [10, 24],
+            [28, 26]
+          ],
+          "radius": 7,
+          "visit": [
+            [20, 37]
+          ],
+          "until": [
+            {"kind": "objective", "quest": "q_rf_the_pit", "obj": 1, "atLeast": 1}
+          ],
+          "tries": 3,
+          "maxSec": 900
+        },
+        {"kind": "checkpoint", "id": "pit"},
+        {
+          "kind": "goTo",
+          "tile": [15, 18],
+          "arrive": 2,
+          "maxSec": 120
+        },
+        {
+          "kind": "visit",
+          "npc": "knell_chaplain",
+          "accept": []
+        },
+        {"kind": "checkpoint", "id": "pit_turned_in"},
         {"kind": "townTrip", "npc": "merchant"},
         {"kind": "note", "text": "== Ashwheat + the Corpseherd"},
         {

@@ -225,7 +225,7 @@ TEST_CASE("world tables") {
   CHECK_FALSE(tower->generated);
   CHECK(tower->tiles.size() == 48);
   CHECK(tower->orderIndex == -1);
-  CHECK(w.subDungeons.size() == 2);
+  CHECK(w.subDungeons.size() == 3);  // the web's two generated ones and (Wave 3) the hand-authored Pit: content_ch1_test.cpp
   CHECK(w.mapGen.Theme(MapTheme::Plains).wallDensity == 0.03);
   CHECK(w.mapGen.Theme(MapTheme::Forest).grove.size() == 4);
   CHECK(w.mapGen.rngMultiplier == 16807);

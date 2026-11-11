@@ -13,7 +13,8 @@
     "twilight_forest": "forest",
     "anvil_mountains": "mountain",
     "scorching_desert": "desert",
-    "abyss_rift": "abyss"
+    "abyss_rift": "abyss",
+    "sub_rf_pit": "pit"
   },
   "moods": {
     "plains": {
@@ -111,6 +112,30 @@
       "contrast": 1.15,
       "lift": [-0.012, -0.014, 0.01],
       "gain": [0.01, 0, 0.03]
+    },
+    "pit": {
+      "ambient": 5922936,
+      "ambientAlpha": 0.4,
+      "vignette": 262917,
+      "vignetteAlpha": 0.72,
+      "haze": 2369070,
+      "hazeAlpha": 0.1,
+      "saturation": 0.58,
+      "contrast": 1.16,
+      "lift": [-0.014, -0.012, -0.004],
+      "gain": [-0.01, -0.004, 0.018]
+    },
+    "pit_cleansed": {
+      "ambient": 13148280,
+      "ambientAlpha": 0.28,
+      "vignette": 1051142,
+      "vignetteAlpha": 0.5,
+      "haze": 5916212,
+      "hazeAlpha": 0.08,
+      "saturation": 0.78,
+      "contrast": 1.08,
+      "lift": [0.006, 0.002, -0.006],
+      "gain": [0.024, 0.01, -0.004]
     }
   },
   "palettes": {
@@ -186,7 +211,8 @@
     "anvil_mountains": {"type": "snow", "ambience": "dust_motes", "tint": 14477556},
     "scorching_desert": {"type": "sand", "ambience": "dust_motes", "tint": 15784104},
     "abyss_rift": {"type": "ember_storm", "ambience": "sparks"},
-    "ember_tower": {"type": "none", "ambience": "pollen", "tint": 16771232}
+    "ember_tower": {"type": "none", "ambience": "pollen", "tint": 16771232},
+    "sub_rf_pit": {"type": "none"}
   },
   "weatherByTheme": {
     "plains": "ember_tower",
@@ -286,18 +312,23 @@
       "abyss": {"color": 7219776, "maxOpacity": 0.35, "density": 1.2},
       "march": {"color": 5132892, "maxOpacity": 0.4, "density": 1.15},
       "march_dawn": {"color": 6973024, "maxOpacity": 0.3, "density": 0.95},
-      "breach_rim": {"color": 3811912, "maxOpacity": 0.45, "density": 1.25}
+      "breach_rim": {"color": 3811912, "maxOpacity": 0.45, "density": 1.25},
+      "pit": {"color": 1711140, "maxOpacity": 0.5, "density": 1.3},
+      "pit_cleansed": {"color": 3812900, "maxOpacity": 0.32, "density": 1}
     },
     "decision": "P14 (art pass)",
-    "lightScale": {"march": 0.32, "march_dawn": 0.22, "breach_rim": 0.4},
+    "lightScale": {"march": 0.32, "march_dawn": 0.22, "breach_rim": 0.4, "pit": 0.5, "pit_cleansed": 0.3},
     "moodWeather": {
       "march_dawn": {"type": "none", "ambience": "dust_motes"},
-      "breach_rim": {"type": "none", "ambience": "sparks", "tint": 11546576}
+      "breach_rim": {"type": "none", "ambience": "sparks", "tint": 11546576},
+      "pit_cleansed": {"type": "none", "ambience": "pit_embers"}
     },
     "windupTint": {
       "march": {"normal": 13705006, "elite": 16726600},
       "march_dawn": {"normal": 13705006, "elite": 16726600},
-      "breach_rim": {"normal": 13705006, "elite": 16726600}
+      "breach_rim": {"normal": 13705006, "elite": 16726600},
+      "pit": {"normal": 13705006, "elite": 16726600},
+      "pit_cleansed": {"normal": 13705006, "elite": 16726600}
     }
   },
   "remake": {
@@ -311,20 +342,31 @@
       "zoneMoods.moods.march",
       "zoneMoods.moods.march_dawn",
       "zoneMoods.moods.breach_rim",
+      "zoneMoods.moods.pit",
+      "zoneMoods.moods.pit_cleansed",
+      "zoneMoods.themeByZone.sub_rf_pit",
       "zoneMoods.weather.ember_tower",
+      "zoneMoods.weather.sub_rf_pit",
       "zoneMoods.weatherByTheme.march",
       "zoneMoods.campThemes.march",
       "zoneMoods.fog.march",
       "zoneMoods.fog.march_dawn",
       "zoneMoods.fog.breach_rim",
+      "zoneMoods.fog.pit",
+      "zoneMoods.fog.pit_cleansed",
       "zoneMoods.lightScale.march",
       "zoneMoods.lightScale.march_dawn",
       "zoneMoods.lightScale.breach_rim",
+      "zoneMoods.lightScale.pit",
+      "zoneMoods.lightScale.pit_cleansed",
       "zoneMoods.moodWeather.march_dawn",
       "zoneMoods.moodWeather.breach_rim",
+      "zoneMoods.moodWeather.pit_cleansed",
       "zoneMoods.windupTint.march",
       "zoneMoods.windupTint.march_dawn",
-      "zoneMoods.windupTint.breach_rim"
+      "zoneMoods.windupTint.breach_rim",
+      "zoneMoods.windupTint.pit",
+      "zoneMoods.windupTint.pit_cleansed"
     ]
   }
 }

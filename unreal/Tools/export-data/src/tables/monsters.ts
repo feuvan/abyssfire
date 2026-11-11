@@ -22,6 +22,7 @@ import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, Remak
   RemakeRiseAgain, RemakeMonsterPhase, RemakeKite, RemakeBlock, RemakeMorale, RemakeAura,
   RemakeQuestHunt } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
+import { isHandAuthored, subDungeons } from '../subdungeons';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
 import { gateRemakeValues, noteConfig, remakeFeatureOn, remakeStatusTypes, withholdRemakeFields } from '../remake';
 
@@ -642,7 +643,15 @@ export function exportMonsters(): TableResult[] {
   }
   for (const m of Object.values(AllDungeonMonsters)) add(m, 'dungeon', null);
   for (const [zone, m] of Object.entries(MiniBossByZone)) add(m, 'miniBoss', zone);
-  for (const m of Object.values(SubDungeonMiniBosses)) add(m, 'subDungeonBoss', null);
+  // A sub-dungeon guardian's home zone (K7, package 3B): the parent zone of the hand-authored sub-dungeon it guards
+  // (the Pitwarden is a Red Field definition). The web's generated sub-dungeons are never entered: theirs stay null.
+  const guardianHome = (id: string): string | null => {
+    const homes = Object.values(subDungeons()).filter(sd => isHandAuthored(sd) && sd.miniBoss?.monsterId === id)
+      .map(sd => sd.parentZone);
+    assert(new Set(homes).size <= 1, `sub-dungeon guardian ${id} guards sub-dungeons of two zones`);
+    return homes[0] ?? null;
+  };
+  for (const m of Object.values(SubDungeonMiniBosses)) add(m, 'subDungeonBoss', guardianHome(m.id));
   for (const o of OVERRIDES) assert(defs[o.id], `override for unknown monster ${o.id}`);
   for (const [by, id] of summonedIds) assert(defs[id], `monsters.${by}: an ability, on-death effect or phase summons unknown monster '${id}'`);
   for (const id of Object.keys(defs)) {

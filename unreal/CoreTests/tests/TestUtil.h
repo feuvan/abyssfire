@@ -46,9 +46,31 @@ class ScopedAssertCounter {
 
 }  // namespace abyss::test
 
+#include "abyss/base/Json.h"
 #include "abyss/data/DataStore.h"
 
 namespace abyss::test {
+
+// The shipped autopilot_routes.json without its `dungeon` steps (K7; dark remake 3B: the Chapter 1 route goes down the
+// Pit). A fixture that rewrites a zone's sub-dungeon entrances, or re-points one at a sub-dungeon of its own
+// (content_hooks_test, subdungeon_test), leaves that step going down an entrance that is gone or leads elsewhere. Those
+// fixtures do not test the route: they load this text in the table's place.
+inline std::string RoutesWithoutDungeonSteps() {
+  JsonValue doc;
+  if (!ParseJson(ReadFile(DataDir() + "/autopilot_routes.json"), doc)) return {};
+  JsonValue* routes = doc.FindMutable("routes");
+  if (routes == nullptr) return {};
+  for (JsonValue& route : routes->MutableItems()) {
+    JsonValue kept = JsonValue::Array();
+    if (JsonValue* steps = route.FindMutable("steps")) {
+      for (JsonValue& step : steps->MutableItems()) {
+        if (step.Get("kind").AsString() != "dungeon") kept.Append(std::move(step));
+      }
+    }
+    route.Set("steps", std::move(kept));
+  }
+  return WriteJson(doc);
+}
 
 // Loads the real exported tables from unreal/Data once per test process. Fails the calling test when loading fails.
 inline const DataStore& RealData() {

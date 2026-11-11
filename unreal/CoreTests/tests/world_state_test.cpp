@@ -2632,7 +2632,9 @@ TEST_SUITE("world") {
     char hex[17];
     std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(a));
     MESSAGE("K6 replay digest " << hex);
-    CHECK(std::string(hex) == "2a75b9e104969bc9");  // pinned (GCC = Clang; 2F review: Valdras / Corpseherd numbers, affix rules)
+    // pinned (GCC = Clang; 2F review: Valdras / Corpseherd numbers, affix rules; 3B: the regulars' exp, the Corpseherd's
+    // life; 3B review: Valdras 10400)
+    CHECK(std::string(hex) == "da60fb9cd095b94a");
   }
   // ===================================================================================================================
   // 2F review: ambush variants, the champion's notFlag, boss affix pins

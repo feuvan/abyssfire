@@ -198,6 +198,10 @@ struct ABYSS_API MonsterInstance {
   // K6: one more equipment item of this quality its kill drops after its regular loot (a champion pack's leader with
   // AmbushChampionDef::leaderLoot; Normal = none; MonsterKilledMsg::guaranteedLoot). Not carried over by a respawn.
   ItemQuality guaranteedLoot = ItemQuality::Normal;
+  // K7 (3B review): a sub-dungeon guardian that has been killed before on this save (SessionState::slainGuardians). It
+  // stands again while its sub-dungeon is not cleansed, and its kill counts (quests, the cleanse) but pays nothing: no
+  // exp, gold, loot, embers or pet exp (MonsterKilledMsg::spent).
+  bool spent = false;
   double fleeUntilMs = 0;
   Vec2 fleeFrom;
   Vec2 fleeDir;  // its last flee step's direction (zero when a flee starts): the next never doubles back on it

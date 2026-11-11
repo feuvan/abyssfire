@@ -368,7 +368,7 @@ drift among the graves; the true lantern is warm.
 
 | Field | Value |
 |---|---|
-| Objectives | 1. kill `sub_pitwarden` ×1 (in `sub_rf_pit`) · 2. `clear_area` `sub_rf_pit` (≤ 5 hostiles left, new objective type) |
+| Objectives | 1. kill `sub_pitwarden` ×1 (in `sub_rf_pit`) · 2. `clear_area` `sub_rf_pit` (≤ 5 hostiles left, new objective type) · 3. explore 坑底的石龛 / The niche at the bottom (the Flame Niche, a spot on its paving at (20,36) r 2; *3B review*: the room the turn-in line describes is on the quest's path) |
 | Rewards | 300 exp / 50 gold + permanent +1 skill point (once per difficulty; a free respec once the respec UI exists) |
 | Triggers | entering `sub_rf_pit` → `cs_rf_pit` |
 | Before W3 | the entrance at (17,26) shows a smoking, sealed pit mouth: 「坑口还在冒烟。等火熄了，再下去。」 (The pit mouth is still smoking. Wait for the fire to die.) The quest is not offered |
@@ -392,8 +392,12 @@ regeneration) or burn (a permanent small blessing). Needs a non-gear choice kind
 | Side (S1-S6) | 1190 | 265 | 1 × 6 + 2 = 8 |
 | **Wave 1 total** | **2740** | **510** | 23 from turn-ins (kills add the rest; the playthrough pin is ≥ 40) |
 | S7 [W3] | +300 | +50 | +1 |
+| **Wave 3 total (as built, 3B)** | **3040** | **560** | 24 from turn-ins |
 
-Today: 2660 / 505. Quest counts per giver: `quest_elder` 6, `knell_chaplain` 4 (5 with S7), `plains_wanderer` 1.
+Today: 2660 / 505. Quest counts per giver: `quest_elder` 6, `knell_chaplain` 5 (S7 since Wave 3), `plains_wanderer` 1.
+S7 also gives the permanent +1 skill point (`rewards.permanent.skillPoints`, once per difficulty; named 空龛余温 / The
+Empty Niche's Warmth, `data.quest.q_rf_the_pit.permanent`). The chapter still ends at Lv 12-14 (DECISIONS DR9 *3B*: the
+regulars' exp went from 0.75 to 0.5 of monsters.md §2.0 to make room for S7 and the Pit's kills; §19).
 
 ## 8. Story beats
 
@@ -584,15 +588,16 @@ light radius is the main light; death returns the hero to Knellwatch.
 
 | Room | zh | Where | Contents |
 |---|---|---|---|
-| The Ash Steps | 灰阶 | (5,5) entry | ash-choked stair, 4 `breachclot` |
+| The Ash Steps | 灰阶 | (5,5) entry | ash-choked stair; the first helms in the wall. Empty (*3B review*: the 4 `breachclot` wait in the passage east of it) |
 | The Helm Wall | 盔墙 | (24,8) | helmets set in niches facing up; 6 `risen_footman` standing at attention, dormant until the hero is within 3 tiles |
 | The Tag Cellar | 名牌窖 | (10,24) | thousands of tags on strings; 2 `risen_arbalest` + 4 `gravegnawer` come down to feed |
-| The Pitwarden's Cut | 掘坑官之室 | (28,26) | `sub_pitwarden` (subDungeonMiniBoss) with 2 `risen_shieldbearer` |
-| The Flame Niche | 火龛 | (20,35) | no monsters: an empty niche shaped like a flame, five burn marks round it; the S7 turn-in beat |
+| The Pitwarden's Cut | 掘坑官之室 | (28,26) | `sub_pitwarden` (subDungeonMiniBoss) with 2 `risen_shieldbearer`, his guard: one pack with him |
+| The Flame Niche | 火龛 | (20,35) | no monsters: an empty niche shaped like a flame, five burn marks round it; S7's last objective, the room its turn-in line speaks of |
 
 **Cleanse.** When the Pitwarden is dead and 5 or fewer hostiles remain, `clear_area` completes, `EvAreaCleansed` fires:
-embers rise from the floor, the grade warms, the niche lamps light one by one. The Pit kit is reused for the Labyrinth's
-crypt floor.
+embers rise from the floor, the grade warms, the niche lamps light one by one. What still stood lies down in the same
+step and nothing rises after it (*3B review*: a cleansed Pit holds no hostile). The Pit kit is reused for the
+Labyrinth's crypt floor.
 
 *K7 as built (3A, pending review; implementation-plan.md 3A outcomes).* The Pit is a `subDungeons` record with `tiles`
 (not a `maps` entry). S7 is written `[{type: kill, targetId: sub_pitwarden, zone: sub_rf_pit}, {type: clear_area,
@@ -612,6 +617,65 @@ footmen in front of an L5 quest and move the exp totals DECISIONS DR9 pins. The 
 makes the Pit harder than the field above it is what is in it and how it is met: the wall that wakes as one, the
 feeders in the Tag Cellar, the Pitwarden behind two shields, the dark, nothing respawning to farm and a death that
 costs for good.
+
+*Levels, as measured (3B review; DECISIONS DR9 *3B review*).* That last sentence was a claim nobody had tested, and
+as 3B built it it was false: the bot's hero goes down at Lv 9-10, sixteen of the twenty-one monsters are Lv 1-3, and
+the Pit was the safest stretch of the chapter (cleansed in about 24 s of play, the Pitwarden down in 3 s for a
+warrior, the largest hit taken inside 0.6-2.8 % of the hero's life at the median against 7-12 % on the surface). What
+is true now, and pinned by the sweep: **the rooms before the Cut are not a threat to a hero of that level and are not
+meant to be** - they are the descent's three set pieces (the quiet stair, the wall that rises as one, the feeders
+among the tags), fought at the roster's own levels; **the Pitwarden's Cut is the fight.** He has 1500 HP and 28 damage
+(monsters.md §2.0: 420 / 17), his two shieldbearers are his guard (one pack: the three come together), and his fight
+lasts 6 / 10 / 20 s at the median for the warrior / mage / rogue with the largest hit inside 3.8-7.6 % of life at
+the median and up to 21 % (the cap is 35 %). The sweep's floors: his fight at least 5 s at the median and the largest hit
+inside at least 2.5 % at the median, for every class and both bot models. "Nothing respawning to farm" now holds for
+the guardian: he pays his exp, gold, loot and embers once per save (an uncleansed Pit is rebuilt on every entry, and
+before the review he paid every time). The regulars of an uncleansed Pit are worth their exp on every visit, as the
+field's respawns are. Raising the roster to the banner's levels (the Labyrinth's `raiseToLevel`) stays the open
+alternative: it moves DR9's exp totals and was not taken (a decision for the design owner).
+
+*As built (3B, pending review; `GameData/maps/sub_rf_pit.ts`, `GameData/subDungeons.ts`, `GameData/setPieces.ts`;
+implementation-plan.md 3B outcomes).* The five rooms stand at the listed places on one path, every walkable tile
+reached from the stair (568 tiles; the content test floods it):
+
+| Room | Tiles (col, row) | Floor | As built |
+|---|---|---|---|
+| The Ash Steps | 2-11, 2-8; the stair alcove 4-6, 9-10 | flagstone, ash round the stair, the seep in the far corner | the hero arrives at (5,5); the stair (the exit, (5,10)) stands in a three-tile alcove two deep in the south wall, a straight wall row behind it (Art `exit_portal@pit`), so its 1.5-tile trigger reaches no tile of the room: a fight on the Steps does not walk the hero out. **Nobody stands in the room** (3B review: at (9,4) the clots stood 1.4-3.2 tiles from the arrival tile, inside their aggro 4, and were charging before the entry beat began): the hero lands in quiet and `cs_rf_pit` plays to an empty stair. Three helm niches on the south wall east of the stair ((8,9), (10,9), (11,9); the nearest 5 tiles from the arrival tile, inside the hero's 5.6-tile light), so the beat's third line has its helmets |
+| The passage | 12-17, 4-5 | flagstone | 4 `breachclot` at (15,4): the jitter keeps them on the passage's tiles (cols 13-17), 8 tiles or more from the arrival tile. Three more helm niches on its south face ((13,6), (15,6), (17,6)) |
+| The Helm Wall | 18-30, 4-12 | flagstone | The six `risen_footman` stand in a rank on row 11, **(20..25, 11)**, facing −row with the niche wall (the south wall, row 13) at their backs; `dormant {wakeRange 3}`. Eight helm niches behind the rank ((21..28, 13)) and two on the east wall. The way on is the door at the rank's west end ((18-19, 13)), and it cannot be taken without waking the wall: the room's west column is at most 2.5 tiles from the rank's first man (3B review: with the rank on (21..26) it was exactly 3.000 tiles and a hero walking down the column woke nobody - or everybody, on a float equality; the content test walks the column) |
+| The Tag Cellar | 4-16, 19-29 | flagstone | down the passage (18-19, 13-17), (13-17, 16-17), (13-14, 18). Four tag racks, 2 × 1 and blocking: (6-7, 22), (12-13, 22), (6-7, 26), (12-13, 26). 4 `gravegnawer` at (10,24) (a pack), 2 `risen_arbalest` at (10,28). Tag curtains on the south wall, tag strands on the east wall. Four bodies by the racks (corpse seeds) |
+| The Pitwarden's Cut | 22-34, 21-31 | dug earth | through the corridor (17-21, 24-25). `sub_pitwarden` at (28,26); his 2 `risen_shieldbearer` are his **guard** (3B review: the spawn entry's `guard`, one pack with him): a formation at (26,25) and (26,27), either side of the way from the door to him, facing the door, holding their tiles until the hero is inside their aggro range (5), one of the three is hit or he gives the alarm - then the three come together (as a plain entry they scattered and patrolled, and from the door he fought alone on most seeds). Three bodies round the pit (corpse seeds) |
+| The Flame Niche | 15-25, 33-37 | flagstone, paving before the niche | through the door (22-23, 32). No monsters. The niche (`setpiece_pit_flame_niche`) hangs on the south wall at (20,38) facing −row, the door on the far side. S7's third objective is an explore spot on its paving ((20,36), r 2: past the door, a step from the niche) |
+
+- **Corpse seeds** ("where the design has bodies"): seven `risen_footman` bodies, four by the Tag Cellar's racks
+  ((5,22), (14,22), (5,26), (14,26): more than a tile from the gnawers' anchor, since an idle gnawer eats a body within
+  a tile) and three in the Cut ((31,24), (32,28), (29,30)). Nothing in the Pit raises them; the gnawers feed on the
+  cellar's when hurt.
+- **The dressing** is the set-piece layer's zone `sub_rf_pit` (87 pieces, all crypt-kit ids): 14 lamps, 16 helm niches
+  (3B review: six of them on the Ash Steps and along the passage), 11 tag curtains, 28 tag strands, 4 racks, 8 wall
+  piers, 5 ash drifts, the Flame Niche. Everything but the racks and
+  the drifts is a **wall overlay** (`onWall`: anchored on a wall tile, its front to the floor tile it faces), all on
+  walls that look toward −row (key-lit at the W1 camera) or −col (the shade band). No story decoration stands in the
+  Pit (the room's meaning is S7's complete line and the niche itself; the Art lane ships no reading prop for it).
+- **The surface.** `entrance_rf_pit` is unsealed (its toast string is gone) and the pit mouth piece draws
+  `setpiece_pit_mouth_open` (fallback: the sealed grate) on the same anchor.
+- **The Flame Niche turn-in beat.** S7 is turned in to Brother Aldwin (its giver; the quest card's turn-in is the
+  core's only one): the beat is his complete line ("the niche at the bottom is empty, with five burn marks round it")
+  said by a man who has just heard what the hero saw. The room is where the hero sees it, and **the quest takes the
+  hero there** (3B review): its third objective is the niche (an explore spot, K7's objective `zone`). As 3B built it
+  the quest completed in the Cut, the guide arrow turned to the stair at once - away from the niche, a dead end five
+  steps further on - and nothing but the bot's route walked into the room the story bible puts at the bottom of the
+  chapter. Now the cleanse warms the grade and lights the lamps, the arrow leads on through the south door, and the
+  quest completes on the paving before the empty niche; only then does the arrow turn to the stair. A cutscene in the
+  niche itself would need a trigger kind the core does not have (a room entered or an area cleansed): not built;
+  recorded for a later pass.
+- **The Pitwarden** has 1500 HP and 28 damage (monsters.md §2.0 says 420 and 17; *Levels, as measured* above and §19
+  below), `packAggro` 12 (one pack with his guard), Dig as his opener (a line 4 × 1 toward where the
+  hero stood, 800 ms, ×1.2, slow 30 % for 2.5 s, every 12 s) and the spade sweep (a 100° cone r 2.2, 700 ms, ×1.3,
+  every 6 s, first after 2.5 s). No phases (monsters.md gives him none).
+- **Mood.** `pit` (ambient cool and low, heavy vignette, the light scale .50) and `pit_cleansed` (warm, the light scale
+  .30, ambience `pit_embers`); `themeByZone.sub_rf_pit = pit`; no weather. The switch to `pit_cleansed` on
+  `rf_pit_cleansed` is UE's (3D).
 
 ## 10. Mini-boss: 尸牧婆 / the Corpseherd (`miniboss_corpseherd`, the Sheepfold (60,55))
 
@@ -885,5 +949,33 @@ outcomes", DECISIONS DR15):
 | §9.1 `lore_rf_echo_03` | the kneeling figure's group is turned 135° about the dais (`echoTurnDeg`): it kneels by the north-east kerb, facing the seal, ~2.9 tiles from the lore spot (20,92) instead of 8.5 (the screen edge) | U1 / U4 handoff; **pending A10 review**: art review r1 placed it in the west gap with its back to the camera and rejected a kneeler on the kerb; the alternatives are moving the lore spot or an A10 re-pose on the lore's side. The contract's `poseOverride` (arms bound behind) is not applied in UE: the figure kneels with the escort rig's Death frame 22 until A9's `Kneel_Bound` clip ships |
 | §1 east exit (119,60) | the march wagon barricade with **no** ground loop: in a themed zone the sealed exit's web loop (crimson ring + runes, palette `blood`) is not played (`AbyssThemeRules::ThemedOnlyRecipe`) until A12 ships `exit.sealed@march` (smoke / ash at the barricade, breach violet beyond) | DR5 keeps crimson ground decals for enemy telegraphs |
 | §13 Rescue label | the bound pilgrim's ground label (被缚的朝圣者 / The Bound Pilgrim) shows in emerald_plains only; chapters 2-5 keep their unlabelled rescue prop | "other zones look exactly as today" |
+
+Amendments as built in Wave 3 (3B, 2026-11, pending review; `implementation-plan.md` "3B outcomes", DECISIONS DR9
+*3B*):
+
+| Where | As built | Why |
+|---|---|---|
+| §5-6 exp | every regular gives round(0.5 × monsters.md §2.0 Exp) (was 0.75): breachclot 6, footman 8, gravegnawer 9, cinderbloat 9, arbalester 12, zealot 15, deserter / drummer 14, shieldbearer 17, standard-bearer 20, bonegorger 24; the hunts follow their base (Dreck 42, Hungerbell 72, Harke 70); quest rewards, Valdras's 110, the Corpseherd's 95 and the Pitwarden's 110 unchanged | S7's 300 exp, the Pitwarden and the Pit's twenty kills add about 650 exp before M3: at 0.75 every run of the sweep ended at Lv 14 and one in sixty at Lv 15 (5029-5680 exp; Lv 15 starts at 5670). At 0.5 the chapter ends where it did before the Pit |
+| §9.2 Pitwarden (superseded by the 3B review row below: 1500 HP, 28 damage) | 840 HP (monsters.md §2.0: 420) | the hero S7 sends down is Lv 9-10: at 420 the frame-perfect warrior's fight lasted 1.4 s at the median and the spade sweep was seen in 60-90 % of the fights per sweep. Twice the row's life is the factor the 2F review gave the Corpseherd, for the same reason; the 12 s repeat Dig is for a slower or earlier hero |
+| §10 Fight | the Corpseherd has 700 HP (2F review: 600) | the hero now meets her with S7's skill point and the Pit's loot: at 600 the warrior's Keen fell to 60-80 % of the fights per sweep (the acceptance is 60 %) |
+| §11 Valdras | 10000 HP (2F review: 9000) | the same stronger hero: at 9000 the frame-perfect warrior's median fight fell under DR9's 30 s in two of ten sweeps (26.4 s at the lowest); at 10500 the rogue's 90th percentile reached 232 s of the band's 240 |
+| §9.2 Flame Niche | "the S7 turn-in beat" is Aldwin's complete line and the room the hero walks through after the cleanse; no cutscene in the niche | S7 is turned in to its giver (the core's one turn-in); a beat in the room needs a trigger kind the core lacks |
+| §9.2 rooms | the stair in an alcove; corpse seeds by the racks, not under the gnawers; the Helm Wall's niches on the south wall | the exit's 1.5-tile trigger; an idle gnawer eats a body within a tile; the Art brief (−row faces are the key-lit ones) |
+| §6 S7 reward | the skill point only; "a free respec once the respec UI exists" is not granted yet (`respecTokens` 0) | no respec flow exists; when it does, heroes who already claimed S7 need the token granted on load (a claim is once per difficulty): open, implementation-plan.md *3B outcomes* deviation 9 |
+
+Amendments as built in the 3B review (2026-11, pending review; `implementation-plan.md` "3B review fixes", DECISIONS
+DR8 *3B review*, DR9 *3B review*):
+
+| Where | As built | Why |
+|---|---|---|
+| §6 S7 objectives | a third objective: explore 坑底的石龛 / The niche at the bottom (`zone_rf_flame_niche`, in `sub_rf_pit` at (20,36) r 2) | the quest completed in the Cut and the guide turned to the stair: the Flame Niche, the room the turn-in line describes, was off the quest's path |
+| §6 S7 log text | 「…下去，放倒那个挖坑的，让坑底的死人躺下，再看看坑底留着什么。」 / "...bring the digger down, let the dead at the bottom lie down, and see what is left at the very bottom." | the two languages disagreed (放倒 vs "put to rest") and the log named the Pitwarden while the offer said only "something is digging" |
+| §9.2 Ash Steps | the 4 breachclots stand in the passage ((15,4)), not on the Steps; three helm niches on the Steps' south wall and three along the passage | the hero arrived inside their aggro range and the entry beat cut into a fight; the beat's third line spoke of helmets no one could see |
+| §9.2 Helm Wall | the rank on (20..25, 11) (was 21..26) | the way from the passage to the door on lay exactly 3.000 tiles from the rank (wake range 3): the wall could be walked past |
+| §9.2 Pitwarden's Cut | the two shieldbearers are his guard: one pack with him, a formation at (26,25) / (26,27) facing the door | "behind two shields" did not hold: a plain entry scattered and patrolled, and he came alone |
+| §9.2 Pitwarden | 1500 HP, 28 damage (monsters.md §2.0: 420 / 17; 3B: 840 / 17), `packAggro` 12; he pays exp, gold, loot and embers once per save | *Levels, as measured*: the Pit was the safest stretch of the chapter; an uncleansed Pit is rebuilt on every entry and he paid every time |
+| §9.2 Cleanse | the monsters still standing (at most 5) collapse with the cleanse and pending Unburied rises are dropped | the dead stood up and fought in a cleansed, lamp-lit Pit (11 of 12 seeds) |
+| §9.2 system lines | 「下到{name}。」 / "Down into {name}.", 「回到坑口。」 / "Back at the pit mouth.", the portal inside 「回到石阶下。」 / "Back at the foot of the stair." | the web's lines (副本 / "dungeon", 主地图 / "main map") became reachable in Wave 3 and were not the chapter's voice; the web's zh-TW left 离 unconverted |
+| §11 Valdras | 10400 HP (3B: 10000). DR9's bands are defined on the full route (the Pit included). Without the Pit every fight is 30-60 % longer and the rogue's median is 137-202 s per sweep (the band's ceiling is 180): the sweep plays that route too, held to a 210 s median and a 275 s 90th percentile | at 10000 the reaction-limited warrior's median with the review's Pit fell to 29.2 s in one of twenty sweeps (the floor is 30); no life total fits both routes (at 9200 the warrior's median with the Pit is 26.9 s while the rogue's without it is still 177 s) |
 
 Still open from the review: 「那里的火，不要人偿。」 (cs_rf_finale.12, story-bible §8) reads as dropping 偿's object; the story owner decides (「不用拿命来换」 or keep).

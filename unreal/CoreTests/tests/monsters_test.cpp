@@ -1404,7 +1404,7 @@ TEST_SUITE("monsters") {
       CHECK(d.elite);
       CHECK(d.homeZone == e.zoneId);
     }
-    REQUIRE(t.subDungeonBosses.size() == 2);
+    REQUIRE(t.subDungeonBosses.size() == 3);  // the web's two and the Pitwarden (dark remake 3B)
     for (const std::string& id : t.subDungeonBosses) {
       CAPTURE(id);
       const MonsterDef& d = MDef(id);

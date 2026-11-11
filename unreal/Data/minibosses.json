@@ -15,7 +15,7 @@
     "scorching_desert": {"col": 70, "row": 50},
     "abyss_rift": {"col": 45, "row": 55}
   },
-  "subDungeon": ["sub_mine_guardian", "sub_altar_keeper"],
+  "subDungeon": ["sub_mine_guardian", "sub_altar_keeper", "sub_pitwarden"],
   "dialogues": {
     "miniboss_corpseherd": {
       "startNodeId": "line1",
@@ -62,7 +62,10 @@
   },
   "i18n": {"line": "data.miniBossDialogue.<monsterId>.<nodeId> (M8: the port reads lines from these keys)"},
   "remake": {
-    "source": ["unreal/GameData/miniBosses.ts"],
-    "modules": {"src/data/miniBosses.ts": "unreal/GameData/miniBosses.ts"}
+    "source": ["unreal/GameData/miniBosses.ts", "unreal/GameData/subDungeons.ts"],
+    "modules": {
+      "src/data/miniBosses.ts": "unreal/GameData/miniBosses.ts",
+      "src/data/subDungeons.ts": "unreal/GameData/subDungeons.ts"
+    }
   }
 }

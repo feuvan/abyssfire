@@ -782,6 +782,7 @@ struct AutoPilotImpl {
       for (AutoPilotFight& f : stats.fights) {
         if (f.endMs < 0) ++f.heroDeaths;
       }
+      if (AutoPilotDungeonVisit* open = OpenVisit()) ++open->heroDeaths;
       Note("hero died");
       Milestone(AutoPilotMilestone::HeroDied, std::string());
     } else if (const EvExpGained* x = std::get_if<EvExpGained>(&e)) {
@@ -815,6 +816,7 @@ struct AutoPilotImpl {
       ObserveFightHit(*h);
       if (h->killed && h->targetFaction == Faction::Monster) {
         ++stats.kills;
+        if (AutoPilotDungeonVisit* open = OpenVisit()) ++open->kills;
         std::string killedDef;
         for (const SeenMonster& m : monsterDefs) {
           if (m.id != h->target) continue;
@@ -886,7 +888,39 @@ struct AutoPilotImpl {
         Note("mini-boss dialogue " + mb->monsterId);
       }
     } else if (const EvZone* z = std::get_if<EvZone>(&e)) {
-      if (z->phase == EvZone::Phase::Entered) Milestone(AutoPilotMilestone::ZoneEntered, z->mapId);
+      if (z->phase == EvZone::Phase::Entered) {
+        Milestone(AutoPilotMilestone::ZoneEntered, z->mapId);
+        // K7 (3B): a sub-dungeon visit ends when the hero is in another zone again and begins with its entry.
+        const double now = view != nullptr ? view->simNowMs : 0;
+        if (AutoPilotDungeonVisit* open = OpenVisit()) open->leaveMs = now;
+        if (data.World().FindEnterableSubDungeon(z->mapId) != nullptr) {
+          AutoPilotDungeonVisit v;
+          v.id = z->mapId;
+          v.enterMs = now;
+          stats.dungeonVisits.push_back(std::move(v));
+        }
+      }
+    } else if (const EvAreaCleansed* ac2 = std::get_if<EvAreaCleansed>(&e)) {
+      ++stats.areasCleansed;
+      Note("area cleansed " + ac2->zoneId + " (" + std::to_string(ac2->remaining) + " left)");
+      if (AutoPilotDungeonVisit* open = OpenVisit()) open->cleansedMs = view != nullptr ? view->simNowMs : 0;
+    }
+  }
+  // K7 (3B): the sub-dungeon visit under way (the last one, while the hero has not entered another zone).
+  AutoPilotDungeonVisit* OpenVisit() {
+    return !stats.dungeonVisits.empty() && stats.dungeonVisits.back().leaveMs < 0 ? &stats.dungeonVisits.back() : nullptr;
+  }
+  // The monsters that stood dormant before the frame (PrepareFrame) in `dormantZone`: one that is no longer dormant
+  // after it, in the same zone, woke (K7: the hero came close, it was hit, or its rank's alarm; one the waking hit
+  // killed plays no Rise, so the Rise clips are not what is counted).
+  std::vector<EntityId> dormantBefore;
+  std::string dormantZone;
+  void CountDormantWakes(const Snapshot& after) {
+    if (dormantBefore.empty() || after.zone.mapId != dormantZone) return;
+    for (EntityId id : dormantBefore) {
+      bool still = false;
+      for (const MonsterView& m : after.monsters) still = still || (m.id == id && m.dormant && m.alive);
+      if (!still) ++stats.dormantWakes;
     }
   }
 
@@ -955,10 +989,12 @@ struct AutoPilotImpl {
       // 2F review: the burst - every hit and tick of the last 1000 ms.
       burst.emplace_back(now, h.amount);
       while (!burst.empty() && burst.front().first <= now - 1000.0) burst.pop_front();
+      AutoPilotDungeonVisit* visit = OpenVisit();
       if (h.targetMaxHp > 0) {
         double sum = 0;
         for (const auto& [t, amount] : burst) sum += amount;
         stats.maxBurstTakenPct = (std::max)(stats.maxBurstTakenPct, 100.0 * sum / h.targetMaxHp);
+        if (visit != nullptr) visit->maxBurstTakenPct = (std::max)(visit->maxBurstTakenPct, 100.0 * sum / h.targetMaxHp);
       }
       const SeenMonster* by = SeenById(h.source);
       if (!h.tick && h.targetMaxHp > 0) {
@@ -967,6 +1003,7 @@ struct AutoPilotImpl {
           stats.maxHitTakenPct = pct;
           stats.maxHitTakenBy = by != nullptr ? by->defId : std::string();
         }
+        if (visit != nullptr) visit->maxHitTakenPct = (std::max)(visit->maxHitTakenPct, pct);
       }
       if (h.killed && h.targetMaxHp > 0 && before >= 0.5 * h.targetMaxHp) {
         ++stats.oneHitDeaths;
@@ -2497,6 +2534,237 @@ class ApDefendWithRetries final : public ApTask {
   int attempt_ = 0;
 };
 
+// K7 (dark remake 3B): clears a hand-authored sub-dungeon of the zone the hero stands in. In through `entrance` (walk
+// onto its marker, the interact action), then room by room - ApHunt on the monsters within `radius` tiles of each centre,
+// in order -, then whatever still stands anywhere until `done` holds, the `visit` tiles, and out by the exit tile (the
+// stair). A hero that is no longer inside before that (it died: the parent zone restarted at its camp; a fight walked it
+// onto the stair) goes in again and starts over - an uncleansed sub-dungeon is rebuilt on every entry -, at most `tries`
+// entries. Every id and tile comes from the route's step; the rest is read from the snapshot (the entrance marker,
+// ZoneView::subDungeon, the exit's arming).
+class ApDungeon final : public ApTask {
+ public:
+  ApDungeon(std::string entrance, std::vector<Vec2> rooms, double radius, std::vector<Vec2> visit, ApPredicate done,
+            int tries, double timeoutSec)
+      : entrance_(std::move(entrance)), rooms_(std::move(rooms)), radius_(radius), visit_(std::move(visit)),
+        done_(std::move(done)), tries_(tries), timeoutSec_(timeoutSec) {}
+  ApRun Run(AutoPilotImpl& b) override;
+
+ private:
+  enum class St : uint8_t {
+    Start, Outside, AfterWalk, AfterIdle, Entering, Inside, AfterRoom, AfterRoomLoot, AfterRoomEquip, AfterSweep,
+    AfterVisit, Leaving, Left
+  };
+  static bool InsideNow(const AutoPilotImpl& b) { return b.V().zone.subDungeon.inside; }
+  void BeginInside(AutoPilotImpl& b) {
+    b.Note("inside " + b.V().zone.mapId + " (" + std::to_string(b.V().zone.subDungeon.hostiles) + " hostiles)");
+    room_ = 0;
+    visited_ = 0;
+    swept_ = false;
+    st_ = St::Inside;
+  }
+
+  St st_ = St::Start;
+  std::string entrance_;
+  std::vector<Vec2> rooms_;
+  double radius_;
+  std::vector<Vec2> visit_;
+  ApPredicate done_;
+  int tries_;
+  double timeoutSec_;
+  int attempt_ = 0, presses_ = 0;
+  size_t room_ = 0, visited_ = 0;
+  bool swept_ = false;
+  int64_t end_ = 0, i_ = 0, lastOrder_ = -1000;
+};
+
+ApRun ApDungeon::Run(AutoPilotImpl& b) {
+  switch (st_) {
+    case St::Start:
+      end_ = b.frames + ApFramesFor(timeoutSec_);
+      if (!InsideNow(b) && done_(b)) return Finish(true);  // nothing left to do down there
+      st_ = St::Outside;
+      break;
+    case St::AfterWalk:
+      if (!b.childResult) return Finish(false);
+      st_ = St::AfterIdle;
+      return b.Call<ApWaitIdle>();
+    case St::AfterIdle:
+      if (!b.childResult) return Finish(false);
+      presses_ = 0;
+      i_ = 0;
+      st_ = St::Entering;
+      break;
+    case St::AfterRoom:
+    case St::AfterSweep:
+      // The hunt ended inside: the room is clear (or the goal holds). Its last kill's drops are still on the floor
+      // (ApHunt loots between kills): one more loot pass, then the gear.
+      if (!InsideNow(b) || !b.Alive()) {
+        st_ = St::Inside;
+        break;
+      }
+      if (st_ == St::AfterRoom) ++room_;
+      st_ = St::AfterRoomLoot;
+      return b.Call<ApLootNearby>(8.0);
+    case St::AfterRoomLoot:
+      st_ = St::AfterRoomEquip;
+      return b.Call<ApEquipUpgrades>();
+    case St::AfterRoomEquip:
+      st_ = St::Inside;
+      break;
+    case St::AfterVisit:
+      if (InsideNow(b) && b.Alive()) ++visited_;
+      st_ = St::Inside;
+      break;
+    default: break;
+  }
+  for (;;) {
+    if (!b.ok) return Finish(false);
+    if (b.frames >= end_) {
+      b.Fail("sub-dungeon timeout behind " + entrance_);
+      return Finish(false);
+    }
+    switch (st_) {
+      case St::Outside: {
+        if (InsideNow(b)) {
+          BeginInside(b);
+          break;
+        }
+        if (!b.Alive()) return b.Call<ApWaitRespawn>();  // resumes here: the camp of the parent zone
+        if (b.Busy()) return ApRun::Frame;
+        const WorldMarkerView* mark = nullptr;
+        for (const WorldMarkerView& m : b.V().markers) {
+          if (m.kind == MarkerKind::SubDungeonEntrance && m.key == entrance_) mark = &m;
+        }
+        if (mark == nullptr) {
+          b.Fail("no entrance " + entrance_ + " in this zone");
+          return Finish(false);
+        }
+        if (mark->sealed || !mark->enterable) {
+          b.Fail("the entrance " + entrance_ + " is not open");
+          return Finish(false);
+        }
+        if (attempt_ >= tries_) {
+          b.Fail("the sub-dungeon behind " + entrance_ + " was not cleared in " + std::to_string(tries_) + " tries");
+          return Finish(false);
+        }
+        ++attempt_;
+        b.Note("to the entrance " + entrance_ + " (try " + std::to_string(attempt_) + ")");
+        st_ = St::AfterWalk;
+        // Onto the entrance tile: there it is the nearest interact target (a drop lying closer is picked up first).
+        return b.Call<ApGoTo>(mark->pos, 0.6, 300.0, true);
+      }
+      case St::Entering: {
+        if (InsideNow(b)) {
+          BeginInside(b);
+          break;
+        }
+        if (!b.Alive()) {
+          st_ = St::Outside;
+          break;
+        }
+        if (b.Busy()) return ApRun::Frame;  // the fade down
+        if (i_ == 0) {
+          if (presses_ >= 6) {
+            b.Fail("the entrance " + entrance_ + " did not open (prompt: " +
+                   std::string(EnumName(b.V().prompt.kind)) + ")");
+            return Finish(false);
+          }
+          b.Submit(CmdInteract{});
+          ++presses_;
+        }
+        if (++i_ >= 2 * kApFps) i_ = 0;  // press again
+        return ApRun::Frame;
+      }
+      case St::Inside: {
+        if (!InsideNow(b)) {
+          b.Note("out of the sub-dungeon before it was cleared");
+          st_ = St::Outside;
+          break;
+        }
+        if (!b.Alive()) return b.Call<ApWaitRespawn>();  // resumes here, then finds itself outside
+        if (b.Busy()) return ApRun::Frame;
+        const AutoPilotImpl* bp = &b;
+        const ApPredicate goal = done_;
+        if (room_ < rooms_.size() && !done_(b)) {
+          const Vec2 c = rooms_[room_];
+          const double r = radius_;
+          ApMonsterFilter match = [bp, c, r](const MonsterView& m) { return InsideNow(*bp) && Dist(m.pos, c) <= r; };
+          ApPredicate cleared = [goal, c, r](const AutoPilotImpl& x) {
+            if (!InsideNow(x) || goal(x)) return true;
+            for (const MonsterView& m : x.V().monsters) {
+              if (m.alive && Dist(m.pos, c) <= r) return false;
+            }
+            return true;
+          };
+          char label[64];
+          std::snprintf(label, sizeof(label), "room %zu at (%.0f,%.0f)", room_ + 1, c.x, c.y);
+          b.Note(label);
+          st_ = St::AfterRoom;
+          return b.Call<ApHunt>(label, std::move(match), c, std::move(cleared), 300.0);
+        }
+        if (!done_(b)) {
+          // Every room is clear and the goal does not hold yet: whatever still stands, wherever it went.
+          if (swept_) {
+            b.Fail("the sub-dungeon is cleared room by room, but its goal does not hold");
+            return Finish(false);
+          }
+          swept_ = true;
+          ApMonsterFilter match = [bp](const MonsterView&) { return InsideNow(*bp); };
+          ApPredicate over = [goal](const AutoPilotImpl& x) { return !InsideNow(x) || goal(x); };
+          st_ = St::AfterSweep;
+          return b.Call<ApHunt>("the last of them", std::move(match), rooms_.back(), std::move(over), 300.0);
+        }
+        if (visited_ < visit_.size()) {
+          st_ = St::AfterVisit;
+          return b.Call<ApGoTo>(visit_[visited_], 2.0, 240.0, true);
+        }
+        b.Note("cleared; back to the exit");
+        lastOrder_ = -1000;
+        st_ = St::Leaving;
+        break;
+      }
+      case St::Leaving: {
+        if (!InsideNow(b)) {
+          st_ = St::Left;
+          break;
+        }
+        if (!b.Alive()) return b.Call<ApWaitRespawn>();  // a death on the way out: outside all the same
+        if (b.Busy()) return ApRun::Frame;
+        const Vec2 exit = b.V().zone.subDungeon.exitPos;
+        if (b.Evade(exit)) {
+          lastOrder_ = -1000;
+          return ApRun::Frame;
+        }
+        const EntityId t = b.BestThreat(kApThreatRadius);
+        if (t != kNoEntity) {
+          lastOrder_ = -1000;
+          return b.Call<ApEngage>(t, 45.0, 0);
+        }
+        // The exit is armed once the hero has been away from it (W8): a hero still inside its arming distance walks
+        // off to the first room first.
+        bool armed = true;
+        for (const WorldMarkerView& m : b.V().markers) {
+          if (m.kind == MarkerKind::Exit && Dist(m.pos, exit) < 0.5) armed = m.armed;
+        }
+        const Vec2 goal2 = armed ? exit : rooms_.front();
+        if (!b.V().hero.moving && b.frames - lastOrder_ > 20) {
+          b.Submit(CmdMoveTo{goal2});
+          lastOrder_ = b.frames;
+        }
+        return ApRun::Frame;
+      }
+      case St::Left: {
+        if (b.Busy() || !b.Alive()) return ApRun::Frame;  // the fade back up
+        b.Note("left the sub-dungeon");
+        return Finish(true);
+      }
+      default:
+        b.Fail("sub-dungeon task in an unknown state");
+        return Finish(false);
+    }
+  }
+}
+
 // The bottom task: plays AutoPilotImpl::steps from stepIdx.
 class ApScript final : public ApTask {
  public:
@@ -2664,6 +2932,18 @@ void AutoPilotImpl::BuildScenario() {
       case SK::EquipUpgrades:
         AddTask("equip upgrades", [](AutoPilotImpl&) { return std::make_unique<ApEquipUpgrades>(); });
         break;
+      case SK::Dungeon: {
+        std::vector<Vec2> rooms, visit;
+        for (TilePos t : s.tiles) rooms.push_back(at(t));
+        for (TilePos t : s.visit) visit.push_back(at(t));
+        AddTask("the sub-dungeon behind " + s.entrance, [entrance = s.entrance, rooms, radius = s.radius, visit,
+                                                         until = s.until, tries = s.tries, sec = s.maxSec](AutoPilotImpl&) {
+          return std::make_unique<ApDungeon>(entrance, rooms, radius, visit,
+                                             ApPredicate([until](const AutoPilotImpl& b) { return b.Holds(until); }), tries,
+                                             sec);
+        });
+        break;
+      }
       case SK::SmokeEnd:
         if (scenario == AutoPilotScenario::Smoke) {
           AddStep(Kind::Milestone, std::string(EnumName(scenario)));
@@ -2776,8 +3056,11 @@ void AutoPilot::PrepareFrame(const Snapshot& view) {
   b.view = &view;
   if (!b.hold) b.AutoUi();
   b.monsterDefs.clear();
+  b.dormantBefore.clear();
+  b.dormantZone = view.zone.mapId;
   for (const MonsterView& m : view.monsters) {
     b.monsterDefs.push_back(AutoPilotImpl::SeenMonster{m.id, m.defId, m.role});
+    if (m.dormant && m.alive) b.dormantBefore.push_back(m.id);
   }
   b.heroHpTrack = view.hero.hp;
   b.lastFrozen = view.frozen;
@@ -2796,6 +3079,7 @@ void AutoPilot::EndFrame(const Snapshot& view, int32_t steps) {
   b.frameOpen = false;
   b.frameCounted = false;
   b.lastSteps = steps;
+  b.CountDormantWakes(view);
   if (!b.hold) b.AutoHero();
 }
 

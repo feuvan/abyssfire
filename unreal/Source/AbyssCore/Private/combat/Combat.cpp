@@ -1610,7 +1610,8 @@ void CombatSystem::OnMonsterKilled(const MonsterKilledMsg& m) {
   if (ctx_.sys.status != nullptr) ctx_.sys.status->ClearEntity(m.monster);
   // K3: a Raised body pays nothing (no Spirit 'kill', exp, gold - no draw -, kill heal or texts); the rest of the kill
   // step applies (statuses, target cleanup, its pending swing).
-  const bool rewards = m.role != MonsterRole::Raised;
+  // K7 (3B review): nor does a spent sub-dungeon guardian (MonsterKilledMsg::spent: he paid on his first kill).
+  const bool rewards = m.role != MonsterRole::Raised && !m.spent;
   if (rewards) GainSpirit(SpiritSource::Kill, false);
   // exp = floor(expReward * (1 + homeBonus.expBonus / 100 + eq.expBonus / 100)), homeBonus = homestead + pet bonuses.
   double homeExp = 0;

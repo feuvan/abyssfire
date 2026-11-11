@@ -15,8 +15,10 @@ module (render / input / UMG).
 > respecTokens}`), written after `contentVersion` and only when not empty (a save without world state is byte-identical
 > to before; a save without them loads with none; the content-version upgrade keeps them). Parsing and the load of a
 > `SaveData` built in code (`ApplySave`) both normalise them: the flags sorted, without empty ids or repeats, the claims
-> without an empty quest id, an unknown difficulty or a repeated pair, the totals at least 0 (2E review). Everything
-> else in §3 is unchanged.
+> without an empty quest id, an unknown difficulty or a repeated pair, the totals at least 0 (2E review). The 3B review
+> (DECISIONS DR8 *3B review*) adds `slainGuardians` (a sorted list of sub-dungeon ids whose guardian this hero has
+> killed: he pays once per save), written last and only when not empty, normalised like the flags; an id of a
+> sub-dungeon the data no longer has is dropped by the content-version upgrade. Everything else in §3 is unchanged.
 
 This document describes **what the web game does today**, precisely enough to re-implement it without reading the
 TypeScript. Web behaviour that is a bug or a 2D artefact is called out as a **QUIRK (Qn)** with a recommendation; the

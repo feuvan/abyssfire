@@ -16,11 +16,13 @@ import type { MonsterDefinition, DialogueTree } from './types';
 // the 8 s repeat raise is for a slower or earlier hero (chapter1.md §10, §19). More (1200+) made an early Lv 5 meeting a
 // two-minute fight. She now has more life than the web's zone-2 mini-boss (520), which stays behind the sealed east gate
 // (W7) until Chapter 2 is remade.
+// 3B: 700 HP. With the Pit on the route before her (S7's skill point, the Pitwarden's drop) the warrior's Keen was back
+// at 60-80 % of the fights per sweep at 600 (the acceptance is 60 %); at 700 it is 75-100 %.
 export const miniBossEmeraldPlains: MonsterDefinition = {
   id: 'miniboss_corpseherd',
   name: '尸牧婆',
   level: 6,
-  hp: 600,
+  hp: 700,
   damage: 15,
   defense: 10,
   speed: 45,

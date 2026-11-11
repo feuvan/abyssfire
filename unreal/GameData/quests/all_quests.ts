@@ -224,6 +224,37 @@ export const AllQuests: QuestDefinition[] = [
     ],
     progressKey: 'data.quest.q_rf_oathless.progress',
   },
+  // S7 (new, Wave 3; no web slot), Brother Aldwin: the floor under the burn pit the hero woke in (chapter1.md §6 S7,
+  // §9.2; DECISIONS DR7: optional, a cleanse with a permanent reward). The three objectives are done in the Pit of the
+  // Faithful (`sub_rf_pit`, ../maps/sub_rf_pit.ts): the Pitwarden's kill (objective `zone`, K7: the guide leads to the
+  // pit mouth, then to him), and the cleanse - with him dead and at most 5 hostiles left the Pit's `cleansedFlag`
+  // (`rf_pit_cleansed`) is set, its lamps light and nothing spawns there again. `after: 0`: the cleanse waits for the
+  // kill objective, so a Pitwarden killed before the quest was taken is killed again (an uncleansed Pit is rebuilt on
+  // every entry; he pays his exp and loot once per save). The flag is the sub-dungeon's, not a `setsFlags` entry. The
+  // third objective (3B review) is the Flame Niche, the room S7 is about: an explore spot on the paving before the
+  // empty niche, a dead end five steps past the Cut. Without it the guide turned to the stair the moment the Pit was
+  // cleansed and Aldwin's turn-in line described a room the hero might never have seen. No questArea, location or
+  // hunt (the niche's place is a `spot`, the sub-dungeon's own: ../types.ts): the quest adds no map-generator landmark
+  // (DR4: the golden map does not move).
+  {
+    id: 'q_rf_the_pit',
+    name: '信者之坑',
+    description: '焚尸坑底下还有一层，有东西在下面挖。下去，放倒那个挖坑的，让坑底的死人躺下，再看看坑底留着什么。',
+    zone: 'emerald_plains',
+    type: 'kill',
+    category: 'side',
+    objectives: [
+      { type: 'kill', targetId: 'sub_pitwarden', targetName: '掘坑官', required: 1, current: 0, zone: 'sub_rf_pit' },
+      { type: 'clear_area', targetId: 'sub_rf_pit', targetName: '信者之坑', required: 1, current: 0, maxRemaining: 5, after: 0 },
+      { type: 'explore', targetId: 'zone_rf_flame_niche', targetName: '坑底的石龛', required: 1, current: 0, zone: 'sub_rf_pit',
+        spot: { col: 20, row: 36, radius: 2 } },
+    ],
+    // chapter1.md §6 S7: + 1 skill point for good, once per difficulty (空龛余温 / The Empty Niche's Warmth).
+    rewards: { exp: 300, gold: 50, permanent: { skillPoints: 1 } },
+    prereqQuests: ['q_rf_gnawed_field'],
+    level: 5,
+    progressKey: 'data.quest.q_rf_the_pit.progress',
+  },
   // ═══════════════════════════════════════
   // Zone 2: Twilight Forest (Lv 10-20)
   // ═══════════════════════════════════════

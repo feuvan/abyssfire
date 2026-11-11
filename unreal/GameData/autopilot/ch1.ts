@@ -9,10 +9,12 @@ import type { AutoPilotRoute } from './types';
  * Outline: camp tour (Hald, Tamsin, the Captain's tree, Aldwin: S2 + S5) → barrowmoss → the trenches (M1) and the Seep
  * (six ichor) → the Captain: M1 (`cs_rf_brand`), take M2; Aldwin: S2, take S3 → **smoke ends** → tag-thief clues 1-2,
  * Marl (S1's talk), clue 3, Dreck → gnawers and the Hungerbell (M2) → the lantern graves (S5) → home: S1 + M2, take
- * M3; S3 + S5 (the Lanternwisp), take S6 → Ashwheat, the Corpseherd (M3, `cs_rf_herd`) → escort Old Bern (S6) →
+ * M3; S3 + S5 (the Lanternwisp), take S6 + S7 → the Pit of the Faithful (S7) → Ashwheat, the Corpseherd (M3,
+ * `cs_rf_herd`) → escort Old Bern (S6) →
  * Corran: S4, Harke → home: M3 (`cs_rf_whisper`), take M4; S6 → Valdras (M4, his intro and `cs_rf_marshal_falls`) →
- * home: M4, take M5 (`cs_rf_siege`) → the Boneyard Gate siege → home: M5 (`cs_rf_finale`) → equip. Wave 3 inserts the
- * Pit after M2.
+ * home: M4, take M5 (`cs_rf_siege`) → the Boneyard Gate siege → home: M5 (`cs_rf_finale`) → equip. Wave 3 (package 3B)
+ * put the Pit of the Faithful after M2: S7 is taken with S6 at Aldwin, the Pit (its entrance is four tiles below the
+ * burn pit, a short walk from the camp) is cleared before Ashwheat, and S7 is turned in on the way out (`cs_rf_pit`).
  *
  * Checkpoints are where the test checks the state (playthrough_test.cpp re-pins them with the route); the in-game
  * autotest starts its camp tour at `intro`. A town portal takes the nearest camp: before each portal home the route
@@ -99,10 +101,28 @@ export const CH1_ROUTE: AutoPilotRoute = {
     { kind: 'goTo', tile: [78, 30], arrive: 3, maxSec: 120 },
     { kind: 'portalHome' },
     { kind: 'visit', npc: 'quest_elder', accept: ['q_rf_ashwheat'] },
-    { kind: 'visit', npc: 'knell_chaplain', accept: ['q_rf_hallowed_ground'] },
+    { kind: 'visit', npc: 'knell_chaplain', accept: ['q_rf_hallowed_ground', 'q_rf_the_pit'] },
     { kind: 'checkpoint', id: 'home_m2_turned_in' },
     { kind: 'waitIdle', maxSec: 120 },
     { kind: 'checkpoint', id: 'home_m2' },
+    { kind: 'townTrip', npc: 'merchant' },
+
+    // ---- S7: the Pit of the Faithful (Wave 3). Down through the pit mouth (cs_rf_pit on the first entry), room by
+    // room in the order the Pit is walked - the passage past the Ash Steps (the breachclots), the Helm Wall, the Tag
+    // Cellar, the Pitwarden's Cut (rooms: every monster within 7 tiles of the room's centre) - until the Pitwarden is
+    // dead and the Pit cleansed (S7's objective 1, `clear_area`: at most 5 left; the bot leaves none), then the Flame
+    // Niche (S7's objective 2: the explore spot on its paving, which completes the quest), back up the stair and S7
+    // to Aldwin. A death inside wakes the hero at Knellwatch and the Pit stands again: three tries. ----
+    { kind: 'note', text: '== the Pit of the Faithful' },
+    { kind: 'dungeon', entrance: 'entrance_rf_pit', rooms: [[14, 5], [24, 8], [10, 24], [28, 26]], radius: 7,
+      visit: [[20, 37]], until: [{ kind: 'objective', quest: 'q_rf_the_pit', obj: 1, atLeast: 1 }], tries: 3,
+      maxSec: 900 },
+    { kind: 'checkpoint', id: 'pit' },
+    // Up at the pit mouth, south of the walls: in by the hearth (as from the field), not through the bell frame.
+    { kind: 'goTo', tile: [15, 18], arrive: 2, maxSec: 120 },
+    { kind: 'visit', npc: 'knell_chaplain', accept: [] },
+    { kind: 'checkpoint', id: 'pit_turned_in' },
+    // Tamsin: the Pit's loot sold, potions for the road to Ashwheat (and out of camp by the hearth, east of the frame).
     { kind: 'townTrip', npc: 'merchant' },
 
     // ---- M3: Ashwheat, then the Corpseherd at the Sheepfold (cs_rf_herd) ----

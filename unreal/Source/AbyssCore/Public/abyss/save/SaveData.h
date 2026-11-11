@@ -153,6 +153,9 @@ struct SaveData {
   // ---- 2F review (written last, only when not empty) ----
   // MonsterSystem's boss affix pins (Monster.h BossAffixPin).
   std::vector<BossAffixPin> bossAffixes;
+  // ---- dark remake K7 (3B review; written last, only when not empty) ----
+  // SessionState::slainGuardians: the sub-dungeons whose guardian has paid (a sorted set of sub-dungeon ids).
+  std::vector<std::string> slainGuardians;
 };
 
 }  // namespace abyss

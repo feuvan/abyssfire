@@ -41,7 +41,9 @@ double ActorYaw(const SetPieceDef& def, Vec2 pos, Vec2 anchorPoint, Vec2 ringCen
     case SetPieceFacingKind::Front: front = def.facingDeg; break;
     case SetPieceFacingKind::Camera: break;
     case SetPieceFacingKind::Tile:
-      if (!DirectionDeg(pos, def.toward, front)) front = cameraFront;
+      // A wall overlay (onWall) faces the floor tile from its wall tile: an offset slides it along the wall without
+      // turning it (the tag strands, several to a tile).
+      if (!DirectionDeg(def.onWall ? def.tile : pos, def.toward, front)) front = cameraFront;
       break;
     case SetPieceFacingKind::Anchor:
       if (!DirectionDeg(pos, anchorPoint, front)) front = cameraFront;

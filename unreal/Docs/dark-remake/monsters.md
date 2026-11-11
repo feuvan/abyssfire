@@ -170,6 +170,20 @@ Reference numbers today: slime L1 30 HP / 5 dmg / 2 def / 40 speed / aggro 4 / r
 **As built (1B review, DECISIONS DR9, pending review):** the Exp column is the design value; the data gives every
 regular round(0.75 × Exp) (8 / 11 / 13 / 14 / 18 / 23 / 21 / 21 / 26 / 30 / 36 in table order) and Valdras 110 (the
 Corpseherd keeps 95), so a full Chapter 1 ends at Lv 13-14 (DR9's 12-14). `hunt_hungerbell` is hp ×2 / dmg ×1.0 (below).
+
+**As built (3B, Wave 3; DECISIONS DR9 *3B*, pending review):** with the Pit in the chapter (S7's 300 exp, the
+Pitwarden's 110, twenty more kills) the regulars give **round(0.5 × Exp)**: 6 / 8 / 9 / 9 / 12 / 15 / 14 / 14 / 17 /
+20 / 24 in table order (the roll-call standard-bearer 20; a hunt 3 × or its hp multiplier × its base: Dreck 42,
+Hungerbell 72, Harke 70). Valdras 110, the Corpseherd 95 and the Pitwarden 110 stand. Life as built: Valdras **10000**
+(2F review 9000), the Corpseherd **700** (2F review 600), the Pitwarden **840** (the row's 420 × 2): the hero who
+reaches each of them is the frame-perfect bot at Lv 9-13 with S7's skill point, far above the hero the row's numbers
+were written for (chapter1.md §19 has each number's evidence). Every other column is the row's.
+
+**As built (3B review, pending review; DECISIONS DR9 *3B review*):** the Pitwarden has **1500** HP and **28** damage
+(the row: 420 / 17; 3B: 840 / 17) and `packAggro` 12. Valdras has **10400** HP (3B: 10000). At 3B's numbers his fight lasted 3 s for a warrior and nothing
+in the Pit hit a Lv 9-10 hero for more than 0.6-2.8 % of life at the median; the review asked for a descent that
+registers and a test that says so (chapter1.md §9.2 *Levels, as measured*). He pays his exp, gold, loot and embers
+once per save: a guardian killed again (an uncleansed Pit is rebuilt on every entry) is *spent*.
 The Corpseherd's `family` is `unburied` (her violet eyes are the Unburied marker, §1.2; her voice stays the authored
 lullaby and handbell, §2.5).
 
@@ -302,6 +316,23 @@ pit that is already full, `FX_PitDig` 900); `Rise` 1300, `Death` 1000 (he folds 
 and knot — the crimson sash on the crimson tabard did not read at the W1 camera, and the sash is what tells him from
 a footman (the family marker stays the eyes; the braid is no ember: hue 41°, saturation .51 — outside the ember
 rule's 15-35° band and under its .6). His corpse is never Consumed or raised (`corpse.guard`): his fall is the cleanse's beat.
+
+*As built (3B and the 3B review, `GameData/subDungeons.ts` `SubDungeonMiniBosses.sub_pitwarden`; pending review):* the
+§2.0 row but 1500 HP and 28 damage (above). His two shieldbearers are his guard: the map's `guard` spawn entry makes
+them one pack with him (a formation either side of the way from the door, facing it), his `packAggro` 12 brings him
+when one of them is provoked, and his own alarm wakes them - "two shieldbearers guard him" as written. His web
+`lootTable` is the Corpseherd's (the core reads no monster loot table: his drops follow the mini-boss rule, once per
+save). **Dig** `dig`: kind `line`, 4 × 1 tiles toward where the hero stood when the windup began
+(`heroAtWindup`), `Cast01` at 800 ms (the clip's Contact), ×1.2, slow 30 % for 2.5 s (the design names no duration),
+every 12 s, no opening cooldown and `rangeMax` 4 - a ranged special, so it meets the hero walking in (his opener).
+**Spade sweep** `spade_sweep`: kind `cone`, r 2.2, 100°, `Attack02` at 700 ms, ×1.3 (the design names no multipliers:
+a special hits harder than his 17-damage chop, Dig a little less than the sweep because it also slows), every 6 s, the
+first 2.5 s into the fight. Dig outranks the sweep (`priority` 2 / 1). `hitCapHeroMaxHpPct` 35, `family` unburied but
+**no** rise-again (a guardian stays down), `corpse {leaves: remains}`, elite (one affix rolled like any mini-boss's),
+loot `magic .9 / rare .5 / legendary .05` (the web's first sub-dungeon guardian's table; the design names none). No
+phases. Bot numbers (implementation-plan.md 3B outcomes; 1200 runs, two bot models): his fight lasts 3.2 / 5.4 /
+7.0 s at the median (warrior / mage / rogue; 30 s at most), Dig starts in every fight and the sweep in 96-100 %; the
+second Dig only the rogue sees (in a quarter to a third of his fights); no hero died in the Pit.
 
 ### 2.3 The Living (SKEL_Human, living palettes)
 

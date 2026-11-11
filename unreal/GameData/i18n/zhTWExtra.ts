@@ -33,8 +33,8 @@ function pairs(...rows: string[]): Record<string, string> {
  * never reaches this table).
  */
 export const ZH_TW_CHARS: Readonly<Record<string, string>> = pairs(
-  // Chapter 1's strings beyond the common list below (final review R4).
-  '铛鐺',
+  // Chapter 1's strings beyond the common list below (final review R4; 龛, the Pit's niche, package 3B).
+  '铛鐺 龛龕',
   // Also Traditional characters in their own right, but converted in Taiwan usage (final review): 胜 勝, 厂 廠, 苹 蘋.
   '胜勝 厂廠 苹蘋',
   // The context-dependent characters, by their usual Traditional form; ZH_TW_PHRASES keeps the other readings.

@@ -128,7 +128,7 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
 
   // ─── Zone 2: Twilight Forest — New Field NPCs ────────────────────────
   // ─── Chapter 1 (dark remake, Docs/dark-remake/chapter1.md §3): new NPCs; the kept ids above are role keys ───
-  // Brother Aldwin stands in Knellwatch (camp 1, the 4th slot) and gives S2, S3, S5 and S6 (S7 with Wave 3). His second
+  // Brother Aldwin stands in Knellwatch (camp 1, the 4th slot) and gives S2, S3, S5, S6 and (Wave 3) S7. His second
   // line is always on (chapter1.md §3); no dialogue tree.
   knell_chaplain: {
     id: 'knell_chaplain',
@@ -141,7 +141,7 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
       { key: 'data.npc.knell_chaplain.dialogue.0', when: { quest: 'q_rf_last_toll', state: 'notTurnedIn' } },
       { key: 'data.npc.knell_chaplain.dialogue.1' },
     ],
-    quests: ['q_rf_barrowmoss', 'q_rf_tag_thief', 'q_rf_lanternwisp', 'q_rf_hallowed_ground'],
+    quests: ['q_rf_barrowmoss', 'q_rf_tag_thief', 'q_rf_lanternwisp', 'q_rf_hallowed_ground', 'q_rf_the_pit'],
   },
   // Mag Crowe trades in Crowmarket (camp 2), which used the shared `merchant` before: same wares.
   crow_trader: {

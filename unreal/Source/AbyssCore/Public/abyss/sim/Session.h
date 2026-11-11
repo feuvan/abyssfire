@@ -108,6 +108,11 @@ struct ABYSS_API SessionState {
   // cleared; chapter1.md 8) and the permanent rewards granted.
   std::vector<std::string> worldFlags;
   PermanentRewardsState permanentRewards;
+  // Dark remake K7 (3B review; saved): the sub-dungeons whose guardian this hero has killed (a sorted set of
+  // sub-dungeon ids, never cleared). An uncleansed sub-dungeon is rebuilt on every entry, guardian included; he pays
+  // his exp, gold, loot and embers once - the guardian of a sub-dungeon listed here stands again `spent`
+  // (MonsterInstance::spent): a kill that counts for a quest and pays nothing.
+  std::vector<std::string> slainGuardians;
   // Dark remake K7 (not saved).
   SubDungeonVisit subDungeon;
   // K7: the zone just left was a sub-dungeon and the hero is arriving at its return tile in the parent (set by the
@@ -118,6 +123,9 @@ struct ABYSS_API SessionState {
   bool HasFlag(std::string_view flag) const;
   // Inserts the flag in order; false when it was already set (or is empty).
   bool SetFlag(std::string_view flag);
+  // K7 (3B review): slainGuardians, the same sorted-set handling.
+  bool GuardianSlain(std::string_view subDungeonId) const;
+  bool SetGuardianSlain(std::string_view subDungeonId);
 };
 
 // Makes `flags` the sorted set HasFlag / SetFlag / the conditions binary-search: sorted, no empty id, no repeat

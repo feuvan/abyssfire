@@ -2,10 +2,11 @@
 // implementation-plan.md 6).
 //
 // For each class: new game -> prologue (skipped) -> the Knellwatch camp (Hald's forge, Tamsin's stash, the Captain's
-// dialogue tree and quest card, Aldwin's card) -> every emerald_plains quest (main M1-M5 and the six side quests:
+// dialogue tree and quest card, Aldwin's card) -> every emerald_plains quest (main M1-M5 and the seven side quests:
 // kill, drop-collect + delivery, gather, investigate + hunt, bounty hunt, escort, the Lanternwisp's clues, the
-// Boneyard Gate defend) plus the Corpseherd and Valdras -> the Chapter 1 story beats -> save -> load into a fresh
-// GameSim (SaveGame() identical) -> continue to the sealed chapter-2 gate.
+// Boneyard Gate defend, and - Wave 3 - the Pit of the Faithful: down the pit mouth, room by room, the Pitwarden, the
+// cleanse, back up the stair) plus the Corpseherd and Valdras -> the Chapter 1 story beats -> save -> load into a
+// fresh GameSim (SaveGame() identical) -> continue to the sealed chapter-2 gate.
 //
 // The player is abyss::AutoPilot (abyss/tools/AutoPilot.h), the same bot the in-game autotest drives (UE
 // UAbyssAutoTestSubsystem, -abyssautotest): it plays only through the public GameSim API - Commands in, Events /
@@ -17,7 +18,8 @@
 // ABYSS_PT_SWEEP_BASE=<first seed>) plays n extra seeds per class; ABYSS_PT_DUMP=<dir> writes each run's final save
 // (<class>_<seed>.json) so GCC and Clang builds can be diffed - they must agree bit for bit; ABYSS_PT_STATS=<file>
 // appends one tab-separated line per run (level, exp, kills, deaths, the largest hit taken, the W2 counters and the named
-// fights with their lengths: the sweep's balance report, dark remake 2F). 2F review: ABYSS_PT_REACTION_MS=<ms> and
+// fights with their lengths: the sweep's balance report, dark remake 2F; 3B adds the sub-dungeon visits: entry, cleanse
+// and leave times, deaths, kills, the largest hit and burst inside). 2F review: ABYSS_PT_REACTION_MS=<ms> and
 // ABYSS_PT_NO_DODGE=1 play the reaction-limited bot (AutoPilotConfig::reactionMs / dodgeRoll: DR9's second sweep).
 #include <algorithm>
 #include <climits>
@@ -35,6 +37,7 @@
 #include "abyss/base/Math.h"
 #include "abyss/base/SimClock.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/data/MapData.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/items/GroundLoot.h"
 #include "abyss/items/Inventory.h"
@@ -46,6 +49,7 @@
 #include "abyss/quests/Achievements.h"
 #include "abyss/quests/QuestWorld.h"
 #include "abyss/sim/GameSim.h"
+#include "abyss/sim/Session.h"
 #include "abyss/sim/SimContext.h"
 #include "abyss/story/StoryDirector.h"
 #include "abyss/tools/AutoPilot.h"
@@ -101,10 +105,80 @@ AutoPilotConfig PtConfig(ClassId cls, AutoPilotScenario scenario) {
   return cfg;
 }
 
+// 3B review (D3): the chapter without the Pit. DECISIONS DR7 makes S7 optional - the critical path never waits on it -
+// so the balance bands (DR9) have to hold for the hero who never goes down: about 650 exp, a skill point and the Pit's
+// loot short when Valdras is met. The shipped tables with the route's Pit steps taken out: everything from the route's
+// "the Pit of the Faithful" note to its `pit_turned_in` checkpoint and the town trip after it, and S7 off every accept
+// list (the quest is offered and never taken).
+constexpr char kPtPitQuestId[] = "q_rf_the_pit";
+
+std::string PtRoutesWithoutThePit() {
+  JsonValue doc;
+  if (!ParseJson(test::ReadFile(test::DataDir() + "/autopilot_routes.json"), doc)) return {};
+  JsonValue* routes = doc.FindMutable("routes");
+  if (routes == nullptr) return {};
+  for (JsonValue& route : routes->MutableItems()) {
+    JsonValue* steps = route.FindMutable("steps");
+    if (steps == nullptr) continue;
+    JsonValue kept = JsonValue::Array();
+    bool inPit = false, afterPit = false;
+    for (JsonValue& step : steps->MutableItems()) {
+      const std::string kind(step.Get("kind").AsString());
+      if (kind == "note" && step.Get("text").AsString().find("the Pit of the Faithful") != std::string::npos) inPit = true;
+      if (inPit) {
+        if (kind == "checkpoint" && step.Get("id").AsString() == "pit_turned_in") {
+          inPit = false;
+          afterPit = true;
+        }
+        continue;
+      }
+      if (afterPit) {
+        afterPit = false;
+        if (kind == "townTrip") continue;  // the trip that sold the Pit's loot
+      }
+      if (JsonValue* accept = step.FindMutable("accept")) {
+        JsonValue others = JsonValue::Array();
+        for (JsonValue& q : accept->MutableItems()) {
+          if (q.AsString() != kPtPitQuestId) others.Append(std::move(q));
+        }
+        step.Set("accept", std::move(others));
+      }
+      kept.Append(std::move(step));
+    }
+    route.Set("steps", std::move(kept));
+  }
+  return WriteJson(doc);
+}
+
+const DataStore& PtNoPitData() {
+  static DataStore store;
+  static bool loaded = false;
+  if (!loaded) {
+    loaded = true;
+    const std::string routes = PtRoutesWithoutThePit();
+    DataLoadReport report;
+    const bool ok = store.LoadAll(
+        [&routes](std::string_view name, std::string& out) {
+          out = name == "autopilot_routes.json" ? routes : test::ReadFile(test::DataDir() + "/" + std::string(name));
+          return !out.empty();
+        },
+        report);
+    if (!ok) MESSAGE(report.Summary());
+    REQUIRE(ok);
+  }
+  return store;
+}
+
+// ABYSS_PT_NO_PIT=1: the sweep plays the route without the Pit (the no-Pit bands).
+bool PtSweepWithoutThePit() {
+  const char* v = std::getenv("ABYSS_PT_NO_PIT");
+  return v != nullptr && *v != '\0' && *v != '0';
+}
+
 // One bot on one GameSim.
 struct PtPlayer {
-  PtPlayer(GameSim& s, ClassId cls, AutoPilotScenario scenario)
-      : sim(s), pilot(test::RealData(), PtConfig(cls, scenario), [&s](const Command& c) { s.Submit(c); }) {}
+  PtPlayer(GameSim& s, ClassId cls, AutoPilotScenario scenario, const DataStore& d = test::RealData())
+      : sim(s), data(d), pilot(d, PtConfig(cls, scenario), [&s](const Command& c) { s.Submit(c); }) {}
 
   // The events NewGame / LoadGame left before the first frame (zone entry, prologue), as UE dispatches them.
   void ObserveSessionStart() {
@@ -149,6 +223,7 @@ struct PtPlayer {
   void Frame() { pilot.RunFrame(sim, kPtFrameMs); }
 
   GameSim& sim;
+  const DataStore& data;
   AutoPilot pilot;
 };
 
@@ -185,6 +260,15 @@ struct PtResult {
   double storyBossSec = -1;
   int storyBossDeaths = 0;
   int miniBossFights = 0, miniBossOpeningRaise = 0, miniBossStrike = 0;
+  // 3B (the Pit, chapter1.md 9.2): the sub-dungeon guardian's fights and how many of them saw his signature strike (his
+  // ground-shape ability of the highest priority: Dig) and another one (the spade sweep) start; the hero's deaths inside
+  // the sub-dungeon and the visits it took.
+  int guardianFights = 0, guardianSignature = 0, guardianOther = 0;
+  int dungeonDeaths = 0, dungeonVisits = 0;
+  // 3B review (D5): the guardian's fight to his death (s; < 0: none) and the largest single hit the hero took inside
+  // the sub-dungeon (% of max life), for the floors that say the Pit registers.
+  double guardianSec = -1;
+  double dungeonMaxHitPct = 0;
 };
 
 // 2F review: the run's bot mode for the sweep's bands (ABYSS_PT_REACTION_MS / ABYSS_PT_NO_DODGE, PtConfig).
@@ -196,15 +280,25 @@ bool PtReactionLimited() {
 
 constexpr int64_t kPtSaveMs = 1760000000000;
 
-// Chapter 1's quests (chapter1.md 5-7): main M1-M5, side S1-S6.
+// Chapter 1's quests (chapter1.md 5-7): main M1-M5, side S1-S7.
 const std::vector<std::string> kPtAllCh1Quests = {
     test::ch1::kQuestM1, test::ch1::kQuestM2, test::ch1::kQuestM3, test::ch1::kQuestM4, test::ch1::kQuestM5,
     "q_rf_black_blood",  "q_rf_barrowmoss",   "q_rf_tag_thief",    "q_rf_oathless",     "q_rf_lanternwisp",
-    "q_rf_hallowed_ground"};
+    "q_rf_hallowed_ground", "q_rf_the_pit"};
+
+// S7 (Wave 3; chapter1.md 6 S7, 9.2): the Pit of the Faithful, its guardian, its cleanse flag and its entry beat.
+constexpr char kPtPitQuest[] = "q_rf_the_pit";
+constexpr char kPtPit[] = "sub_rf_pit";
+constexpr char kPtPitwarden[] = "sub_pitwarden";
+constexpr char kPtPitFlag[] = "rf_pit_cleansed";
+
+bool PtHasFlag(const Snapshot& v, const std::string& flag) {
+  return v.worldFlags != nullptr && std::find(v.worldFlags->begin(), v.worldFlags->end(), flag) != v.worldFlags->end();
+}
 
 // Plays chapter 1 to the finale (no save/load), checking the state at each checkpoint of the route. False when the bot
 // failed or a checkpoint was not reached.
-bool PtPlayChapter1(PtPlayer& p) {
+bool PtPlayChapter1(PtPlayer& p, bool withPit = true) {
   using test::ch1::kQuestM1;
   using test::ch1::kQuestM2;
   using test::ch1::kQuestM3;
@@ -271,10 +365,49 @@ bool PtPlayChapter1(PtPlayer& p) {
   CHECK(p.HasStatus("q_rf_lanternwisp", QuestStatus::TurnedIn));
   CHECK(p.HasStatus(kQuestM3, QuestStatus::Active));
   CHECK(p.HasStatus("q_rf_hallowed_ground", QuestStatus::Active));
+  // S7 opens with M2 (prereq), taken with S6 at Aldwin - or left untaken on the route without the Pit.
+  CHECK(p.HasStatus(kPtPitQuest, QuestStatus::Active) == withPit);
   if (!p.To("home_m2")) return false;
   CHECK(p.Stats().petObtained);
   CHECK(p.V().pet.present);
   CHECK(p.V().pet.petId == "pet_sprite");  // the Lanternwisp
+
+  // ---- S7: the Pit of the Faithful (down the pit mouth, room by room, the Pitwarden, the cleanse, the stair) ----
+  CHECK_FALSE(PtHasFlag(p.V(), kPtPitFlag));
+  CHECK(p.Stats().dungeonVisits.empty());
+  if (withPit) {
+  if (!p.To("pit")) return false;
+  CHECK(p.HasStatus(kPtPitQuest, QuestStatus::Completed));
+  CHECK(PtObjCurrent(p.V(), kPtPitQuest, 0) == 1);  // the Pitwarden
+  CHECK(PtObjCurrent(p.V(), kPtPitQuest, 1) == 1);  // the cleanse
+  CHECK(PtObjCurrent(p.V(), kPtPitQuest, 2) == 1);  // the Flame Niche (3B review: the room the turn-in speaks of)
+  CHECK(PtHasFlag(p.V(), kPtPitFlag));
+  CHECK(p.V().zone.mapId == test::ch1::kZone);      // back up the stair
+  CHECK_FALSE(p.V().zone.subDungeon.inside);
+  CHECK(PtContains(p.Stats().beatsEnded, "cs_rf_pit"));  // zone_entered, the first entry
+  CHECK(PtContains(p.Stats().killedDefs, kPtPitwarden));
+  CHECK(p.Stats().areasCleansed == 1);
+  {
+    // The visit that cleansed the Pit is the last one (an earlier one ended in a death or on the stair), it ended after
+    // the cleanse, and the hero came back up at the pit mouth: its return tile, three tiles from the entrance.
+    const std::vector<AutoPilotDungeonVisit>& visits = p.Stats().dungeonVisits;
+    REQUIRE_FALSE(visits.empty());
+    CHECK(visits.size() <= 3);  // the route's tries
+    const AutoPilotDungeonVisit& last = visits.back();
+    CHECK(last.id == kPtPit);
+    CHECK(last.cleansedMs > last.enterMs);
+    CHECK(last.leaveMs >= last.cleansedMs);
+    CHECK(last.heroDeaths == 0);
+    for (size_t i = 0; i + 1 < visits.size(); ++i) CHECK(visits[i].cleansedMs < 0);
+    const SubDungeonDef* pit = test::RealData().World().FindSubDungeon(kPtPit);
+    REQUIRE(pit != nullptr);
+    CHECK(Dist(p.V().hero.pos, pit->returnPos.Center()) < 1.5);
+    // The Helm Wall woke (its six rise as one) in the visit that cleared it.
+    CHECK(p.Stats().dormantWakes >= 6);
+  }
+  if (!p.To("pit_turned_in")) return false;
+  CHECK(p.HasStatus(kPtPitQuest, QuestStatus::TurnedIn));
+  }  // withPit
 
   // ---- M3: Ashwheat, then the Corpseherd at the Sheepfold (cs_rf_herd) ----
   if (!p.To("ashwheat")) return false;
@@ -333,16 +466,24 @@ bool PtPlayChapter1(PtPlayer& p) {
   return true;
 }
 
-void PtCheckChapterDone(PtPlayer& p) {
+void PtCheckChapterDone(PtPlayer& p, bool withPit = true) {
   const Snapshot& v = p.V();
   const AutoPilotStats& st = p.Stats();
   for (const std::string& q : kPtAllCh1Quests) {
     INFO("quest " << q);
+    if (q == kPtPitQuest && !withPit) {
+      CHECK(PtProgress(v, q) == nullptr);  // offered, never taken: the chapter completes without it (DR7)
+      continue;
+    }
     CHECK(p.HasStatus(q, QuestStatus::TurnedIn));
   }
-  for (const char* beat : {"prologue", "chapter_emerald_plains", "cs_rf_brand", "cs_rf_herd", "cs_rf_whisper",
-                           "boss_valdras", "cs_rf_marshal_falls", "cs_rf_siege", "cs_rf_finale"}) {
+  for (const char* beat : {"prologue", "chapter_emerald_plains", "cs_rf_brand", "cs_rf_pit", "cs_rf_herd",
+                           "cs_rf_whisper", "boss_valdras", "cs_rf_marshal_falls", "cs_rf_siege", "cs_rf_finale"}) {
     INFO("beat " << beat);
+    if (std::string(beat) == "cs_rf_pit" && !withPit) {
+      CHECK_FALSE(PtContains(st.beatsEnded, beat));
+      continue;
+    }
     CHECK(PtContains(st.beatsEnded, beat));
     CHECK(v.story != nullptr);
   }
@@ -364,13 +505,13 @@ void PtCheckChapterDone(PtPlayer& p) {
     CHECK(played > accepted);
   }
   // Exp ledger: the level + exp into it account for exactly the exp granted (classes 5.1 curve, 5.2 one level per
-  // grant with the overflow kept), and quest rewards pay the chapter's 2740 (chapter1.md 5-7).
+  // grant with the overflow kept), and quest rewards pay the chapter's 3040 (chapter1.md 5-7: 2740 + S7's 300).
   int64_t granted = 0;
   for (int64_t x : st.expBySource) granted += x;
   int64_t cumulative = 0;
   for (int32_t l = 1; l < v.hero.level; ++l) cumulative += static_cast<int64_t>(std::floor(3.0 * l * l + 25.0 * l));
   CHECK(cumulative + v.hero.exp == granted);
-  CHECK(st.expBySource[static_cast<size_t>(ExpSource::Quest)] == 2740);
+  CHECK(st.expBySource[static_cast<size_t>(ExpSource::Quest)] == (withPit ? 3040 : 2740));
   CHECK(st.expBySource[static_cast<size_t>(ExpSource::DialogueReward)] == 50);  // reward_ask, once (Q1)
   CHECK(st.expBySource[static_cast<size_t>(ExpSource::DeathPenalty)] == 0);     // Normal: no exp toll
   // Level band (implementation-plan.md 6; DECISIONS DR9): 12-14. The remade quests need more kills than the web's (the
@@ -396,17 +537,26 @@ void PtCheckChapterDone(PtPlayer& p) {
   REQUIRE(wisp != nullptr);
   CHECK(v.pets->ActiveId() == "pet_sprite");
   CHECK(wisp->level > 1);  // beast exp from every kill since the turn-in (18.3 onKill)
-  // the named kills the chapter requires: the story boss, the mini-boss and the three hunt leaders
-  for (const char* boss : {test::ch1::kStoryBoss, "miniboss_corpseherd", "hunt_dreck", "hunt_hungerbell",
+  // the named kills the chapter requires: the story boss, the mini-boss, the Pit's guardian and the three hunt leaders
+  for (const char* boss : {test::ch1::kStoryBoss, "miniboss_corpseherd", kPtPitwarden, "hunt_dreck", "hunt_hungerbell",
                            "hunt_harke"}) {
     INFO("killed " << boss);
-    CHECK(PtContains(st.killedDefs, boss));
+    CHECK(PtContains(st.killedDefs, boss) == (withPit || std::string(boss) != kPtPitwarden));
   }
-  // embers (quests 4.4): 23 from the eleven turn-ins (chapter1.md 7: M5 7 and S5 3, the others their default 2 / 1) + 5 per
-  // elite / mini-boss / affixed kill (>= the five above)
+  // embers (quests 4.4): 24 from the twelve turn-ins (chapter1.md 7: M5 7 and S5 3, the others their default 2 / 1) + 5 per
+  // elite / mini-boss / affixed kill (>= the six above)
   REQUIRE(v.homestead != nullptr);
   CHECK(v.homestead->Embers() >= 40);
-  CHECK((v.homestead->Embers() - 23) % 5 == 0);
+  CHECK((v.homestead->Embers() - (withPit ? 24 : 23)) % 5 == 0);
+  // S7's world state and reward: the Pit is cleansed for good, and the permanent skill point was granted and spent.
+  // Without the Pit: no flag, no point, nobody went down.
+  CHECK(PtHasFlag(v, kPtPitFlag) == withPit);
+  CHECK(st.areasCleansed == (withPit ? 1 : 0));
+  REQUIRE(v.permanentRewards != nullptr);
+  CHECK(v.permanentRewards->skillPoints == (withPit ? 1 : 0));
+  CHECK(v.permanentRewards->Claimed(kPtPitQuest, Difficulty::Normal) == withPit);
+  if (!withPit) CHECK(st.dungeonVisits.empty());
+  CHECK(v.hero.freeSkillPoints == 0);
   CHECK(v.homestead->IsBuildingUnlocked("herb_garden"));  // M5 sends Marl to the tower (4.6)
   // achievements a straight chapter-1 run earns (quests 10.5, chapter1.md 14)
   REQUIRE(v.achievements != nullptr);
@@ -440,11 +590,12 @@ void PtCheckChapterDone(PtPlayer& p) {
 
 // Save -> load into a fresh GameSim (identical SaveGame) -> walk to the sealed chapter-2 gate.
 void PtSaveLoadAndGate(PtPlayer& p, ClassId cls) {
+  const DataStore& data = p.data;
   p.pilot.AddWaitIdle(120);
   REQUIRE(p.ToEnd());
   REQUIRE(p.sim.CanSave());
   const std::string save = p.sim.SaveGame(kPtSaveMs);
-  auto fresh = GameSim::Create(test::RealData(), SimConfig{});
+  auto fresh = GameSim::Create(data, SimConfig{});
   REQUIRE(fresh != nullptr);
   std::string err;
   REQUIRE(fresh->LoadGame(save, &err) == SaveError::None);
@@ -460,7 +611,7 @@ void PtSaveLoadAndGate(PtPlayer& p, ClassId cls) {
   CHECK(fresh->View().zone.mapId == test::ch1::kZone);
   CHECK(fresh->View().hero.level == p.V().hero.level);
 
-  PtPlayer cont(*fresh, cls, AutoPilotScenario::None);
+  PtPlayer cont(*fresh, cls, AutoPilotScenario::None, data);
   cont.ObserveSessionStart();
   cont.Frame();
   cont.pilot.AddWaitIdle(60);
@@ -484,14 +635,15 @@ void PtSaveLoadAndGate(PtPlayer& p, ClassId cls) {
   CHECK(cont.V().zone.mapId == test::ch1::kZone);
 }
 
-PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad) {
+PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad, bool withPit = true) {
   PtResult r;
-  auto sim = GameSim::Create(test::RealData(), SimConfig{});
+  const DataStore& data = withPit ? test::RealData() : PtNoPitData();
+  auto sim = GameSim::Create(data, SimConfig{});
   REQUIRE(sim != nullptr);
   REQUIRE(sim->NewGame(cls, Difficulty::Normal, seed));
-  PtPlayer p(*sim, cls, AutoPilotScenario::Chapter1);
+  PtPlayer p(*sim, cls, AutoPilotScenario::Chapter1, data);
   p.ObserveSessionStart();
-  const bool played = PtPlayChapter1(p);
+  const bool played = PtPlayChapter1(p, withPit);
   r.ok = played && p.pilot.Ok();
   r.failure = p.pilot.Failure();
   r.recent = p.pilot.RecentNotes();
@@ -503,7 +655,7 @@ PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad) {
     CHECK(r.ok);
     return r;
   }
-  PtCheckChapterDone(p);
+  PtCheckChapterDone(p, withPit);
   const AutoPilotStats& st = p.Stats();
   MESSAGE(std::string(PtClassName(cls))
           << ": level " << p.V().hero.level << ", gold " << p.V().hero.gold << ", kills " << st.kills << ", deaths "
@@ -548,6 +700,30 @@ PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad) {
       r.miniBossOpeningRaise += raised ? 1 : 0;
       r.miniBossStrike += struck ? 1 : 0;
     }
+    const MonsterDef* guardDef =
+        f.role == MonsterRole::SubDungeonMiniBoss ? test::RealData().Monsters().Find(f.defId) : nullptr;
+    if (guardDef != nullptr) {
+      ++r.guardianFights;
+      if (f.endMs >= 0) r.guardianSec = (f.endMs - f.startMs) / 1000.0;
+      int32_t top = INT32_MIN;
+      for (const MonsterAbilityDef& a : guardDef->abilities) {
+        if (AbilityHasGroundShape(a.kind)) top = (std::max)(top, a.priority);
+      }
+      bool signature = false, other = false;
+      for (const AutoPilotFight::AbilityUse& u : f.abilities) {
+        for (const MonsterAbilityDef& a : guardDef->abilities) {
+          if (a.id != u.id || u.started - u.cancelled <= 0 || !AbilityHasGroundShape(a.kind)) continue;
+          (a.priority == top ? signature : other) = true;
+        }
+      }
+      r.guardianSignature += signature ? 1 : 0;
+      r.guardianOther += other ? 1 : 0;
+    }
+  }
+  for (const AutoPilotDungeonVisit& v : st.dungeonVisits) {
+    ++r.dungeonVisits;
+    r.dungeonDeaths += v.heroDeaths;
+    r.dungeonMaxHitPct = (std::max)(r.dungeonMaxHitPct, v.maxHitTakenPct);
   }
   CHECK(storyDef != nullptr);
   // ABYSS_PT_STATS=<file>: one line per run (class, seed, level, exp, kills, deaths, the named fights and their lengths,
@@ -573,6 +749,15 @@ PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad) {
       for (const AutoPilotFight::AbilityUse& u : f.abilities) out << u.id << '/' << u.started << '/' << u.cancelled << ',';
       out << ';';
     }
+    // 3B: the sub-dungeon visits - id:seconds from the entry to the cleanse (-1: not cleansed):seconds inside:deaths:
+    // kills:largest hit %:largest 1 s burst % - and the dormant monsters woken.
+    out << "\tdungeons=";
+    for (const AutoPilotDungeonVisit& d : st.dungeonVisits) {
+      out << d.id << ':' << (d.cleansedMs >= 0 ? (d.cleansedMs - d.enterMs) / 1000.0 : -1.0) << ':'
+          << (d.leaveMs >= 0 ? (d.leaveMs - d.enterMs) / 1000.0 : -1.0) << ':' << d.heroDeaths << ':' << d.kills << ':'
+          << d.maxHitTakenPct << ':' << d.maxBurstTakenPct << ';';
+    }
+    out << "\twakes=" << st.dormantWakes;
     out << '\n';
   }
   r.finalSave = sim->SaveGame(kPtSaveMs);
@@ -660,17 +845,48 @@ TEST_SUITE("playthrough") {
   TEST_CASE("chapter 1 playthrough: warrior") { PtRun(ClassId::Warrior, 101, true); }
   TEST_CASE("chapter 1 playthrough: mage") { PtRun(ClassId::Mage, 202, true); }
   TEST_CASE("chapter 1 playthrough: rogue") { PtRun(ClassId::Rogue, 303, true); }
+  // 3B review (D3): S7 is optional (DECISIONS DR7). The chapter is played to its end by a hero who never takes it and
+  // never goes down the Pit; the sweep below plays this route too (ABYSS_PT_NO_PIT=1) for DR9's bands.
+  TEST_CASE("chapter 1 playthrough without the Pit (S7 never taken): warrior") { PtRun(ClassId::Warrior, 101, true, false); }
+  TEST_CASE("chapter 1 playthrough without the Pit (S7 never taken): mage") { PtRun(ClassId::Mage, 202, true, false); }
+  TEST_CASE("chapter 1 playthrough without the Pit (S7 never taken): rogue") { PtRun(ClassId::Rogue, 303, true, false); }
+  TEST_CASE("the route without the Pit: the shipped route less its Pit steps and S7's accept") {
+    const AutoPilotRoute* with = test::RealData().AutoPilotRoutes().Find("ch1");
+    const AutoPilotRoute* without = PtNoPitData().AutoPilotRoutes().Find("ch1");
+    REQUIRE(with != nullptr);
+    REQUIRE(without != nullptr);
+    int dungeons = 0, pitCheckpoints = 0, accepts = 0;
+    for (const AutoPilotStep& s : with->steps) {
+      dungeons += s.kind == AutoPilotStepKind::Dungeon ? 1 : 0;
+      pitCheckpoints += s.kind == AutoPilotStepKind::Checkpoint && (s.id == "pit" || s.id == "pit_turned_in") ? 1 : 0;
+      accepts += s.kind == AutoPilotStepKind::Visit ? static_cast<int>(std::count(s.ids.begin(), s.ids.end(), std::string(kPtPitQuestId))) : 0;
+    }
+    CHECK(dungeons == 1);
+    CHECK(pitCheckpoints == 2);
+    CHECK(accepts == 1);
+    for (const AutoPilotStep& s : without->steps) {
+      CHECK(s.kind != AutoPilotStepKind::Dungeon);
+      CHECK_FALSE((s.kind == AutoPilotStepKind::Checkpoint && (s.id == "pit" || s.id == "pit_turned_in")));
+      CHECK(std::count(s.ids.begin(), s.ids.end(), std::string(kPtPitQuestId)) == 0);
+    }
+    // The note, the dungeon step, its checkpoint, the walk in, the visit, its checkpoint and the town trip.
+    CHECK(with->steps.size() == without->steps.size() + 7);
+  }
   // Stress sweep (off by default): ABYSS_PT_SWEEP=<n> plays n more seeds per class, ABYSS_PT_SWEEP_BASE the first seed.
   TEST_CASE("chapter 1 playthrough: seed sweep (ABYSS_PT_SWEEP)") {
     const char* n = std::getenv("ABYSS_PT_SWEEP");
     const char* base = std::getenv("ABYSS_PT_SWEEP_BASE");
     const int count = n != nullptr ? std::atoi(n) : 0;
     const uint64_t first = base != nullptr ? static_cast<uint64_t>(std::atoll(base)) : 1000;
+    // 3B review (D3): ABYSS_PT_NO_PIT=1 plays the route without the Pit (S7 never taken). The story boss's and the
+    // mini-boss's bands are the same on both routes - DR7 makes the Pit optional, so DR9's bands hold with and without
+    // it; the Pit's own acceptance is read on the route that goes down.
+    const bool withPit = !PtSweepWithoutThePit();
     std::vector<std::vector<PtResult>> byClass(3);
     for (int i = 0; i < count; ++i) {
       for (ClassId cls : {ClassId::Warrior, ClassId::Mage, ClassId::Rogue}) {
-        INFO(std::string(PtClassName(cls)) << " seed " << first + static_cast<uint64_t>(i));
-        byClass[static_cast<size_t>(cls)].push_back(PtRun(cls, first + static_cast<uint64_t>(i), true));
+        INFO(std::string(PtClassName(cls)) << " seed " << first + static_cast<uint64_t>(i) << (withPit ? "" : " (no Pit)"));
+        byClass[static_cast<size_t>(cls)].push_back(PtRun(cls, first + static_cast<uint64_t>(i), true, withPit));
       }
     }
     // 2F review (DECISIONS DR9 *2F review*: the per-class bands, for the frame-perfect and the reaction-limited bot): over
@@ -699,13 +915,58 @@ TEST_SUITE("playthrough") {
       INFO("story boss median " << median << " s, p90 " << p90 << " s, deaths " << deaths << " in " << secs.size()
                                 << ", mini-boss " << raises << " / " << strikes << " of " << miniFights);
       CHECK(median >= 30.0);
-      CHECK(median <= 180.0);
-      CHECK(p90 <= 240.0);
+      // DR9 *3B review*: the bands are defined on the full route (every side quest, the Pit included - the route DR9
+      // has always swept). Without the Pit the hero meets Valdras about 650 exp, a skill point and the Pit's loot
+      // short, and no life total fits both routes: the warrior's median with the Pit sits at the 30 s floor (29.2 s in
+      // one of twenty sweeps at 10000 HP, 30.7 s at the lowest at 10400) while the rogue's without it is already past
+      // the 180 s ceiling (158-193 s per sweep at 10000, 137-202 s at 10400). The route without the Pit is held to the
+      // same floor and to ceilings about 15 % wider: a median of 210 s and a 90th percentile of 275 s (measured at
+      // 10400: 202 s and 254 s at the worst sweep).
+      CHECK(median <= (withPit ? 180.0 : 210.0));
+      CHECK(p90 <= (withPit ? 240.0 : 275.0));
       // The death budget is a rate (2 % of the fights, 10 % for the reaction-limited bot) with one death of slack for a
       // sweep's small sample (20 seeds: 1 / 3 deaths): the rate itself is read over all the sweeps (DR9 *2F review*).
       CHECK(deaths * 100 <= static_cast<int>(secs.size()) * (limited ? 10 : 2) + 100);
       CHECK(raises * 100 >= miniFights * 95);
       CHECK(strikes * 100 >= miniFights * 60);
+      // 3B (DECISIONS DR9 *3B*): the Pit by the same measure. Its guardian shows his Dig in at least 95 % of his fights
+      // and the spade sweep in at least 60 %; the hero dies inside in at most 2 % of the runs (10 % reaction-limited),
+      // with the same one death of slack.
+      int guardFights = 0, digs = 0, sweeps = 0, pitDeaths = 0;
+      for (const PtResult& r : rs) {
+        guardFights += r.guardianFights;
+        digs += r.guardianSignature;
+        sweeps += r.guardianOther;
+        pitDeaths += r.dungeonDeaths;
+      }
+      INFO("sub-dungeon guardian " << digs << " / " << sweeps << " of " << guardFights << ", deaths inside " << pitDeaths);
+      if (!withPit) {
+        CHECK(guardFights == 0);
+        continue;
+      }
+      CHECK(guardFights >= static_cast<int>(rs.size()));
+      CHECK(digs * 100 >= guardFights * 95);
+      CHECK(sweeps * 100 >= guardFights * 60);
+      CHECK(pitDeaths * 100 <= static_cast<int>(rs.size()) * (limited ? 10 : 2) + 100);
+      // 3B review (D5 / ADV-CORE-5; DR9 *3B review*): the pins above pass when nothing in the Pit ever touches the
+      // hero, and at 3B's numbers nothing much did (the guardian down in 3 s, the largest hit inside 0.6-2.8 % of life
+      // at the median). Two floors say the descent registers, for every class and both bot models: the guardian's fight
+      // lasts at least 5 s at the median, and the largest hit taken inside is at least 2.5 % of the hero's life at
+      // the median (the surface's regulars land 2-3 %).
+      std::vector<double> guardSecs, pitHits;
+      for (const PtResult& r : rs) {
+        if (r.guardianSec >= 0) guardSecs.push_back(r.guardianSec);
+        if (r.dungeonVisits > 0) pitHits.push_back(r.dungeonMaxHitPct);
+      }
+      REQUIRE(guardSecs.size() >= 10);
+      REQUIRE(pitHits.size() >= 10);
+      std::sort(guardSecs.begin(), guardSecs.end());
+      std::sort(pitHits.begin(), pitHits.end());
+      const double guardMedian = guardSecs[guardSecs.size() / 2];
+      const double hitMedian = pitHits[pitHits.size() / 2];
+      INFO("guardian fight median " << guardMedian << " s, largest hit inside median " << hitMedian << " %");
+      CHECK(guardMedian >= 5.0);
+      CHECK(hitMedian >= 2.5);
     }
   }
   // The defend retry path (ApDefendWithRetries): the gate falls once - the test holds the bot when the first wave is

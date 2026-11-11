@@ -134,7 +134,14 @@ the export is byte-identical to the web's).
   sub-dungeon of the quest's zone, a `clear_area`'s `targetId` / `required` / `maxRemaining` / `after`, one cleanse per
   sub-dungeon, no escort / defend target on the cleansing quest, a kill or drop inside a cleansable sub-dungeon being
   the `after` objective or a prerequisite quest's; `world.ts`: the visibility validator and the "no quest sets flag"
-  warnings count a cleanse flag); `quests.ts`, `maps.ts` and
+  warnings count a cleanse flag; `monsters.ts` (package 3B): the guardian of a hand-authored sub-dungeon gets its
+  parent zone as `derived.homeZone` - the Pitwarden is a Red Field definition -, a generated one keeps null); the 3B
+  review enabled `subDungeon.spawnGuard` (`maps.ts` `checkSubDungeon`: a boolean, at most one guard entry per
+  sub-dungeon, never on a map's or a generated sub-dungeon's spawn) and the objective `spot` (rides on
+  `quest.objectiveZone`; `quests.ts` `checkK7Quest`: explore objectives with a sub-dungeon `zone` only, no `location`
+  beside it, a walkable tile of that sub-dungeon; written to `quests.json` as `location`, so the web generator's
+  landmark list - and the golden map - never sees it);
+  `quests.ts`, `maps.ts` and
   `story.ts` check their shapes (one label per choice slot, one composition per wave with counts ≥ 1, `sealed` with
   `sealedTextKey`, `anim` only on a `{monster}` focus step) before the core loader would refuse them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.
@@ -149,14 +156,18 @@ the export is byte-identical to the web's).
   `AutoPilotStepKind`). It checks the route as content: every quest, NPC, dialogue-tree path, monster / hunt id, role,
   objective index and count against the tables it exports, every tile against the map, clue tiles and explore tiles
   against their objective's circle, at most one `smokeEnd`, unique checkpoints, and that a step accepts every quest of
-  the route's zone. Runs before i18n.
+  the route's zone. A `dungeon` step (3B): the entrance is the zone's and unsealed, its target a hand-authored
+  sub-dungeon, `rooms` / `visit` are walkable tiles of it, `radius` > 0, and every spawn anchor and the guardian lie
+  within `radius` of a room (nothing the bot would never go to). Runs before i18n.
 * **set pieces** (`src/tables/setpieces.ts`, 1C U4): writes `set_pieces.json` from `unreal/GameData/setPieces.ts`
   with every optional field filled (`variant` -1, `offset` [0, 0], `ring` null or complete with `stepDeg` = 360 / count,
   `turnDeg` / `echoTurnDeg` 0, `scale` 1, empty lists, `walkOver` ""). Checks: a zone the maps export, unique ids,
   anchors (camp index, entrance, region, a defend-target quest of the zone), rings (count 1-64, radius > 0, skip in
   range), facings, the art ids in `Data/assets.json`, effect / cue recipes in `Art/Export/VFX/vfx_recipes.json`, emitters
   in `Audio/Export/audio_manifest.json` `ambience.emitters` and cue ids in its `cues`, echoes = echo lore of the zone,
-  `echoTurnDeg` only with echoes, a non-empty `walkOver` reason.
+  `echoTurnDeg` only with echoes, a non-empty `walkOver` reason. 3B: the zone may be a hand-authored sub-dungeon;
+  an `onWall` piece has an integer `tile` anchor on a wall tile (4), no ring, and a `tile` facing on a 4-neighbour
+  that is not wall.
 * **i18n** (`src/tables/i18n.ts`, runs last and reads every other table): web table → `PORT_STRINGS` →
   `unreal/GameData/i18n/{zh-CN,en}.ts` (same key set in both, else the export fails; the remake wins). Orphan sweep:
   in the content namespaces (`CONTENT_NAMESPACES`: quest, questTarget, questClue, questChoice, monster, npc, dialogue

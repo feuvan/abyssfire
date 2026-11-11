@@ -83,6 +83,11 @@ struct MapSpawnDef {
   MapSpawnLeaderDef leader{};
   std::vector<MapSpawnVariantDef> variants{};  // K6
   MapSpawnDormantDef dormant{};                // K7
+  // K7 (3B review; remake schema subDungeon.spawnGuard): the entry is the guard of its sub-dungeon's guardian
+  // (SubDungeonDef::miniBossId) - the guardian joins the entry's pack, so a member that is provoked alarms him when he
+  // has a packAggro, and his alarm reaches the members that have one or still stand dormant (MonsterSystem::PackAlarm).
+  // Only on a spawn of a hand-authored sub-dungeon, at most one entry (DataStore::Finalize).
+  bool guard = false;
 };
 
 // The most members the entry ever spawns: its `count` (a mix sums to it) or the count of a K6 variant.

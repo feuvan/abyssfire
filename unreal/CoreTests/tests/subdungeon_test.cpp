@@ -114,6 +114,8 @@ std::unique_ptr<DataStore> K7LoadEdited(const K7Edits& edits, DataLoadReport& re
   }
   std::map<std::string, std::string> texts;
   for (const auto& [file, doc] : docs) texts.emplace(file, WriteJson(doc));
+  // The fixtures re-point the zone's entrance at their own crypt: the shipped route's way down (3B) goes with it.
+  if (docs.count("maps.json") != 0) texts.emplace("autopilot_routes.json", test::RoutesWithoutDungeonSteps());
   auto store = std::make_unique<DataStore>();
   store->LoadAll(
       [&](std::string_view name, std::string& out) {
@@ -675,18 +677,23 @@ TEST_SUITE("world") {
     CHECK(dm.lineStep == TilePos{1, 0});
     CHECK(dm.hasFace);
     CHECK(dm.faceDeg == 270);
-    // The web's generated sub-dungeons are no zones.
-    int32_t generated = 0;
+    // The web's generated sub-dungeons are no zones. A shipped hand-authored one (3B: the Pit, whose entrance this
+    // fixture re-pointed at its crypt) is still one: unreachable here, not broken.
+    int32_t shipped = 0, generated = 0;
     for (const SubDungeonDef& s : w.subDungeons) {
       if (s.id == kSub) continue;
-      ++generated;
+      ++shipped;
       CAPTURE(s.id);
-      CHECK_FALSE(s.hasMap);
-      CHECK(d.FindMap(s.id) == nullptr);
-      CHECK(w.FindEnterableSubDungeon(s.id) == nullptr);
+      const SubDungeonDef* real = test::RealData().World().FindSubDungeon(s.id);
+      REQUIRE(real != nullptr);
+      CHECK(s.hasMap == real->hasMap);
+      CHECK((d.FindMap(s.id) != nullptr) == s.hasMap);
+      CHECK((w.FindEnterableSubDungeon(s.id) != nullptr) == s.hasMap);
       CHECK(s.nameKey == "data.subDungeon." + s.id + ".name");
+      generated += s.hasMap ? 0 : 1;
     }
-    CHECK(generated == static_cast<int32_t>(test::RealData().World().subDungeons.size()));
+    CHECK(shipped == static_cast<int32_t>(test::RealData().World().subDungeons.size()));
+    CHECK(generated >= 2);  // the web's two
     // The parent's entrance leads in.
     const MapDef* parent = d.FindMap(test::ch1::kZone);
     REQUIRE(parent != nullptr);
@@ -725,7 +732,8 @@ TEST_SUITE("world") {
     const std::vector<const QuestDef*> setters = QuestsSettingFlag(d.Quests(), kFlag);
     REQUIRE(setters.size() == 1);
     CHECK(setters[0]->id == kQuestCleanse);
-    // The shipped export has no hand-authored sub-dungeon yet and no objective with a zone (3B authors the Pit).
+    // (The shipped export's own hand-authored sub-dungeon and zoned objectives are the Pit's, package 3B:
+    // content_ch1_test.cpp.)
     CHECK(ObjectiveZone(*q, clear) == kSub);
   }
 
@@ -796,8 +804,6 @@ TEST_SUITE("world") {
          "subDungeonEntrances", "a sub-dungeon of '"},
         {"empty flag", K7EditSub([](JsonValue& sd) { sd.Set("cleansedFlag", JsonValue::String("")); }),
          "subDungeons.sub_fx_k7_crypt.cleansedFlag", "empty flag id"},
-        {"unknown mood", K7EditSub([](JsonValue& sd) { sd.Set("presentationTheme", JsonValue::String("pit")); }),
-         "subDungeons.sub_fx_k7_crypt.presentationTheme", "no zone_moods.json mood 'pit'"},
         {"wake range 0", dormant(R"({"wakeRange": 0})"), "dormant.wakeRange", "expected > 0"},
         {"wake range too far", dormant(R"({"wakeRange": 31})"), "dormant.wakeRange", "expected > 0"},
         {"unknown dormant field", dormant(R"({"wakeRange": 3, "sleep": true})"), "dormant.sleep",
@@ -869,6 +875,21 @@ TEST_SUITE("world") {
         K7At(doc, {"order"})->Append(JsonValue::String("fx_k7_nowhere"));
       });
       CHECK(K7HasIssue(unknown.errors, "order", "unknown map 'fx_k7_nowhere'"));
+    }
+    // A presentation theme needs its mood. The shipped table has a mood for every theme since the Pit shipped (3B:
+    // `pit`, `pit_cleansed`), so the mood's row is taken out of zone_moods.json.
+    {
+      DataLoadReport r;
+      K7Edits e = K7BaseEdits();
+      e.emplace_back("maps.json", K7EditSub([](JsonValue& sd) {
+        sd.Set("presentationTheme", JsonValue::String("pit_cleansed"));
+      }));
+      e.emplace_back("zone_moods.json", [](JsonValue& doc) { K7At(doc, {"moods"})->Remove("pit_cleansed"); });
+      K7LoadEdited(e, r);
+      INFO(r.Summary());
+      CHECK_FALSE(r.Ok());
+      CHECK(K7HasIssue(r.errors, "subDungeons.sub_fx_k7_crypt.presentationTheme",
+                       "no zone_moods.json mood 'pit_cleansed'"));
     }
     // A name key missing in a locale: the zone banner would have nothing to show.
     {
@@ -1851,10 +1872,17 @@ TEST_SUITE("world") {
     CHECK(flagAt < cleanseAt);
     CHECK(cleanseAt < progressAt);
     CHECK(progressAt < completedAt);
-    // The snapshot; the one left stays (and is not respawned or removed).
+    // 3B review: the one left lay down with the cleanse - a collapse (no kill: no exp, no credit), after the cleanse's
+    // event and before the objective's progress. The snapshot: cleansed, nobody hostile.
+    const auto collapsed = K7Of<EvMonsterCollapsed>(s.Log());
+    REQUIRE(collapsed.size() == 1);
+    CHECK(collapsed[0].raiser == kNoEntity);
+    const int32_t collapseAt = K7IndexOf<EvMonsterCollapsed>(s.Log());
+    CHECK(cleanseAt < collapseAt);
+    CHECK(collapseAt < progressAt);
     CHECK(s.View().zone.subDungeon.cleansed);
     CHECK_FALSE(s.View().zone.subDungeon.guardianAlive);
-    CHECK(s.View().zone.subDungeon.hostiles == 1);
+    CHECK(s.View().zone.subDungeon.hostiles == 0);
     REQUIRE(s.View().worldFlags != nullptr);
     CHECK(std::find(s.View().worldFlags->begin(), s.View().worldFlags->end(), std::string(kFlag)) !=
           s.View().worldFlags->end());
@@ -1863,7 +1891,8 @@ TEST_SUITE("world") {
     s.Step(120);
     CHECK(K7Of<EvAreaCleansed>(s.Log()).empty());
     CHECK(K7Of<EvWorldFlag>(s.Log()).empty());
-    CHECK(s.Alive(kSentinel).size() == 1);
+    CHECK(s.Alive().empty());
+    CHECK(K7Of<EvMonsterRaised>(s.Log()).empty());
   }
 
   TEST_CASE("K7 clear_area: the threshold, the guardian, the objective it waits for, the zone and a living hero all count") {
@@ -1957,7 +1986,7 @@ TEST_SUITE("world") {
     s.Step();
     REQUIRE(s.ctx->session.HasFlag(kFlag));
     CHECK(s.Monsters().ZoneCleansed());
-    CHECK(s.Alive().size() == static_cast<size_t>(kSentinels));  // the ones left stay for this visit
+    CHECK(s.Alive().empty());  // 3B review: the ones left lay down with the cleanse
     s.GoOut();
     const WorldMarkerView* mark = K7Marker(s.View(), MarkerKind::SubDungeonEntrance);
     REQUIRE(mark != nullptr);
@@ -2535,6 +2564,80 @@ TEST_SUITE("world") {
     for (const MonsterInstance* m : s.Alive(kSentinel)) CHECK(m->dormant);  // another pack: the wall sleeps on
   }
 
+  // 3B review: MapSpawnDef::guard - the entry is the guardian's guard, one pack with him.
+  TEST_CASE("K7 guard: the guard entry's pack is the guardian's - his alarm wakes it; the data rules") {
+    // The fixture's sentinels as the warden's guard. They have a packAggro; he has none.
+    DataLoadReport r;
+    K7Edits e = K7BaseEdits();
+    e.emplace_back("maps.json", K7EditSub([](JsonValue& sd) {
+      sd.FindMutable("spawns")->MutableItems()[1].Set("guard", JsonValue::Bool(true));
+    }));
+    const std::unique_ptr<DataStore> store = K7LoadEdited(e, r);
+    INFO(r.Summary());
+    REQUIRE(r.Ok());
+    const SubDungeonDef* sd = store->World().FindSubDungeon(kSub);
+    REQUIRE(sd != nullptr);
+    CHECK_FALSE(sd->map.spawns[0].guard);
+    CHECK(sd->map.spawns[1].guard);
+    {
+      K7Sim s(*store);
+      s.GoIn();
+      const MonsterInstance* warden = s.Alive(kWarden).front();
+      const EntityId wardenId = warden->id;
+      REQUIRE(warden->packId != 0);
+      for (const MonsterInstance* m : s.Alive(kSentinel)) {
+        CHECK(m->packId == warden->packId);
+        CHECK(m->dormant);
+      }
+      for (const MonsterInstance* m : s.Alive(kGrunt)) CHECK(m->packId != warden->packId);
+      // A blow on him from outside every notice range: the guard wakes with him.
+      DamageFlags f;
+      f.attacker = kHeroEntityId;
+      f.source = KillSource::HeroBasic;
+      s.ctx->sys.monsters->ApplyDamage(wardenId, 1, f);
+      s.Step(3);
+      for (const MonsterInstance* m : s.Alive(kSentinel)) {
+        CHECK_FALSE(m->dormant);
+        CHECK(m->state != MonsterState::Idle);
+      }
+    }
+    // Without the field the guardian has no pack (the shipped behaviour of every other sub-dungeon).
+    {
+      K7Sim s(K7Data());
+      s.GoIn();
+      const EntityId wardenId = s.Alive(kWarden).front()->id;
+      CHECK(s.Alive(kWarden).front()->packId == 0);
+      DamageFlags f;
+      f.attacker = kHeroEntityId;
+      f.source = KillSource::HeroBasic;
+      s.ctx->sys.monsters->ApplyDamage(wardenId, 1, f);
+      s.Step(3);
+      for (const MonsterInstance* m : s.Alive(kSentinel)) CHECK(m->dormant);
+    }
+    // The rules: one guard entry at most; never on a map's spawn; never on a generated sub-dungeon's spawn.
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", K7EditSub([](JsonValue& rec) {
+        for (JsonValue& sp : rec.FindMutable("spawns")->MutableItems()) sp.Set("guard", JsonValue::Bool(true));
+      }));
+      CHECK(K7HasIssue(bad.errors, "subDungeons.sub_fx_k7_crypt.spawns[1].guard", "a second guard entry"));
+    }
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", [](JsonValue& doc) {
+        K7At(doc, {"maps", test::ch1::kZone, "spawns"})->MutableItems()[0].Set("guard", JsonValue::Bool(true));
+      });
+      CHECK(K7HasIssue(bad.errors, StrCat("maps.", test::ch1::kZone, ".spawns[0].guard"),
+                       "only a spawn of a hand-authored sub-dungeon"));
+    }
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", [](JsonValue& doc) {
+        JsonValue& gen = K7At(doc, {"subDungeons"})->MutableMembers()[0].value;
+        REQUIRE(gen.Find("tiles") == nullptr);
+        gen.FindMutable("spawns")->MutableItems()[0].Set("guard", JsonValue::Bool(true));
+      });
+      CHECK(K7HasIssue(bad.errors, "guard", "a generated sub-dungeon's spawn has no 'guard'"));
+    }
+  }
+
   TEST_CASE("K7 spawns: a sub-dungeon spawn takes a flag variant and a pack leader, as a map spawn does") {
     DataLoadReport r;
     K7Edits e = K7BaseEdits();
@@ -2808,6 +2911,7 @@ TEST_SUITE("world") {
     MESSAGE("K7 replay digest (seed 31): " << a);
     // Pinned on GCC and Clang (determinism across compilers; re-pin with the value the message prints when the event
     // order of a visit changes on purpose).
-    CHECK(a == 17502125020523143409ull);
+    // 3B review: re-pinned - the cleanse now settles what still stood (EvMonsterCollapsed for each).
+    CHECK(a == 10366311907818012538ull);
   }
 }

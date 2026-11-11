@@ -721,13 +721,20 @@ void QuestWorld::CheckExplore() {
 // quest completes when it was the last one).
 void QuestWorld::CheckClearArea() {
   QuestSystem* qs = ctx_.sys.quests;
-  const MonsterSystem* monsters = ctx_.sys.monsters;
+  MonsterSystem* monsters = ctx_.sys.monsters;
   const Hero* hero = ctx_.sys.hero;
   if (qs == nullptr || monsters == nullptr || hero == nullptr) return;
   const std::string& mapId = ctx_.sys.zone->MapId();
   const SubDungeonDef* sub = ctx_.data.World().FindSubDungeon(mapId);
   if (sub == nullptr) return;  // only a sub-dungeon is cleansed (DataStore::Finalize)
   if (hero->Life() != HeroLife::Alive || hero->Hp() <= 0) return;  // a fallen hero cleanses nothing
+  // 3B review: nor does a hero on the way out. After a death's respawn the hero is alive again while the fade to the
+  // parent's camp runs (and on the exit's fade he has left): a guardian that fell meanwhile (a status tick, the beast,
+  // a projectile in flight) must not cleanse the place behind a fading screen. The next visit starts over: the place
+  // is not cleansed, so it stands again (its guardian spent) and a living hero cleanses it.
+  std::string leavingTo;
+  Vec2 leavingAt;
+  if (ctx_.session.transitioning || ctx_.sys.zone->PendingZoneChange(leavingTo, leavingAt)) return;
   for (const std::string& qid : QwOpenQuestIds(*qs)) {
     const QuestDef* q = ctx_.data.FindQuest(qid);
     const QuestProgress* p = qs->Progress(qid);
@@ -753,6 +760,9 @@ void QuestWorld::CheckClearArea() {
       ev.remaining = remaining;
       ev.pos = hero->Position();
       ctx_.events.Emit(std::move(ev));
+      // 3B review: the dead lie down. What still stood (at most maxRemaining) falls without a kill and the bodies that
+      // were about to rise again stay down (MonsterSystem::SettleCleansed), so a cleansed place holds no hostile.
+      monsters->SettleCleansed();
       qs->UpdateProgress(ObjectiveType::ClearArea, obj.targetId);
       return;  // one clear_area per sub-dungeon (DataStore::Finalize); the records may have moved
     }

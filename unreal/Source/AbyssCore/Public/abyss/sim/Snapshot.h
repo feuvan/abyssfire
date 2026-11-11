@@ -144,6 +144,8 @@ struct MonsterView {
   // K7: it stands dormant (a spawn entry's `dormant`: no patrol, it notices the hero only within its wake range) until
   // it first leaves Idle; with the entry's `rise` its wake is an EvPlayAnim{Rise} that roots it while the clip plays.
   bool dormant = false;
+  // K7 (3B review): a sub-dungeon guardian that has paid on this save (MonsterInstance::spent): its kill gives nothing.
+  bool spent = false;
 };
 
 struct NpcView {

@@ -97,6 +97,8 @@ std::unique_ptr<DataStore> LoadEdited(const DataEdits& edits, DataLoadReport& re
   }
   std::map<std::string, std::string> texts;
   for (const auto& [file, doc] : docs) texts.emplace(file, WriteJson(doc));
+  // The fixtures replace the zone's sub-dungeon entrances with their own: the shipped route's way down goes with them.
+  if (docs.count("maps.json") != 0) texts.emplace("autopilot_routes.json", test::RoutesWithoutDungeonSteps());
   auto store = std::make_unique<DataStore>();
   store->LoadAll(
       [&](std::string_view name, std::string& out) {

@@ -31,6 +31,7 @@ empty: the web game is read-only for the remake.
 | `miniBosses.ts` | mini-boss defs, spawns and pre-fight dialogues | `src/data/miniBosses.ts` |
 | `monsters/emerald_plains.ts` | the Chapter 1 roster (other zones stay web until redesigned) | `src/data/monsters/emerald_plains.ts` |
 | `maps/emerald_plains.ts` | the Chapter 1 map anchors (generator inputs) | `src/data/maps/emerald_plains.ts` |
+| `subDungeons.ts` (+ `maps/sub_rf_pit.ts`) | the sub-dungeon records, their guardians and the per-zone index: the web's two generated ones verbatim, plus (Wave 3, package 3B) the Pit of the Faithful - a hand-authored 40 x 40 grid (`maps/sub_rf_pit.ts`: rooms as character rows, spawns, the dormant Helm Wall, corpse seeds, `cleansedFlag`) and the Pitwarden | `src/data/subDungeons.ts` |
 | `loreCollectibles.ts` | lore entries | `src/data/loreCollectibles.ts` |
 | `story/script.ts` (+ `story/types.ts`) | prologue, chapter cards, cutscenes, boss intros, triggers | `src/data/story/script.ts` |
 | `homestead.ts` | Ember Tower data (unlock quests, buildings, ...) | `src/data/homestead.ts` |
@@ -38,13 +39,20 @@ empty: the web game is read-only for the remake.
 | `world.ts` | `REMAKE_OVERRIDES` for tables inside web system files (below) | achievements, events, moods, affixes, terrain |
 | `types.ts` | web types re-exported + remake-only fields (below) | — |
 | `i18n/zh-CN.ts`, `i18n/en.ts` | remake strings (below) | merged over the web tables |
-| `i18n/ch1World.ts` | Chapter 1 world strings as `[zh-CN, en]` pairs (zone, roster, mini-boss lines, hunts, boss intro, lore, hidden area, story decorations, the sealed Pit, new NPCs, achievements, events, elite affixes) | spread into both locales |
+| `i18n/ch1World.ts` | Chapter 1 world strings as `[zh-CN, en]` pairs (zone, roster, mini-boss lines, hunts, boss intro, lore, hidden area, story decorations, the Pit's name and its guardian, new NPCs, achievements, events, elite affixes) | spread into both locales |
 | `i18n/ch1Quests.ts`, `i18n/ch1Npcs.ts`, `i18n/ch1Story.ts` | Chapter 1 narrative strings, same form: quests (name, quest-log line, offer, progress, turn-in), targets, clue notes, choice labels, the escort and the gate; the re-cast NPCs, their quest-gated lines (Wave 2), the Captain's tree, the Lanternwisp; prologue, chapter card, cutscenes | spread into both locales |
-| `autopilot/ch1.ts` (+ `autopilot/types.ts`) | the bot's Chapter 1 route: checkpoints, notes and steps (talk, dialogue tree, quest card, shop, gather, hunt, boss by role, clues, explore, escort, defend, walk, portal, equip) | new: `autopilot_routes.json` (no web module) |
-| `setPieces.ts` | the UE set-piece layer (1C U4, DECISIONS DR15): authored prop groups per zone (Knellwatch's bell frame, hearth dressing and Name Wall, the sealed Pit mouth, the Boneyard Gate, Ashwheat's bridge and cottages, the Sheepfold's wagon ring, the Breach Rim's dais / ash circles / banner ring, helmet stakes) with anchor (tile, camp prop, entrance, region, defend target), offset, ring, facing, art id chain / variant, socket effects / audio emitters / cue ripples, echo poses, occluder, `walkOver` reason, `yieldsToDefendTarget`. Presentation only: not generator input, not walkability | new: `set_pieces.json` (no web module) |
+| `autopilot/ch1.ts` (+ `autopilot/types.ts`) | the bot's Chapter 1 route: checkpoints, notes and steps (talk, dialogue tree, quest card, shop, gather, hunt, boss by role, clues, explore, escort, defend, walk, portal, equip, and a sub-dungeon cleared room by room: `dungeon`) | new: `autopilot_routes.json` (no web module) |
+| `setPieces.ts` | the UE set-piece layer (1C U4, DECISIONS DR15): authored prop groups per zone (Knellwatch's bell frame, hearth dressing and Name Wall, the open Pit mouth, the Boneyard Gate, Ashwheat's bridge and cottages, the Sheepfold's wagon ring, the Breach Rim's dais / ash circles / banner ring, helmet stakes) with anchor (tile, camp prop, entrance, region, defend target), offset, ring, facing, art id chain / variant, socket effects / audio emitters / cue ripples, echo poses, occluder, `walkOver` reason, `yieldsToDefendTarget`. Presentation only: not generator input, not walkability | new: `set_pieces.json` (no web module) |
 | `tsconfig.json` | editor / `tsc -p` project (`@web/*` paths) | — |
 
-Added by later packages (implementation-plan.md §2.1, §9): `maps/sub_rf_pit.ts` in Wave 3.
+**The Pit (package 3B).** `maps/sub_rf_pit.ts` draws the Pit as forty character rows (`#` wall, `.` flagstone, `,` ash,
+`:` dug earth, `=` paving, `~` the seep, `o` a blocked rack tile); tile ids are the terrain style `pit`'s
+(`world.ts` `terrainStyles.add.pit`, copied from the art manifest's `terrain.pit.dataStyle`). Its dressing is the
+set-piece zone `sub_rf_pit` in `setPieces.ts`: crypt-kit overlays with `onWall: true` - anchored on a **wall** tile
+(integer tile anchor, no ring), `facing: {kind: 'tile'}` on the floor tile next to it; an `offset` slides an overlay
+along its wall without turning it. The exporter and `setpieces_test.cpp` check both ends (the anchor is tile 4, the
+faced tile is open floor). The bot goes down with the route's `dungeon` step (entrance, the rooms in order, a radius,
+tiles to visit, a done condition, tries): every spawn anchor and the guardian must lie within the radius of a room.
 
 **Set pieces (package 1C U4).** `setPieces.ts` is checked twice: by the exporter (`src/tables/setpieces.ts`: zone,
 anchors, art ids in the manifest, recipes in `Art/Export/VFX/vfx_recipes.json`, emitters / cue ids in
@@ -186,8 +194,13 @@ zone the hero enters; optional `collisions`, `decorations`, `presentationTheme`,
 `storyDecorations`, its spawns typed as a map's; feature `subDungeon.map`) and its `cleansedFlag` (feature
 `subDungeon.cleansedFlag`), an objective's `zone` (feature `quest.objectiveZone`), the `clear_area` objective with
 `maxRemaining` / `after` (`QuestObjective`; feature `quest.clearArea`) and a spawn entry's `dormant` (`RemakeDormant`;
-feature `map.spawnDormant`). No record uses them yet: the Pit is package 3B's, authored as a redirect of
-`src/data/subDungeons.ts` (implementation-plan.md *3A outcomes*, *For 3B*). Still withheld: every other Wave 3 field.
+feature `map.spawnDormant`). The Pit (package 3B: `subDungeons.ts`, `maps/sub_rf_pit.ts`, S7 in
+`quests/all_quests.ts`) uses all five. The 3B review added two: a sub-dungeon spawn entry's `guard` (the entry is the
+guardian's guard: one pack with him; feature `subDungeon.spawnGuard`) and an objective's `spot` (the explore spot of an
+objective whose `zone` is a sub-dungeon, written to `quests.json` as its `location`; it rides on
+`quest.objectiveZone`). **Use `spot`, never `location`, for a place inside a sub-dungeon:** the web map generator
+keeps every `location` of the quest's zone walkable in the parent's grid, so a `location` there moves the golden map.
+Still withheld: every other Wave 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

@@ -1,5 +1,5 @@
 /**
- * Chapter 1 quest strings of the dark remake (package 1B part 2, narrative): the eleven quests' names, quest-log lines,
+ * Chapter 1 quest strings of the dark remake (package 1B part 2, narrative; S7 with Wave 3): the quests' names, quest-log lines,
  * offers, progress lines (K1 `progressKey`) and turn-in lines, the objective targets and clue notes, the labelled reward
  * choices (K1 `rewards.choiceLabels`), the escort and the defend target. Source: Docs/dark-remake/chapter1.md §5-7,
  * §18; voice: story-bible.md §11 (zh limits: offer <= 70, progress and complete <= 50 code points). The quest-log lines
@@ -111,10 +111,26 @@ export const CH1_QUEST_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   'data.quest.q_rf_hallowed_ground.progress': ['车轮响一下，就是一个名字。', 'Every turn of the wheel is a name.'],
   'data.quest.q_rf_hallowed_ground.complete': ['圣地还肯收他们。……也许是最后一次了。',
     'The ground still takes them. ...Perhaps for the last time.'],
+  // S7 (Wave 3, package 3B; chapter1.md §6 S7): the Pit of the Faithful. Its turn-in line is the Flame Niche's beat:
+  // what the hero found at the bottom, said back to them by Aldwin.
+  'data.quest.q_rf_the_pit.name': ['信者之坑', 'The Pit of the Faithful'],
+  // 3B review: the log says what the offer says ("something is digging": the objective row names him once he is the
+  // target) and the two languages say the same thing (放倒 = bring down).
+  'data.quest.q_rf_the_pit.desc': ['焚尸坑底下还有一层，有东西在下面挖。下去，放倒那个挖坑的，让坑底的死人躺下，再看看坑底留着什么。',
+    'There is another floor under the burn pit, and something is digging down there. Go down, bring the digger down, let the dead at the bottom lie down, and see what is left at the very bottom.'],
+  'data.quest.q_rf_the_pit.offer': ['你醒来的那个坑，底下还有一层。火熄了，可坑底有东西在挖。下去看看——那是你的来处。',
+    "The pit you woke in has another floor beneath it. The fire's out, but something down there is digging. Go and look. That's where you came from."],
+  'data.quest.q_rf_the_pit.progress': ['坑底不见天。带着你掌心的光。', "There's no sky down there. Take the light in your palm."],
+  'data.quest.q_rf_the_pit.complete': ['坑底的石龛空了，五道焦痕围着它。……那团火，在下面等了你一千年。',
+    'The niche at the bottom is empty, with five burn marks round it. ...That fire waited a thousand years for you down there.'],
+  // The name of S7's permanent reward (chapter1.md §6 S7: +1 skill point, once per difficulty).
+  'data.quest.q_rf_the_pit.permanent': ['空龛余温', "The Empty Niche's Warmth"],
 
   // ── Objective targets the roster strings (ch1World.ts) do not already name (getQuestTargetName:
   // `data.questTarget.<targetId>`); `plains_herbalist` is S1's delivery ──
   'data.questTarget.zone_rf_ashwheat': ['灰麦村', 'Ashwheat'],
+  // S7's last objective (3B review): the Flame Niche, named as the hero knows it before seeing it.
+  'data.questTarget.zone_rf_flame_niche': ['坑底的石龛', 'The niche at the bottom'],
   'data.questTarget.miniboss_corpseherd': ['尸牧婆', 'The Corpseherd'],
   'data.questTarget.mat_breach_ichor': ['渊血样本', 'Breach-Blood Sample'],
   'data.questTarget.plains_herbalist': ['把血样交给玛勒', 'Bring the samples to Marl'],
@@ -128,6 +144,9 @@ export const CH1_QUEST_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   'data.questTarget.clue_rf_lantern_3': ['描过名字的坟', 'Grave with a Retraced Name'],
   'data.questTarget.clue_rf_lantern_4': ['灯停下的坟', 'Where the Light Stopped'],
   'data.questTarget.escort_rf_bern': ['护送伯恩去最后的圣地', 'Escort Bern to the hallowed ground'],
+  // S7: the Pitwarden, and the Pit itself (the clear_area objective's target).
+  'data.questTarget.sub_pitwarden': ['掘坑官', 'The Pitwarden'],
+  'data.questTarget.sub_rf_pit': ['信者之坑', 'The Pit of the Faithful'],
 
   // ── Clue notes (a clue floats "<target>\n<note>", quests 3.5): the Tag-Thief's trail (chapter1.md S3) and the
   // Lanternwisp's graves (S5) ──

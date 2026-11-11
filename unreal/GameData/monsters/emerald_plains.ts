@@ -9,8 +9,10 @@ import type { MonsterDefinition, RemakeCorpse, RemakeRiseAgain } from '../types'
  * the art lane's plain remake id (`monster_<id>`, Art/blender/march/march_palettes.py); until the asset ships, the core's
  * art chain (MonsterArtGameId) misses and the anim_timing rig fallback times the swing.
  *
- * Exp (1B review, DECISIONS DR9 *as built*): every regular gives round(0.75 x its §2.0 Exp) and Valdras 110 (half),
- * so a full Chapter 1 ends in the playthrough band (Lv 12-14) that DR9 anchors; monsters.md §2.0 records the change.
+ * Exp (DECISIONS DR9 *as built*): every regular gives round(0.5 x its §2.0 Exp) and Valdras 110 (half), so a full
+ * Chapter 1 ends in the playthrough band (Lv 12-14) that DR9 anchors; monsters.md §2.0 records the change. The 1B
+ * review's factor was 0.75; Wave 3 (package 3B) made it 0.5: the Pit adds S7's 300 exp, the Pitwarden's 110 and twenty
+ * more kills, and at 0.75 every run ended at Lv 14 with one in sixty at Lv 15 (DR9 *3B*).
  *
  * Order matters: the zone list's first entry is the random-event fallback monster (the breachclot, the weakest). The
  * mini-boss lives in ../miniBosses.ts, the hunts in ../quests/all_quests.ts (`hunts`); Valdras is the story boss
@@ -50,7 +52,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 4,
     attackRange: 1.2,
     attackSpeed: 1500,
-    expReward: 8,
+    expReward: 6,
     goldReward: [2, 4],
     spriteKey: 'monster_breachclot',
     animCategory: 'slime',
@@ -73,7 +75,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 4,
     attackRange: 1.5,
     attackSpeed: 1600,
-    expReward: 11,
+    expReward: 8,
     goldReward: [2, 5],
     spriteKey: 'monster_risen_footman',
     animCategory: 'humanoid',
@@ -94,7 +96,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 6,
     attackRange: 1.3,
     attackSpeed: 950,
-    expReward: 13,
+    expReward: 9,
     goldReward: [1, 4],
     spriteKey: 'monster_gravegnawer',
     animCategory: 'humanoid',
@@ -117,7 +119,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 5,
     attackRange: 1.2,
     attackSpeed: 1800,
-    expReward: 14,
+    expReward: 9,
     goldReward: [1, 3],
     spriteKey: 'monster_cinderbloat',
     animCategory: 'slime',
@@ -149,7 +151,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 7,
     attackRange: 6.0,
     attackSpeed: 2200,
-    expReward: 18,
+    expReward: 12,
     goldReward: [3, 6],
     spriteKey: 'monster_risen_arbalest',
     animCategory: 'humanoid',
@@ -174,7 +176,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 6,
     attackRange: 1.5,
     attackSpeed: 1100,
-    expReward: 23,
+    expReward: 15,
     goldReward: [4, 8],
     spriteKey: 'monster_oath_zealot',
     animCategory: 'humanoid',
@@ -201,7 +203,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 5,
     attackRange: 1.6,
     attackSpeed: 1150,
-    expReward: 21,
+    expReward: 14,
     goldReward: [6, 12],
     spriteKey: 'monster_deserter',
     animCategory: 'humanoid',
@@ -225,7 +227,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 6,
     attackRange: 1.5,
     attackSpeed: 1400,
-    expReward: 21,
+    expReward: 14,
     goldReward: [4, 9],
     spriteKey: 'monster_deserter_drummer',
     animCategory: 'humanoid',
@@ -255,7 +257,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 5,
     attackRange: 1.6,
     attackSpeed: 1700,
-    expReward: 26,
+    expReward: 17,
     goldReward: [3, 7],
     spriteKey: 'monster_risen_shieldbearer',
     animCategory: 'humanoid',
@@ -279,7 +281,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 6,
     attackRange: 1.6,
     attackSpeed: 1700,
-    expReward: 30,
+    expReward: 20,
     goldReward: [4, 8],
     spriteKey: 'monster_dead_standard_bearer',
     animCategory: 'humanoid',
@@ -313,7 +315,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 6,
     attackRange: 2.0,
     attackSpeed: 1700,
-    expReward: 36,
+    expReward: 24,
     goldReward: [6, 12],
     spriteKey: 'monster_bonegorger',
     animCategory: 'humanoid',
@@ -338,14 +340,21 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     // the banner ring closes from 9 to 5 over 40 s, 4 % max life per second of breach fire outside). Every special
     // winds up >= 700 ms under a crimson decal; no hit above 35 % of the hero's life; no invulnerable phase. Centres
     // default to his authored spawn tile (15,95), the dais (K4), and so does his M1 leash, which covers the ring (a bound
-    // fight, 2F review). Numbers: the playthrough gate, per class (2F review: 9000 HP puts every class's median fight in
+    // fight, 2F review). Numbers: the playthrough gate, per class (2F review: 9000 HP put every class's median fight in
     // the DR9 band, 30-180 s, for the frame-perfect and the reaction-limited bot alike; 14000 / 32 was tuned on the
     // warrior alone). Damage is the design's 20: at 24 a Brutish Valdras (x1.35) killed the reaction-limited rogue in 10
-    // of 18 fights.
+    // of 18 fights. 3B: 10000 HP. The hero now comes with the Pit behind him (S7's skill point, the Pitwarden's drop):
+    // at 9000 the warrior's median fell under 30 s in two of ten sweeps (26.4 s at the lowest), at 10500 the rogue's
+    // 90th percentile reached 232 s of the band's 240. 3B review: 10400. With the review's Pit (the route's kill order
+    // and drops moved) the reaction-limited warrior's median was 29.2 s in one of twenty sweeps at 10000; at 10400 the
+    // lowest is 30.7 s and the rogue's 90th percentile 213 s at most. These bands are the full route's (the Pit
+    // included). The hero who skips the Pit is weaker and his fight longer - the rogue's median 137-202 s per sweep,
+    // its 90th percentile up to 254 s - and no life total fits both routes: the sweep holds that route to 210 / 275 s
+    // (DECISIONS DR9 *3B review*).
     id: 'valdras',
     name: '焚旗元帅·瓦德拉斯',
     level: 9,
-    hp: 9000,
+    hp: 10400,
     damage: 20,
     defense: 12,
     speed: 48,
@@ -428,7 +437,7 @@ export const EmeraldPlainsMonsters: MonsterDefinition[] = [
     aggroRange: 6,
     attackRange: 1.6,
     attackSpeed: 1700,
-    expReward: 30,
+    expReward: 20,
     goldReward: [4, 8],
     spriteKey: 'monster_dead_standard_bearer',
     animCategory: 'humanoid',

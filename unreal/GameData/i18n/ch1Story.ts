@@ -1,6 +1,6 @@
 /**
  * Chapter 1 story strings of the dark remake (package 1B part 2, narrative): the prologue, the chapter card and the
- * cutscenes `cs_rf_brand`, `cs_rf_whisper`, `cs_rf_herd`, `cs_rf_marshal_falls`, `cs_rf_siege` and `cs_rf_finale`
+ * cutscenes `cs_rf_brand`, `cs_rf_whisper`, `cs_rf_herd`, `cs_rf_marshal_falls`, `cs_rf_pit` (Wave 3), `cs_rf_siege` and `cs_rf_finale`
  * (GameData/story/script.ts; the boss intro `cs_boss_valdras` is in ./ch1World.ts). Keys are `story.<id>.<step>`, the
  * 1-based step index. Source: Docs/dark-remake/chapter1.md §8; voice: story-bible.md §11 (zh: say / whisper <= 60,
  * narrate <= 70, slide <= 110, title <= 12, subtitle <= 14 code points, checked by quests_test).
@@ -83,6 +83,13 @@ export const CH1_STORY_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
     'He kneels on the dais. The scorched banner on his back finally droops.'],
   'story.cs_rf_marshal_falls.4': ['现在，孩子——灯。', 'Now, child. The lamp.'],
 
+  // ── cs_rf_pit (Wave 3): the first step onto the floor under the burn pit (zone_entered sub_rf_pit); steps 2 and 5
+  // are the camera on the hero and a pause ──
+  'story.cs_rf_pit.1': ['坑底还有一层。越往下，越暖。暖得不对。',
+    'There is another floor under the pit. The deeper you go, the warmer it gets. Wrongly warm.'],
+  'story.cs_rf_pit.3': ['墙上嵌着一排排头盔，每一顶都朝着上面，像在等人点名。',
+    'Rows of helmets are set into the walls, every one facing up, as if waiting for roll call.'],
+  'story.cs_rf_pit.4': ['你在这里醒过一次。再醒一次，也不难。', "You woke here once. Waking again won't be hard."],
   // ── cs_rf_siege: The bell rings by itself; the siege begins (on accepting q_rf_last_toll) ──
   'story.cs_rf_siege.2': ['钟无人自鸣。', 'The bell rings with no hand on it.'],
   'story.cs_rf_siege.3': ['上墙！能拿刀的都上墙！', 'To the walls! Everyone who can hold a blade!'],

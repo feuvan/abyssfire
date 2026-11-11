@@ -2,7 +2,8 @@
  * set_pieces.json — the UE set-piece layer (implementation-plan.md §2.3 / §4 U4): unreal/GameData/setPieces.ts, written
  * with every optional field filled in (the C++ loader, abyss/data/SetPieceData.h, reads one shape).
  *
- * Content checks here (a stale id fails the export): the zone exists; every anchor resolves on its map (camp number,
+ * Content checks here (a stale id fails the export): the zone exists (a map, or - K7 - a hand-authored sub-dungeon);
+ * every anchor resolves on its map (camp number,
  * entrance, region, a quest of the zone with a defend target) and every tile lies on it; ids are unique per zone; rings
  * are sane; `echoes` are echo lore of the zone; socket recipes exist in the art lane's VFX recipes, emitters and cue
  * ids in the audio manifest (when those files exist). The core checks the shape and the map / quest / lore references
@@ -17,6 +18,7 @@ import { AllLoreEntries } from '../../../../../src/data/loreCollectibles';
 import { SET_PIECE_ZONES, type SetPieceAnchor, type SetPieceDef, type SetPieceFacing } from '../../../../GameData/setPieces';
 import type { QuestDefinition } from '../../../../GameData/types';
 import { assert, plain, type Ctx, type TableResult } from '../util';
+import { isHandAuthored, subDungeons } from '../subdungeons';
 
 interface MapLike {
   cols: number;
@@ -50,8 +52,12 @@ export function exportSetPieces(ctx: Ctx): TableResult[] {
   const zonesOut: Record<string, unknown> = {};
   let pieceCount = 0;
   for (const z of SET_PIECE_ZONES) {
-    const map = (AllMaps as Record<string, MapLike | undefined>)[z.zone];
-    assert(map, `set pieces: unknown zone '${z.zone}'`);
+    // A zone proper, or (K7) a hand-authored sub-dungeon: the zone the hero walks (its record carries the grid).
+    const sub = subDungeons()[z.zone];
+    const map = (AllMaps as Record<string, MapLike | undefined>)[z.zone] ?? (isHandAuthored(sub) ? sub as unknown as MapLike : undefined);
+    assert(map, `set pieces: unknown zone '${z.zone}' (a map, or a hand-authored sub-dungeon)`);
+    const tileAt = (col: number, row: number): number | undefined =>
+      isHandAuthored(sub) ? sub.tiles?.[Math.round(row)]?.[Math.round(col)] : undefined;
     assert(!(z.zone in zonesOut), `set pieces: zone '${z.zone}' listed twice`);
     const onMap = (col: number, row: number, where: string) => {
       assert(Number.isFinite(col) && Number.isFinite(row), `${where}: non-finite tile`);
@@ -119,6 +125,18 @@ export function exportSetPieces(ctx: Ctx): TableResult[] {
       assert(p.echoTurnDeg === undefined || (Number.isFinite(p.echoTurnDeg) && (p.echoes ?? []).length > 0),
         `${where}: echoTurnDeg turns the echoes' figures (needs echoes)`);
       assert(p.walkOver === undefined || p.walkOver.trim() !== '', `${where}: walkOver names its reason`);
+      // A wall overlay (the crypt kit): on a tile anchor, facing a 4-neighbour tile; in a hand-authored grid the anchor
+      // is a wall tile and the faced tile is not (CoreTests setpieces_test checks the built grid of every zone).
+      if (p.onWall) {
+        assert(a.kind === 'tile' && Number.isInteger(a.col) && Number.isInteger(a.row) && !ring,
+          `${where}: an onWall piece is anchored on a wall tile (integer col / row, no ring)`);
+        assert(f.kind === 'tile' && Math.abs(f.col - a.col) + Math.abs(f.row - a.row) === 1,
+          `${where}: an onWall piece faces the floor tile next to its wall tile (facing {kind: 'tile'} on a 4-neighbour)`);
+        const WALL = 4;
+        const own = tileAt(a.col, a.row), faced = f.kind === 'tile' ? tileAt(f.col, f.row) : undefined;
+        assert(own === undefined || own === WALL, `${where}: onWall, but tile [${a.col}, ${a.row}] is no wall tile`);
+        assert(faced === undefined || faced !== WALL, `${where}: onWall, but it faces a wall tile`);
+      }
       return plain({
         id: p.id,
         area: p.area,
@@ -143,6 +161,7 @@ export function exportSetPieces(ctx: Ctx): TableResult[] {
         occluder: p.occluder ?? false,
         walkOver: p.walkOver ?? '',
         yieldsToDefendTarget: p.yieldsToDefendTarget ?? false,
+        onWall: p.onWall ?? false,
         note: p.note ?? '',
       });
     });

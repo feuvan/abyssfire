@@ -130,9 +130,22 @@ AutoPilotStep ApReadStep(const JNode& s) {
       st.maxSec = s.Num("maxSec");
       if (st.arrive <= 0) s.Error("arrive must be > 0");
       break;
+    case K::Dungeon:
+      st.entrance = s.Str("entrance");
+      if (st.entrance.empty()) s.Error("a dungeon step names its entrance");
+      for (const JNode& t : s.Items("rooms")) st.tiles.push_back(ApReadTile(t));
+      if (st.tiles.empty()) s.Error("a dungeon step needs rooms");
+      st.radius = s.Num("radius");
+      if (!(st.radius > 0)) s.Error("radius must be > 0");
+      for (const JNode& t : s.Items("visit", true)) st.visit.push_back(ApReadTile(t));
+      st.until = ApReadUntil(s);
+      st.tries = s.Int("tries");
+      st.maxSec = s.Num("maxSec");
+      break;
   }
-  if ((st.kind == K::Escort || st.kind == K::Defend) && st.tries < 1) s.Error("tries must be >= 1");
-  if ((st.kind == K::WaitIdle || st.kind == K::Hunt || st.kind == K::Boss || st.kind == K::GoTo) && !(st.maxSec > 0)) {
+  if ((st.kind == K::Escort || st.kind == K::Defend || st.kind == K::Dungeon) && st.tries < 1) s.Error("tries must be >= 1");
+  if ((st.kind == K::WaitIdle || st.kind == K::Hunt || st.kind == K::Boss || st.kind == K::GoTo || st.kind == K::Dungeon) &&
+      !(st.maxSec > 0)) {
     s.Error("maxSec must be > 0");
   }
   return st;

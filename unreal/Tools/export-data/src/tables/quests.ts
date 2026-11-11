@@ -113,6 +113,20 @@ function checkK7Quest(q: unknown, cleansers: Map<string, string>): void {
       }
     }
     const zone = clear ? o.targetId : o.zone;
+    // 3B review: `spot` is the explore spot of an objective in a sub-dungeon (GameData/types.ts QuestObjective; written
+    // as `location` below). The web generator never sees it, so it is no landmark of the parent's grid.
+    const spot = (o as { spot?: unknown }).spot as { col: number; row: number; radius: number } | undefined;
+    if (spot !== undefined) {
+      assert(o.type === 'explore', `${where}.spot: only an explore objective has a spot`);
+      assert(o.zone !== undefined, `${where}.spot: only an objective with a sub-dungeon \`zone\` has a spot (use location)`);
+      assert((o as { location?: unknown }).location === undefined, `${where}.spot: the objective also has a location`);
+      for (const key of Object.keys(spot)) assert(['col', 'row', 'radius'].includes(key), `${where}.spot: unknown field '${key}'`);
+      assert(Number.isInteger(spot.col) && Number.isInteger(spot.row) && typeof spot.radius === 'number' && spot.radius > 0,
+        `${where}.spot: expected {col, row, radius > 0}`);
+      const at = o.zone !== undefined ? all[o.zone] : undefined;
+      assert(!at || !isHandAuthored(at) || (at.collisions ?? []).length === 0 || at.collisions![spot.row]?.[spot.col] === true,
+        `${where}.spot: (${spot.col},${spot.row}) is not a walkable tile of '${o.zone}'`);
+    }
     if (zone === undefined) return;
     assert(typeof zone === 'string' && zone !== '', `${where}.zone: an empty zone id (omit it for the quest's zone)`);
     assert(zone !== r.zone, `${where}.zone: the quest's own zone (omit it)`);
@@ -189,6 +203,16 @@ export function exportQuests(): TableResult[] {
     const out = withholdRemakeFields('quest', plain(q), `quests.${q.id}`);
     // 2F: a hunt's own abilities live on its definition (quest_hunts.json defsNormal, tables/monsters.ts), not here.
     if (out.hunts) out.hunts = (out.hunts as RemakeQuestHunt[]).map(({ abilities: _abilities, ...h }) => h);
+    // 3B review: a sub-dungeon objective's `spot` is its `location` in quests.json (the one field the core reads). A
+    // spot the schema gate withheld is gone already.
+    if (Array.isArray(out.objectives)) {
+      const objectives = out.objectives as unknown as Record<string, unknown>[];
+      (out as unknown as Record<string, unknown>).objectives = objectives.map(o => {
+        if (o.spot === undefined) return o;
+        const { spot, ...rest } = o;
+        return { ...rest, location: spot };
+      });
+    }
     return {
       ...out,
       derived: {

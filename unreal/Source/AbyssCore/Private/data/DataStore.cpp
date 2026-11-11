@@ -568,6 +568,10 @@ bool DataStore::Finalize(DataLoadReport& report) {
           ck.Error("maps.json", spPath + ".leader", "the story boss keeps a spawn entry of its own");
         }
       }
+      // K7 guard (MapData.h MapSpawnDef::guard): only a hand-authored sub-dungeon has a guardian to stand by.
+      if (sp.guard && !subDungeonMap) {
+        ck.Error("maps.json", spPath + ".guard", "only a spawn of a hand-authored sub-dungeon guards its guardian");
+      }
       // K7 dormant (MapData.h MapSpawnDormantDef): a line's members stand on the grid, one tile each (the last of the
       // most members the entry ever spawns: its count or a variant's). A hand-authored grid is checked tile by tile
       // with the sub-dungeons below.
@@ -746,6 +750,12 @@ bool DataStore::Finalize(DataLoadReport& report) {
           ck.Error("maps.json", StrCat(path, ".spawns[", i, "].dormant.line"),
                    StrCat("member ", k, " stands on (", at.col, ",", at.row, "), which is not walkable"));
         }
+      }
+    }
+    // One entry at most is the guardian's guard (he joins one pack).
+    for (size_t i = 0, guards = 0; i < s.spawns.size(); ++i) {
+      if (s.spawns[i].guard && ++guards > 1) {
+        ck.Error("maps.json", StrCat(path, ".spawns[", i, "].guard"), "a second guard entry (the guardian joins one pack)");
       }
     }
     // The exit is a proximity trigger (world 9.2: within 1.5 tiles) armed only after the hero has been more than
@@ -1320,6 +1330,39 @@ bool DataStore::Finalize(DataLoadReport& report) {
         case AutoPilotStepKind::Defend:
           if (q != nullptr && !q->hasDefendTarget) ck.Error(kFile, sp + ".quest", s.quest + " has no defend target");
           break;
+        case AutoPilotStepKind::Dungeon: {
+          // K7: an open entrance of the route's zone into a hand-authored sub-dungeon; every room centre and visit
+          // tile stands on a walkable tile of its authored grid.
+          const MapDef* zone = world_.FindMapProper(r.zone);
+          const SubDungeonEntranceDef* entrance = nullptr;
+          if (zone != nullptr) {
+            for (const SubDungeonEntranceDef& e : zone->subDungeonEntrances) {
+              if (e.id == s.entrance) entrance = &e;
+            }
+          }
+          if (entrance == nullptr) {
+            ck.Error(kFile, sp + ".entrance", "no entrance '" + s.entrance + "' in " + r.zone);
+            break;
+          }
+          const SubDungeonDef* sd = world_.FindEnterableSubDungeon(entrance->targetSubDungeon);
+          if (entrance->sealed || sd == nullptr) {
+            ck.Error(kFile, sp + ".entrance", "'" + s.entrance + "' is sealed or leads to no hand-authored sub-dungeon");
+            break;
+          }
+          const auto walkable = [sd](TilePos t) {
+            const MapDef& m = sd->map;
+            return t.row >= 0 && t.col >= 0 && static_cast<size_t>(t.row) < m.collisions.size() &&
+                   static_cast<size_t>(t.col) < m.collisions[static_cast<size_t>(t.row)].size() &&
+                   m.collisions[static_cast<size_t>(t.row)][static_cast<size_t>(t.col)] == '1';
+          };
+          for (const TilePos& t : s.tiles) {
+            if (!walkable(t)) ck.Error(kFile, sp + ".rooms", StrCat("(", t.col, ",", t.row, ") is no walkable tile of ", sd->id));
+          }
+          for (const TilePos& t : s.visit) {
+            if (!walkable(t)) ck.Error(kFile, sp + ".visit", StrCat("(", t.col, ",", t.row, ") is no walkable tile of ", sd->id));
+          }
+          break;
+        }
         default: break;
       }
       for (const AutoPilotCondition& c : s.until) {

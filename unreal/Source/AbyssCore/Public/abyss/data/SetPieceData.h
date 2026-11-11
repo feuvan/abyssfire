@@ -97,6 +97,9 @@ struct SetPieceDef {
   bool occluder = false;            // tall dressing: occlusion fade (R1)
   std::string walkOver;             // non-empty: why the hero may cross its footprint (exempt from the route check)
   bool yieldsToDefendTarget = false;  // hidden while a defend target (the same art) stands on it
+  // Wave 3 (the crypt kit): a wall overlay - anchored on a wall tile, its front to the floor tile it faces (facing
+  // Tile on a 4-neighbour); the wall block under it stays. Every other piece stands on open ground.
+  bool onWall = false;
   std::string note;
 };
 

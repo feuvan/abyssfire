@@ -182,7 +182,7 @@ function checkSubDungeon(id: string, raw: RemakeSubDungeon, all: Readonly<Record
       assert((raw as unknown as Record<string, unknown>)[key] === undefined, `${where}.${key}: only a hand-authored sub-dungeon (one with tiles) has it`);
     }
     for (const [i, sp] of raw.spawns.entries()) {
-      for (const key of ['mix', 'leader', 'variants', 'dormant']) {
+      for (const key of ['mix', 'leader', 'variants', 'dormant', 'guard']) {
         assert((sp as unknown as Record<string, unknown>)[key] === undefined, `${where}.spawns[${i}].${key}: only a hand-authored sub-dungeon's spawn has it`);
       }
     }
@@ -208,6 +208,12 @@ function checkSubDungeon(id: string, raw: RemakeSubDungeon, all: Readonly<Record
   }
   for (const sp of raw.spawns) assert(Number.isInteger(sp.count) && sp.count >= 0, `${where}.spawns: negative spawn count`);
   checkSpawns(where, raw.parentZone, raw.spawns, raw.cols, raw.rows, walkable);
+  // 3B review (MapData.h MapSpawnDef::guard, DataStore::Finalize): at most one entry guards the guardian.
+  let guards = 0;
+  raw.spawns.forEach((sp, i) => {
+    assert(sp.guard === undefined || typeof sp.guard === 'boolean', `${where}.spawns[${i}].guard: a boolean`);
+    if (sp.guard) assert(++guards <= 1, `${where}.spawns[${i}].guard: a second guard entry (the guardian joins one pack)`);
+  });
   const entrances = ((parent as unknown as RemakeMapData).subDungeonEntrances ?? []).filter(e => e.targetSubDungeon === id);
   if (!entrances.length) console.warn(`  warning: ${where}: no entrance of '${raw.parentZone}' leads to it`);
   if (raw.cleansedFlag !== undefined) {
@@ -278,6 +284,8 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
     // unchanged. K7: the spawns of a hand-authored sub-dungeon carry the same fields (checkSubDungeon); a generated
     // sub-dungeon's (the web's two) carry none.
     checkSpawns(`maps.${id}`, id, raw.spawns as RemakeMapSpawn[], raw.cols, raw.rows);
+    (raw.spawns as RemakeMapSpawn[]).forEach((sp, i) =>
+      assert(sp.guard === undefined, `maps.${id}.spawns[${i}].guard: only a spawn of a hand-authored sub-dungeon guards its guardian`));
     // DataStore::Finalize: an exit leads to a zone proper (K7: a sub-dungeon is entered through an entrance).
     for (const e of raw.exits) {
       assert(!(AllSubDungeons as Record<string, unknown>)[e.targetMap],

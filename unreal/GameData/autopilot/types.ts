@@ -65,7 +65,18 @@ export type ApStep =
   /** Equip every bag item that beats what its slot holds. */
   | { readonly kind: 'equipUpgrades' }
   /** The smoke scenario ends here (the in-game autotest's `smoke`); the chapter scenario goes on. Once per route. */
-  | { readonly kind: 'smokeEnd' };
+  | { readonly kind: 'smokeEnd' }
+  /**
+   * Clear a hand-authored sub-dungeon (K7): walk onto `entrance` (a `subDungeonEntrances` id of the route's zone) and
+   * go in with the interact action; then room by room - kill every monster within `radius` tiles of each tile of
+   * `rooms`, in order -, then whatever still stands, until `until` holds; walk to the `visit` tiles; leave by the
+   * stair. Room and visit tiles are the sub-dungeon's own (every spawn anchor and its guardian's tile lie in a room).
+   * A hero that died inside (it wakes at the parent zone's camp) or left before `until` held goes in again and starts
+   * over, at most `tries` entries; fails after `maxSec`.
+   */
+  | { readonly kind: 'dungeon'; readonly entrance: string; readonly rooms: readonly ApTile[]; readonly radius: number;
+      readonly visit?: readonly ApTile[]; readonly until: readonly ApCondition[]; readonly tries: number;
+      readonly maxSec: number };
 
 export interface AutoPilotRoute {
   /** Route id (unique). */

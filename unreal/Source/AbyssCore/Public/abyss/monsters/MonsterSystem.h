@@ -70,6 +70,7 @@ struct MonsterSpawnParams {
   // (EliteAffixTable::RollableFor) and is elite when it keeps one. Ignored when rollAffixes.
   const std::vector<EliteAffixType>* givenAffixes = nullptr;
   ItemQuality guaranteedLoot = ItemQuality::Normal;  // K6: MonsterInstance::guaranteedLoot (a champion leader's drop)
+  bool spent = false;                   // K7 (3B review): MonsterInstance::spent (a guardian that has paid)
 };
 
 // What one defend wave spawns (dark remake K1; QuestWorld builds it from the quest's DefendTargetDef). `composition`
@@ -255,6 +256,10 @@ class ABYSS_API MonsterSystem {
   // pending swing dropped (CombatSystem::OnMonsterCollapsed), its corpse (spent) when it leaves one, then its own Raised.
   // No kill credit, no on-death effect, no rise, no respawn.
   void Collapse(EntityId id);
+  // K7 (3B review; QuestWorld::CheckClearArea, after EvAreaCleansed): the cleansed place holds no hostile. The bodies
+  // waiting to rise again stay down (their timers go, queued phase summons with them) and every monster still alive
+  // falls like a collapsed body, in list order: no kill, no reward, no on-death effect, no rise.
+  void SettleCleansed();
   // ---- dark remake K4: boss phases and arenas (implementation-plan.md 3 K4; rules in monsters/Phases.h) ----
   // Per step (GameSim, right after TickCorpses), no RNG:
   //  1. every living monster with a phase table enters the rows its life crossed (NextPhaseToEnter, one at a time, in
