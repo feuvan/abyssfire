@@ -64,10 +64,40 @@ public:
 	virtual void ReceivedFocus(FViewport* Viewport) {}
 	virtual bool IsFocused(FViewport* Viewport) { return true; }
 };
+#if !(defined(UE_STUB_UNVERIFIED_NO_STAT_UNIT_DATA) && UE_STUB_UNVERIFIED_NO_STAT_UNIT_DATA)
+// UNVERIFIED (API_UNCERTAIN.md #9): what `stat unit` computes at each draw (FStatUnitData::DrawStat), believed to be
+// declared in this header since 4.x with these members: the filtered values the overlay prints and the unfiltered
+// ("Raw") ones of the last frame, in milliseconds; a GPU value per GPU index. Not reflected, so the 5.6 Python stub
+// cannot confirm it. The module reaches every member through a hedge (AbyssAutoTestSubsystem.cpp,
+// AbyssAutoTest_ReadStatUnit / AbyssAutoTest_CopyStatUnit): define the macro to type-check the fallback of an engine
+// without FCommonViewportClient::GetStatUnitData().
+struct FStatUnitData
+{
+	float RenderThreadTime;
+	float GameThreadTime;
+	float GPUFrameTime[8];
+	float FrameTime;
+	float RHITTime;
+	float RawRenderThreadTime;
+	float RawGameThreadTime;
+	float RawGPUFrameTime[8];
+	float RawFrameTime;
+	float RawRHITTime;
+};
+// end UNVERIFIED
+#endif
+
 class FCommonViewportClient : public FViewportClient
 {
 public:
 	virtual ~FCommonViewportClient();
 	float GetDPIScale() const;
 	float GetDPIDerivedResolutionFraction() const;
+#if !(defined(UE_STUB_UNVERIFIED_NO_STAT_UNIT_DATA) && UE_STUB_UNVERIFIED_NO_STAT_UNIT_DATA)
+	// UNVERIFIED (API_UNCERTAIN.md #9): see FStatUnitData above; IsStatEnabled takes the stat's name without "STAT_"
+	// ("Unit", "FPS"), believed virtual on this class.
+	const FStatUnitData* GetStatUnitData() const;
+	virtual bool IsStatEnabled(const FString& InName) const;
+	// end UNVERIFIED
+#endif
 };

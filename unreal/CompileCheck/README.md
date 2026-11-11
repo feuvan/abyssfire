@@ -99,12 +99,12 @@ line says so ("reflected API and UHT type lint NOT checked") instead of "SDK con
      files, or the same undeclared helper name in one named namespace of two `.cpp` files with different parameters.
      The unity unit of step 5 only catches the pairs that are a redefinition; two functions with different parameters
      compile there, silently become one overload set, and a call can bind to the other file's helper in a unity build
-     only. The module has 347 internal-linkage names and no collision.
+     only. The module has 365 internal-linkage names and no collision.
    - `undefined`: declared in a module file, used (or virtual, or a destructor) and defined in no translation unit.
    - `duplicate` / `header-definition`: a non-inline definition in two files / in a header.
    - `core-export` (the modular editor configuration): a non-inline AbyssCore function the module uses without
      `ABYSS_API`. The scan compiles with `-fvisibility=hidden`, so an unexported symbol is hidden as in the editor
-     build; the module uses 151 core symbols, all exported.
+     build; the module uses 152 core symbols, all exported.
    - `platform-name`: a global or anonymous-namespace name of the module that Apple's `MacTypes.h` / Objective-C
      headers also define (`Rect`, `Point`, `Cell`, `Size`, `Ptr`, `Component`, ...), or any identifier spelled like a
      macro of those headers (`YES`, `NO`, `nil`, `MIN`, `MAX`, `DOMAIN`, ...).
@@ -210,8 +210,12 @@ A PASS rests on three kinds of unconfirmed knowledge, in decreasing order of ris
      `if constexpr (requires ...)`; editor target only.
    - #5, `UActorComponent::MarkRenderInstancesDirty()`: hedged; the fallback compiles and logs once per run.
    - #4 (`Cast` keeps constness) and #6 (`GetAudioListenerPosition` is const): cannot break the build either way.
+   - #9, `FCommonViewportClient::GetStatUnitData()` / `IsStatEnabled()`, the members of `FStatUnitData` and
+     `UEngine::SetEngineStat` (the autotest's thread and GPU times with `-abyssstatunit`): hedged member by member; without them the report writes
+     `null` and the run's first log line says so. Engine globals (`GGameThreadTime`, `GNumDrawCallsRHI`, ...) are not
+     used at all: a global's existence cannot be hedged.
    `API_UNCERTAIN.md` starts with one `grep` per open entry to run on the Mac.
-2. **Lower-confidence SDK declarations** (the table at the end of `API_UNCERTAIN.md`): 71 rows of declarations
+2. **Lower-confidence SDK declarations** (the table at the end of `API_UNCERTAIN.md`): 77 rows of declarations
    made from memory where it matters which way they are wrong, each with what happens if it is.
 3. **Everything else that is not reflected**: all of Core's templates and Slate's widgets as remembered.
    `tools/sdk_usage.py` lists the 2,300-odd SDK declarations the module uses; the reflected ones (418 UFUNCTIONs, 454

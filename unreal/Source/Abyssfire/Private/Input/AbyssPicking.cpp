@@ -12,6 +12,7 @@
 
 #include "Framework/AbyssActorRegistry.h"
 #include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssTypes.h"
 #include "Framework/AbyssUnits.h"
@@ -154,10 +155,14 @@ namespace
 		const double Slop = FMath::Max(0.0, static_cast<double>(SlopPixels));
 		const AbyssPickRules::FVec2 Pointer{ ScreenPosition.X, ScreenPosition.Y };
 		AbyssPickRules::FPicker Picker(Pointer, Slop);
+		// Autotest counters (audit F4): entries looked at, and boxes projected corner by corner after the pre-cull.
+		uint32 ProbeVisited = 0;
+		uint32 ProbeProjected = 0;
 
 		// Read-only visit (no registry copy): nothing below registers or unregisters an actor.
 		Registry->ForEachReadOnly([&](abyss::EntityId Id, AActor* Actor, abyss::EntityKind Kind)
 		{
+			++ProbeVisited;
 			if (Actor == nullptr || Actor->IsHidden() || (bMonstersOnly && Kind != abyss::EntityKind::Monster))
 			{
 				return;
@@ -178,6 +183,7 @@ namespace
 			{
 				return;
 			}
+			++ProbeProjected;
 			AbyssPickRules::FRect Rect;
 			if (!AbyssPick_ProjectBox(Projection, Box, Rect))
 			{
@@ -192,6 +198,12 @@ namespace
 				Best.Tile = Tile;
 			}
 		});
+		if (AbyssPerfProbe::IsActive())
+		{
+			GAbyssPerfProbe->Add(AbyssPerfProbe::ECounter::HoverPicks);
+			GAbyssPerfProbe->Add(AbyssPerfProbe::ECounter::HoverVisited, ProbeVisited);
+			GAbyssPerfProbe->Add(AbyssPerfProbe::ECounter::HoverProjected, ProbeProjected);
+		}
 		return Best;
 	}
 }

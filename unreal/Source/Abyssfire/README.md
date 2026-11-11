@@ -32,7 +32,7 @@ in `AbyssCore` (`Source/AbyssCore`, pure C++20). Read `Docs/ARCHITECTURE.md`, `D
 | `AbyssUnits`, `AbyssText` | `Framework/AbyssUnits.h`, `AbyssText.h` | — | Tile <-> world (S4: X = col·100, Y = row·100), UTF-8 <-> FString / FText, i18n resolution. |
 | `FAbyssSaveStorage` | `Platform/AbyssSaveStorage.h` | GI | `abyss::ISaveStorage`: `Saved/SaveGames/abyssfire_slot{0..2}.json`, tmp -> flush -> `.bak` -> rename, async chained writes. |
 | `FAbyssUserSettings`, `AbyssPlatform` | `Platform/` | — | settings.json schema; touch-layout and quality-tier resolution; console vars `abyss.Quality`, `abyss.RenderScale`; switches `-abysstouch`, `-abyssquality=`, `-abyssscreenmessages` (keeps UE's on-screen message block, which non-shipping `-game` runs hide: `ApplyScreenMessagePolicy`, `Scripts/README.md` §3). |
-| `UAbyssAutoTestSubsystem`, `AbyssAutoTest` | `Private/Framework/AbyssAutoTest*.h` | GI (only with `-abyssautotest`) | In-game autotest: drives the shared `abyss::AutoPilot` bot through the real game, screenshots with UI, frame-time and log statistics, `report.json`, exit code. See *In-game autotest* below. |
+| `UAbyssAutoTestSubsystem`, `AbyssAutoTest` | `Private/Framework/AbyssAutoTest*.h` | GI (only with `-abyssautotest`) | In-game autotest: drives the shared `abyss::AutoPilot` bot through the real game, screenshots with UI, log statistics, the smoothness measurement (`Private/Framework/AbyssSmoothnessRules.h`: tagged frame samples, scenes, percentiles, command latency, verdict; hooks in `Private/Framework/AbyssPerfProbe.h`), `report.json`, `frames.csv`, exit code. See *In-game autotest* below. |
 
 ## Frame pipeline (per rendered frame, game thread)
 
@@ -871,6 +871,12 @@ subsystem is not created at all (no cost); Shipping builds and the editor (PIE) 
 | `-abyssseed=<n>` | drawn | seed of the run's new game, 1 to 2^63-1; the seed played is always logged (`AutoTest: ... seed`, `New game: ... seed`) and recorded in `report.json` (`seed`) |
 | `-abyssautotestshotsec=<s>` | 60 | periodic screenshot while in game (0 = off) |
 | `-abyssautotestignore=<LogA,LogB>` | — | Error lines of these log categories are recorded but do not fail the run (Ensures always fail) |
+| `-abyssnoshots` | off | **measurement run**: no event or periodic screenshot is requested (the first engine run lost about 250 of its 502 s in frames that drew one while shaders compiled). The picture points keep their pacing (story beats still play 2–3 s, a HUD panel stays open 2.5 s), so every scene has frames to measure; the points are listed in `screenshotsSkipped` |
+| `-abyssstatunit` | off | turns `stat unit` on once the title screen is up (its overlay shows, and is in every screenshot: meant with `-abyssnoshots`, the run warns otherwise) and records its game / render / RHI / GPU milliseconds in every frame sample. Without it, or on an engine without the entry point, those fields are `null` |
+| `-abysssmooth=<name:value,...>` | see *Smoothness* | limits of the smoothness summary, any subset of `p50`, `p95`, `p99` (ms), `hitch` (frames over 100 ms per minute), `max` (ms), `ratio` (game / real), `frames` (minimum play frames); e.g. `-abysssmooth=p95:40,p99:66` |
+| `-abysssmoothgate` | off | a smoothness summary other than `smooth` fails an otherwise green run (exit 2, `failure` "smoothness gate: ..."). Default: the summary is informational |
+| `-abysstimelinerows=<n>` | 120000 | most rows of `frames.csv` (0 = no file) |
+| `-abyssquality=0\|1\|2` | Auto | not an autotest switch (`AbyssPlatform::ResolveQualityTier`), but part of the run matrix: forces the Low / Balanced / High tier |
 
 What a run does:
 
@@ -895,8 +901,9 @@ What a run does:
    engaged in melee range) and `boss_fight`; `loot` after the first kill that drops something; `skill_<n>` after the
    first cast of each hotbar slot; `periodic_NN`; `end` (or `failure`). Under `-nullrhi` (`FApp::CanEverRender()`
    false) the same points are listed in `screenshotsSkipped`.
-5. **Statistics**: wall-clock frame times while in game (avg / p50 / p95 / p99 / max, hitches > 100 ms), Error / Warning /
-   Ensure lines through an `FOutputDevice` on `GLog` (lines logged before the game instance started are not seen).
+5. **Statistics**: Error / Warning / Ensure lines through an `FOutputDevice` on `GLog` (lines logged before the game
+   instance started are not seen); the old untagged frame statistics (`frames`: every in-game frame, zone loads and
+   screenshots included); and one tagged sample per engine frame for the *Smoothness* measurement below.
 6. **Presentation probe** (2G cross-stage review X6; `Private/Framework/AbyssPresenceRules.h`, tested by
    `PresentationTests/tests/presence_test.cpp` on a real Chapter 1 playthrough): the 2G paths degrade with a Warning
    when their content is missing, which alone would never fail a run. The run tallies what the core announced (ground
@@ -924,7 +931,210 @@ one `LogAbyss` Warning), `durations` (`totalSec`, `bootSec`, `menuToGameSec`, `i
 beats, level-ups, pet, checkpoints, panel tour, scenario done — with real and sim seconds), `frames`, `log` (counts,
 first 50 Error / Ensure `messages`, first 50 `warningMessages`), `screenshots` (`file`, `tag`, `caption`, `realSec`,
 `simSec`, `captured`, `exists`, `bytes`), `screenshotsSkipped`. The bot's diary is in the log (`LogAbyssAutoTest: bot
-[...]`), milestones and screenshots as `AutoTest ...` lines.
+[...]`), milestones and screenshots as `AutoTest ...` lines. Every key above is unchanged; the smoothness measurement
+adds `noShots`, `durations.menuIdleSec` / `durations.startNewGameSec`, `smoothness`, `perf` and `environment`
+(next section) and the file `frames.csv`.
+
+### Smoothness: "how smooth is the player's experience" (performance audit F2, section 6)
+
+The first engine run could not answer the question: one untagged list of frame times held the test's own screenshots,
+a first-run shader backlog and the zone loads. The autotest now takes one sample per engine frame in every phase, from
+its core ticker (the time between two ticks is the frame's wall-clock time), tags it, and derives everything else from
+those samples. All the arithmetic is in `Private/Framework/AbyssSmoothnessRules.h` (UE-free, tested by
+`PresentationTests/tests/smoothness_test.cpp`, including a real smoke playthrough sampled the same way); the UE side is
+`FAbyssAutoTestRun::CloseFrame` and the hooks of `Private/Framework/AbyssPerfProbe.h`. Cost: when no autotest runs the
+subsystem does not exist and `GAbyssPerfProbe` is null, so a hook is one test of a global (no clock is read; Shipping
+builds compile the hooks out); in a run, a sample is a few counters, two clock reads per scope and one 120-byte record.
+
+**Tags** (`perf.*.tagFrames`, `frames.csv` column `tags`). The first six take a frame out of the *play* statistics:
+
+| Tag | Set when |
+|---|---|
+| `shot` | a screenshot was requested, is being drawn, or was read back in the previous frame |
+| `zoneBuild` | `UAbyssWorldBuilder::BuildZone` ran in the frame |
+| `compileWait` | the uncooked zone-entry compile wait blocked (`abyss.WaitForCompilation`) |
+| `story` | a story beat plays (`Snapshot::storyBusy` / `cinematic`) |
+| `panel` | a HUD panel of the tour or a core modal (dialogue, quest card, shop, stash, forge, ...) is open |
+| `loading` | boot, `StartNewGame` until the session, a zone transition until 0.5 s after the zone was entered |
+| `backlog` | informational: shader jobs or asset builds were outstanding (uncooked runs; the counts are in the sample) |
+| `stepCap` | informational: the sim ran its 4-step budget and was fed at least one step more: sim time was dropped, the player sees slow motion |
+| `dilated` | informational: S6 slow motion (elite kill), slow on purpose |
+| `frozen` | informational: the world was frozen when the frame's sim ran or returned |
+| `qualityRefresh` | informational: `RefreshQuality` changed a console variable or fanned out the profile |
+
+**Scenes** (`perf.scenes[]`, column `scene`): `boot`, `menu`, `starting`, `prologue` (story beats before the camp is
+reached), `story` (later beats), `panel_<name>` (each panel: `panel_inventory` ... `panel_settings`, `panel_dialogue`,
+`panel_questCard`, `panel_shop`, ...), `camp` (inside a camp's safe radius), `travel` (the field, out of combat),
+`fight_001` ... (one per fight: a fight ends after 2 s out of combat; past 64 they share `fight_more`),
+`boss_<monster id>_p<phase>` (each boss phase a scenario reaches), `ending`. One label per place, not per visit.
+
+**`perf`** (schema 1):
+
+* `shots` (`on` / `off`), `samples`, `samplesDropped` (frames past 300,000 are counted, not kept), `timeline` (`file`
+  `frames.csv`, `rows`, `maxRows`, `stride`, `slowFramesDropped`), `threadTimes` (`source`, `framesWithThreadTimes`,
+  `framesWithGpuTime`), `simMaxStepsPerFrame`, `simMaxFrameMs`, `fightCount`.
+* **Groups**, all with the same keys: `run` (every frame), `inGame` (session frames), `last60s` (the last 60 s of the
+  session by frame end time), `fights` (every fight and boss frame), `field` (camp and travel), and `scenes[]`. A group
+  has `label`, `kind`, `firstRealSec`, `lastRealSec`; three frame-time blocks `all`, `play` (no tag of the first six)
+  and `playNoBacklog` (play frames with no outstanding compile work), each `count`, `totalSec`, `avgMs`, `p50Ms`,
+  `p95Ms`, `p99Ms`, `maxMs` (nearest rank; `null` without frames), `over33Ms`, `over50Ms`, `over100Ms`; `tagFrames`;
+  `gameRealRatio` (sim steps run x 16.67 ms against the real time the sim was fed, over unfrozen, undilated session
+  frames that are play frames following a play frame; 1 = real time, 0.67 = a steady 10 fps; `null` without such
+  frames), `simFedSec`, `stepCapFrames`, `lostSimSec` (real time fed minus sim time run on those step-cap frames, not
+  clamped: what the player lost against the wall clock) and `lostToClampSec` (the part of it beyond the sim clock's
+  250 ms frame clamp), all four over the same frames; `simAllFrames` (`gameRealRatio`, `simFedSec`, `stepCapFrames`,
+  `lostSimSec` over every unfrozen, undilated session frame, tagged or not: informational). The engine feeds a frame
+  the duration of the frame before it, so the frame after a screenshot, a zone build or a compile wait is fed that
+  stall and runs its whole step budget: that is the tagged frame's cost, it shows in `simAllFrames` and in
+  `tagFrames.stepCap`, and it is kept out of the play ratio the verdict judges. `threads` (`idle` = the frame cap's sleep from `FApp::GetIdleTime`, `game`, `render`, `rhi`, `gpu` from
+  `stat unit`, `sim` = `GameSim::Frame`, `driver` = the whole `UAbyssSimDriver::Tick`: each `frames`, `avgMs`, `p95Ms`,
+  `maxMs`, or `null` when no frame had the value); `load` (peak and average per frame of `husks`, `characters`,
+  `registry`, `floatTexts`, `evLogLines`, `pickProjected`).
+* `longestFrames`: the 50 longest frames of the run, longest first, whatever their tag (boot, loads, screenshots and
+  story compete here), and `longestPlayFrames`: the 50 longest in-game play frames, the hitches the verdict judges.
+  Both have the same entries: `frame` (its row number in `frames.csv`),
+  `realSec`, `frameMs`, `tags`, `play`, `scene`, `steps`, `stepCap`, the thread and sim times (`null` when unavailable;
+  the `stat unit` values `gameMs`, `renderMs`, `rhiMs`, `gpuMs` are read one frame late and written back next to the
+  frame they time, here and in `frames.csv`: see `threadTimes.source`; that offset is not yet confirmed on a run, so
+  check once that a zone-build frame's `gameMs` holds its `zoneBuildMs`, and if it sits one row later, read the split
+  of a hitch from the row after it),
+  `shaderJobs`, `assetBuilds`, `nearestMilestone` (`kind`, `detail`, `deltaSec`: positive = the frame ended after it),
+  `events` (only what happened in that frame: `evLogLines`, `logRebuilds`, `spawns`, `spawnMs`, `zoneBuildMs`,
+  `compileWaitMs`, `uiTextureLoads`, `vfxPoolCreations`, `syncLoads`, `loadMs`, `pickProjected`, `commands`) and `load`
+  (`husks`, `characters`, `registry`, `floatTexts`).
+* `timers`: `menuIdleSec` (title screen up to the `StartNewGame` call: the test's own settle and screenshot) against
+  `startNewGameSec` (the call to the session; `durations.menuToGameSec` is their sum and is kept),
+  `startNewGameCallMs`, `zoneBuilds` / `zoneBuildMs`, `spawns` / `spawnMs` / `spawnPeakMsPerFrame`, `compileWaits` /
+  `compileWaitSec`, `qualityRefreshCalls` / `qualityRefreshApplied` / `qualityRefreshMs` (after audit F1: calls about
+  once a second, applied only on a resize, a settings change and a zone build), `simMs`, `driverMs`. Milliseconds are
+  inclusive wall-clock scopes (a load inside a spawn counts in both).
+* `counters`: `evLogLines`, then one object per hook (`count`, `ms`, `peakPerFrame`, `peakMsPerFrame`): `logRebuilds`
+  (combat-log rebuilds, F3), `picks` / `pickVisited` / `pickProjected` (hover and click picks, the registry entries they
+  looked at and the boxes projected after the pre-cull, F4), `materialLookups` and `packageProbes` (F5), `syncLoads`
+  (`TryLoad` in the asset library, M4), `uiTextureLoads` (M7), `vfxPoolCreations` (M8), `spawns` (M6), `zoneBuilds`,
+  `compileWaits` (M5), `qualityRefreshCalls` / `qualityRefreshApplied` (F1), `simFrames`, `driverTicks`; and
+  `lastInputDevice` (the bot presses through the keyboard-and-mouse path; the hover pick runs only with a cursor over
+  the world, so `picks` 0 means it was not measured).
+* `zoneEntries[]`: `map`, `realSec`, `frameMs`, `buildMs`, `spawns`, `spawnMs`, `compileWaitMs`, `pendingShaderJobs`,
+  `pendingAssetBuilds` (the most outstanding work the zone's first frames saw; `null` in a cooked build).
+* `feel.commands` (`all` and per class `move`, `attack`, `skill`, `dodge`, `potion`, `interact`, `ui`): `submitted`,
+  `measured`, `toSimStep` and `toFrameEnd` (`p50Ms`, `avgMs`, `p95Ms`, `maxMs`): real ms from the bot's submission
+  (handed to `AAbyssPlayerController::SubmitCommand`, not through the input layer's polling) to the `GameSim::Frame`
+  that applies the command, and to the end of that engine frame. This is the worst-case phase by construction: the bot
+  submits just after a frame's sim, so `toSimStep` is about one frame period and tells nothing the frame time does not;
+  a player's key, polled at the start of a frame, reaches that same frame's sim. Only a `toSimStep` well over one frame
+  period (frames that ran no step) is latency the game adds. The display adds render, GPU and scan-out latency the
+  game cannot measure. `feel.attackContact`: for each hero swing, the sim time of the pose on screen minus the
+  swing's contact time (`EvPlayAnim::startMs + contactMs`) on the frame its `EvHit` is presented: `hits`,
+  `unmatchedHits`, `meanMs`, `p50Ms`, `p95AbsMs`, `maxAbsMs`, `lateOver33Ms`. A hit is measured only against a swing
+  of its own kind (a basic hit, `EvHit::skillId` empty, against a basic swing; a skill's hit against that skill's
+  swing) whose contact is due and at most the frame's step budget + 1 steps old (83 ms); projectile hits, a swing's
+  further targets and the hits that follow a cancelled swing are `unmatchedHits`. About -17 to 0 ms is exact at 60 fps (the interpolated pose trails the sim by up to one step);
+  positive values mean the pose is already past the contact when the hit shows (a frame that ran several steps).
+* `operatorConsole`: the engine statistics the module cannot read (below), as text.
+
+**`environment`**: `cooked`, `editorBinary`, `buildConfiguration`, `quality` (`tier`, `setting`, `switch`,
+`abyssQualityCVar`, `mobile`, and the Auto rule's inputs `cores`, `memoryGB`, `dpiScale`, `configuredResolution`),
+`viewport` (pixels), `viewportFullscreen`, `windowMode`, `vsyncSetting`, `gpu`, `cpu`, `rhi`, `consoleVariables` (final
+values of `r.ScreenPercentage`, `r.SecondaryScreenPercentage.GameViewport`, `r.AntiAliasingMethod`,
+`r.TSR.History.ScreenPercentage`, `r.PSOPrecaching`, `r.VSync`, `t.MaxFPS`, the shadow / AO / contact-shadow variables
+of the audit's A/B list, `r.MaterialQualityLevel`, every `sg.*` group and four `abyss.*`),
+`consoleVariablesMissing` (names this engine does not have: reported, never guessed) and `shaderCache`: `cold` when a
+zone entry met outstanding shader jobs or asset builds, `warm` when none did, `unknown` when the build gives no count.
+
+**`smoothness`**: `verdict`, `gate`, `gateFailed`, `basis`, `playFrames`, `playSec`, `minFrames`, `checks[]` (`name`,
+`value`, `limit`, `rule` `atMost` / `atLeast`, `tail`, `ok`), `notes`. It judges `perf.inGame.play` (session frames
+with no screenshot, zone build, compile wait, story beat, panel or loading tag) against plain limits for a 60 fps
+target, each tunable with `-abysssmooth=`:
+
+| Check | Default limit | Reads as |
+|---|---|---|
+| `p50Ms` | <= 20 (`p50`) | the median frame holds 60 fps with a little slack |
+| `p95Ms` | <= 33.4 (`p95`) | 19 frames of 20 hold 30 fps |
+| `p99Ms` | <= 50 (`p99`) | tail: 99 of 100 hold 20 fps |
+| `hitchesPerMin` | <= 1 (`hitch`) | tail: frames over 100 ms per minute of play |
+| `maxMs` | <= 250 (`max`) | tail: the longest play frame (beyond 250 ms the sim clock drops time) |
+| `gameRealRatio` | >= 0.97 (`ratio`) | the step cap did not turn play into slow motion |
+
+`smooth`: every check passes. `uneven`: only tail checks fail (hitches on a good base). `rough`: the median, p95 or the
+ratio fails. `notMeasured`: fewer than 600 play frames (`frames`, at least 1; a run without any play frame is never
+graded). The ratio is `perf.inGame.gameRealRatio`: play frames that follow a play frame, so a zone re-entry, a compile
+wait or a screenshot cannot turn a run with perfect play frames `rough`. The verdict is informational unless
+`-abysssmoothgate` is given. How to read a report, in order: (1) `environment` — cooked or not, the tier, the viewport,
+`shaderCache`; a `cold` uncooked run measures the shader compiler, not the game; (2) `smoothness.verdict` and its
+failing checks; (3) `perf.inGame.play` against `perf.inGame.all` and `playNoBacklog`: what the tags took out, and
+whether a backlog was still draining; (4) `perf.scenes[]`: which scene is slow (a fight against travel, a panel) and its
+`gameRealRatio`; `perf.last60s` for the state the run settled into; (5) `perf.*.threads`: a frame's `idle` share says
+whether a 33 ms frame was work or the cap / vsync waiting; with `-abyssstatunit`, which of game, render, RHI or GPU
+carries it; `sim` and `driver` are the core's and this module's game-thread share; (6) `longestPlayFrames` with their
+tags, nearest milestone and events for each remaining hitch (`longestFrames` for the loads and stalls outside play), and `frames.csv` (one row per frame: `frame`, `realSec`,
+`frameMs`, `idleMs`, `gameMs`, `renderMs`, `rhiMs`, `gpuMs`, `simMs`, `driverMs`, `simDtMs`, `steps`, `stepCap`,
+`tags`, `scene`, `shaderJobs`, `assetBuilds`, `evLogLines`, `logRebuilds`, `spawns`, `spawnMs`, `zoneBuildMs`,
+`compileWaitMs`, `uiTextureLoads`, `vfxPoolCreations`, `syncLoads`, `loadMs`, `pickProjected`, `commands`, `husks`,
+`characters`, `registry`, `floatTexts`; an empty field = unavailable; when a run has more frames than rows, every frame
+over 33 ms is kept and the rest is thinned by `timeline.stride`) for the picture around it.
+
+**What still has to be read off the engine console by hand.** These are engine globals or stat-system groups with no
+entry point the module could call behind a compile-time hedge (`CompileCheck/API_UNCERTAIN.md` #9), so the report only
+lists them (`perf.operatorConsole`):
+
+1. `stat unit` — Frame / Game / Draw / RHIT / GPU. Recorded per frame only with `-abyssstatunit`; check on the first
+   run that GPU is not 0 on Metal (`perf.threadTimes.framesWithGpuTime`).
+2. `stat rhi` — draw calls and triangles drawn, in an open field and in a fight (audit M2, F8, U7).
+3. `stat scenerendering` — mesh draw calls with 0, 10 and 20 monsters in view (U7).
+4. `stat slate` — Num Batches, Num Layers, elements, in the field with the HUD up (U1).
+5. `stat gpu` or `ProfileGPU` — BasePass, ShadowDepths, ShadowProjection, AO, CustomDepth, TSR (M3, F7, U3, U4).
+6. `stat psoprecache` (cooked) with `r.PSOPrecache.Validation 2` — precache misses (U6).
+7. `Slate.DumpFontCacheStats` before and after a 20-kill fight — font atlas pages and cache entries (U5).
+8. `dumpticks enabled` — prop-owned skeletal ticks (F6).
+9. The console A/Bs, one at a time, with `stat gpu` before and after: `r.Shadow.CSM.MaxCascades 1`,
+   `r.Shadow.MaxCSMResolution 2048`, `r.AmbientOcclusionLevels 0`, `r.ContactShadows 0`,
+   `r.TSR.History.ScreenPercentage 100`, `r.SecondaryScreenPercentage.GameViewport 50`, `showflag.materials 0`, HUD
+   hidden. (Do not type `stat unit` in a run started with `-abyssstatunit`: the command toggles.)
+10. The log line `Audio: N sounds loaded (M missing) in X ms` (M9).
+
+**The recommended run matrix.** Every case is run twice back to back without touching content: the first run warms the
+derived-data and shader caches (`environment.shaderCache` `cold`), the second is the one to read (`warm`). Screenshots
+off, `stat unit` on. Three resolutions at the default tier, then three tiers at 1280x720:
+
+```bash
+UE="/Users/Shared/Epic Games/UE_5.8"; PROJ="$PWD/unreal/Abyssfire.uproject"; SHA="$(git rev-parse HEAD)"
+BIN="$UE/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor"
+run() {  # run <name> <window switches...>: cold, then warm
+  name="$1"; shift
+  for pass in cold warm; do
+    "$BIN" "$PROJ" -game "$@" -unattended -nosplash -nosound -log -stdout -FullStdOutLogOutput \
+      -abyssautotest=smoke -abyssclass=warrior -abyssnoshots -abyssstatunit -abyssautotestmaxsec=900 \
+      -abyssautotestdir="$PWD/out/smooth/$name-$pass" -abyssbuildsha="$SHA"
+    echo "$name $pass: exit $?"
+  done
+}
+# resolutions (tier: Auto)
+run 720p   -windowed -ResX=1280 -ResY=720
+run 1440p  -windowed -ResX=2560 -ResY=1440
+run native -fullscreen
+# quality tiers at 1280x720
+run q0 -windowed -ResX=1280 -ResY=720 -abyssquality=0
+run q1 -windowed -ResX=1280 -ResY=720 -abyssquality=1
+run q2 -windowed -ResX=1280 -ResY=720 -abyssquality=2
+# one line per run
+for f in out/smooth/*/report.json; do python3 - "$f" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1])); e = r["environment"]; p = r["perf"]["inGame"]["play"]; t = r["perf"]["inGame"]["threads"]
+ms = lambda k: "-" if t[k] is None else t[k]["avgMs"]
+print(sys.argv[1].split("/")[-2], r["smoothness"]["verdict"], e["quality"]["tier"], e["viewport"], e["shaderCache"],
+      "p50", p["p50Ms"], "p95", p["p95Ms"], "p99", p["p99Ms"], "over100", p["over100Ms"],
+      "ratio", r["perf"]["inGame"]["gameRealRatio"], "game", ms("game"), "render", ms("render"), "gpu", ms("gpu"))
+PY
+done
+```
+
+Twelve runs of about 5 minutes each once the caches are warm. Add `-abysssmoothgate` to the warm passes once the
+numbers are where they should be, so a regression exits 2. To see what the engine alone does on a cold cache (audit
+M5 / U8), run one cold case with `-ExecCmds="abyss.WaitForCompilation 0"` added (check `environment.consoleVariables`
+for the value that took effect) and compare
+`perf.timers.compileWaitSec`, `durations.menuIdleSec` and the longest frames with the default. The chapter scenario
+(`-abyssautotest=chapter -abyssautotestmaxsec=2400`) takes the same switches and reaches the boss phases.
 
 macOS (uncooked project, editor binary; the content build must have run):
 

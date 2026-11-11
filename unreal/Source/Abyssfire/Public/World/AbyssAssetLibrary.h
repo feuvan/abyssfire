@@ -97,6 +97,13 @@ public:
 	 * compiled shaders. WorldContract.md section 6.
 	 */
 	static EAbyssCompileWait WaitForPendingCompilation(bool bZoneEntry);
+	/**
+	 * The engine's outstanding shader compile jobs and asynchronous asset builds, for the autotest's frame samples.
+	 * -1 for a count this build cannot give: both in cooked builds (WITH_EDITOR 0, nothing compiles at run time), one
+	 * of them when the engine lacks the entry point (the hedges of WaitForPendingCompilation). False when neither is
+	 * known.
+	 */
+	static bool GetPendingCompilation(int32& OutShaderJobs, int32& OutAssetBuilds);
 
 private:
 	void TouchLoaded(FName Key);

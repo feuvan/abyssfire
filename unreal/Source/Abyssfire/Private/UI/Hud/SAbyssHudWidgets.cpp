@@ -16,6 +16,7 @@
 #include "abyss/pets/PetSystem.h"
 #include "abyss/quests/QuestSystem.h"
 
+#include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssText.h"
 #include "UI/AbyssUiStyle.h"
 #include "UI/Core/AbyssUiDraw.h"
@@ -145,6 +146,7 @@ void SAbyssCombatLog::Tick(const FGeometry& AllottedGeometry, const double InCur
 void SAbyssCombatLog::Rebuild()
 {
 	bDirty = false;
+	AbyssPerfProbe::Count(AbyssPerfProbe::ECounter::LogRebuilds);
 	const FAbyssUiStyle& UiStyle = Ctx->Style();
 	const FVector2D Size = GetDesignSize();
 	const float FontPx = bTouch ? 19.f : 12.f;

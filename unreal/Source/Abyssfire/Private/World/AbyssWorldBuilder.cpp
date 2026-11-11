@@ -47,6 +47,7 @@
 #include "Framework/AbyssActorRegistry.h"
 #include "Framework/AbyssConsoleVars.h"
 #include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssText.h"
 #include "Framework/AbyssUiRoot.h"
@@ -447,6 +448,7 @@ void UAbyssWorldBuilder::ApplySettings(const FAbyssUserSettings& Settings)
 
 void UAbyssWorldBuilder::RefreshQuality(bool bForce)
 {
+	const AbyssPerfProbe::FScope ProbeScope(AbyssPerfProbe::ECounter::QualityRefreshCalls);
 	const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
 	const abyss::DataStore* Data = GetData();
 	if (GameInstance == nullptr || !QualityRefresh.IsValid())
@@ -499,6 +501,10 @@ void UAbyssWorldBuilder::RefreshQuality(bool bForce)
 	Key.bColorGrading = Profile.bColorGrading;
 	Key.bMobile = Profile.bMobile;
 	const AbyssQualityRules::FRefreshPlan Plan = AbyssQualityRules::PlanRefresh(QualityRefresh->Rules, Key, ViewportHeight, bForce);
+	if (Plan.bConsole || Plan.bProfile)
+	{
+		AbyssPerfProbe::Count(AbyssPerfProbe::ECounter::QualityRefreshApplied);
+	}
 
 	if (Plan.bConsole)
 	{
@@ -651,6 +657,7 @@ void UAbyssWorldBuilder::EnsureHelpers()
 void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 {
 	using namespace AbyssWorldBuilderPrivate;
+	const AbyssPerfProbe::FScope ProbeScope(AbyssPerfProbe::ECounter::ZoneBuilds);
 	UWorld* OwningWorld = GetWorld();
 	UAbyssAssetLibrary* Assets = GetAssets();
 	const abyss::DataStore* Data = GetData();
@@ -957,6 +964,7 @@ const FAbyssArtAsset* UAbyssWorldBuilder::ResolveCharacterArt(abyss::EntityKind 
 
 void UAbyssWorldBuilder::SpawnEntity(const abyss::EvEntitySpawned& Event, const abyss::Snapshot& Snap)
 {
+	const AbyssPerfProbe::FScope ProbeScope(AbyssPerfProbe::ECounter::Spawns);
 	// 2G stage H: an NPC that shows again while its hidden self is still held for a beat (its entity id is kept): the held
 	// actor goes, the announced one takes its place.
 	TObjectPtr<AAbyssCharacterActor> HeldBefore;
@@ -2426,7 +2434,12 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 	// (abyss.WaitForCompilation, bounded by abyss.WaitForCompilationMaxSec; a no-op in cooked builds). After a timed-out
 	// wait the zone's next frames do not wait again: the rest compiles in the background, and the zone actor's shader
 	// gate keeps the dressing that is still compiling hidden.
+	const double ProbeWaitStart = AbyssPerfProbe::IsActive() ? FPlatformTime::Seconds() : 0.0;
 	const EAbyssCompileWait CompileWait = UAbyssAssetLibrary::WaitForPendingCompilation(CompileWaitFrames > 0);
+	if (CompileWait != EAbyssCompileWait::None && ProbeWaitStart > 0.0)
+	{
+		AbyssPerfProbe::AddMs(AbyssPerfProbe::ECounter::CompileWaits, (FPlatformTime::Seconds() - ProbeWaitStart) * 1000.0);
+	}
 	CompileWaitFrames = CompileWait == EAbyssCompileWait::TimedOut ? 0 : FMath::Max(0, CompileWaitFrames - 1);
 }
 

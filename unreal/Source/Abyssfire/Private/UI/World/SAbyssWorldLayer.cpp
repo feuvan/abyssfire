@@ -20,6 +20,7 @@
 
 #include "Abyssfire.h"
 #include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssText.h"
 #include "Framework/AbyssTypes.h"
@@ -900,6 +901,10 @@ int32 SAbyssWorldLayer::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 	}
 	FAbyssPainter P(AllottedGeometry, OutDrawElements, LayerId, InWidgetStyle, Ctx->Style());
 	Floats.RemoveAll([Now](const FFloat& Float) { return Now - Float.Start > 1.6; });
+	if (AbyssPerfProbe::IsActive())
+	{
+		GAbyssPerfProbe->FloatTexts = Floats.Num();   // autotest gauge: floating texts alive at this paint
+	}
 	for (const TPair<uint32, FLabel>& Pair : Labels)
 	{
 		if (Pair.Value.Desc.Kind != EAbyssWorldWidgetKind::GroundItem)

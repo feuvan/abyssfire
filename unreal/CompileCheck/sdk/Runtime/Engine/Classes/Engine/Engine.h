@@ -64,6 +64,15 @@ public:
 	void AddOnScreenDebugMessage(int32 Key, float TimeToDisplay, FColor DisplayColor, const FString& DebugMessage, bool bNewerOnTop = true, const FVector2D& TextScale = FVector2D::UnitVector);
 	void ClearOnScreenDebugMessages();
 	virtual bool Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Out = *GLog) override;
+#if !(defined(UE_STUB_UNVERIFIED_NO_STAT_UNIT_DATA) && UE_STUB_UNVERIFIED_NO_STAT_UNIT_DATA)
+	// UNVERIFIED (API_UNCERTAIN.md #9): believed public on UEngine since 4.x (Engine.h, next to IsEngineStat /
+	// GetEngineStat): turns a named engine stat ("Unit", without "STAT_") on or off for one viewport, by sending the
+	// stat's toggle only when ViewportClient->IsStatEnabled differs from bShow. Not reflected. The module calls it
+	// through a hedge (AbyssAutoTestSubsystem.cpp, AbyssAutoTest_SetStatUnit) and falls back to the `stat unit`
+	// console command; the macro removes it together with the rest of entry 9.
+	void SetEngineStat(UWorld* World, class FCommonViewportClient* ViewportClient, const FString& InName, const bool bShow);
+	// end UNVERIFIED
+#endif
 	ULocalPlayer* GetFirstGamePlayer(UWorld* InWorld);
 	ULocalPlayer* GetLocalPlayerFromControllerId(UWorld* InWorld, const int32 ControllerId) const;
 	APlayerController* GetFirstLocalPlayerController(const UWorld* InWorld);

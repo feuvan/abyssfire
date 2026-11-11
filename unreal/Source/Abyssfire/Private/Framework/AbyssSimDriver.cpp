@@ -12,6 +12,7 @@
 
 #include "Framework/AbyssActorRegistry.h"
 #include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssPresenter.h"
 #include "Framework/AbyssUiRoot.h"
 
@@ -128,7 +129,17 @@ void UAbyssSimDriver::Tick(float DeltaTime)
 
 	// 2. fixed-step simulation (the core's accumulator, spiral-of-death clamp and S6 dilation).
 	abyss::GameSim* Sim = GameInstance->GetSim();
+	// Autotest only (Framework/AbyssPerfProbe.h): the sim's and the whole driver tick's wall-clock time.
+	const AbyssPerfProbe::FScope ProbeTick(AbyssPerfProbe::ECounter::DriverTick);
+	const double ProbeSimStart = AbyssPerfProbe::IsActive() ? FPlatformTime::Seconds() : 0.0;
 	const int32 Steps = Sim->Frame(RealDeltaMs);
+	if (AbyssPerfProbe::IsActive())
+	{
+		const double ProbeSimEnd = FPlatformTime::Seconds();
+		GAbyssPerfProbe->Add(AbyssPerfProbe::ECounter::SimFrame, 1, ProbeSimStart > 0.0 ? (ProbeSimEnd - ProbeSimStart) * 1000.0 : 0.0);
+		GAbyssPerfProbe->SimFrameEndSec = ProbeSimEnd;
+		GAbyssPerfProbe->SimDtMs = RealDeltaMs;
+	}
 	{
 		const abyss::Snapshot& Snap = Sim->View();
 		FrameInfo.RealDeltaMs = RealDeltaMs;

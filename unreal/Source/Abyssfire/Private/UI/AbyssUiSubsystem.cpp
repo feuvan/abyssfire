@@ -15,6 +15,7 @@
 
 #include "Abyssfire.h"
 #include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssText.h"
 #include "Input/AbyssInputSubsystem.h"
 #include "Input/Touch/AbyssTouchStyle.h"
@@ -473,6 +474,8 @@ UTexture2D* UAbyssUiSubsystem::FindUiTexture(FName AssetName, bool bWarnIfMissin
 	}
 	if (!MissingTextures.Contains(AssetName))
 	{
+		// Autotest: a cache miss, i.e. package probes and a blocking load on the frame a texture is first painted (M7).
+		const AbyssPerfProbe::FScope ProbeScope(AbyssPerfProbe::ECounter::UiTextureLoads);
 		const FString Name = AssetName.ToString();
 		const FString Root(TEXT("/Game/Abyssfire"));
 		for (const TCHAR* Folder : GAbyssUiTextureFolders)

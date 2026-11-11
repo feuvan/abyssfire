@@ -9,7 +9,11 @@
 // UI (FScreenshotRequest): main menu, camp on arrival, each HUD panel opened through the input layer (inventory,
 // character, skills, quest log, world map, settings), story beats, the first quest card / dialogue / shop, mid-combat,
 // loot on the ground after a kill, the first cast of each hotbar slot, the end, plus one every N seconds.
-// It records frame times, counts Error / Warning / Ensure log lines (GLog device), writes <dir>/report.json and exits
+// It samples every engine frame for the smoothness measurement (performance audit F2 / section 6: tags, scenes,
+// percentiles, the game / real ratio, the longest frames, command latency, the attack-contact error, a verdict; the
+// arithmetic is Framework/AbyssSmoothnessRules.h, the module's hooks Framework/AbyssPerfProbe.h; -abyssnoshots turns
+// the pictures off for a measurement run), counts Error / Warning / Ensure log lines (GLog device), writes
+// <dir>/report.json and <dir>/frames.csv and exits
 // with 0 (scenario completed, no Error / Ensure) or 2 (FPlatformMisc::RequestExitWithStatus). The wall-clock limit
 // always ends the run (a watchdog thread force-exits when the game thread is stuck).
 //

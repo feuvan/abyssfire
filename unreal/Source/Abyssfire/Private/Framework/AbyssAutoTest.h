@@ -12,12 +12,23 @@
 //   -abyssseed=<n>                   seed of the run's new game (1 .. 2^63-1; default: drawn, recorded in report.json)
 //   -abyssautotestshotsec=<seconds>  periodic screenshot interval while in game (default 60, 0 = off)
 //   -abyssautotestignore=<LogA,LogB> log categories whose Error lines are recorded but do not fail the run
+// Smoothness measurement (performance audit F2 / section 6; Framework/AbyssSmoothnessRules.h):
+//   -abyssnoshots                    no event or periodic screenshots (a measurement run: a screenshot stalls its frame)
+//   -abyssstatunit                   turns `stat unit` on (its overlay shows, in every screenshot too: meant with
+//                                    -abyssnoshots) and records its game / render / RHI / GPU ms per frame; without
+//                                    it those report fields are null
+//   -abysssmooth=<name:value,...>    thresholds of the smoothness summary: p50, p95, p99 (ms), hitch (frames over
+//                                    100 ms per minute), max (ms), ratio (game / real), frames (minimum play frames)
+//   -abysssmoothgate                 a summary other than "smooth" fails the run (default: informational)
+//   -abysstimelinerows=<n>           most rows of frames.csv (default 120000; 0 = no file)
 #pragma once
 
 #include "CoreMinimal.h"
 
 #include "abyss/base/Enums.h"
 #include "abyss/tools/AutoPilot.h"
+
+#include "Framework/AbyssSmoothnessRules.h"
 
 struct FAbyssAutoTestOptions
 {
@@ -31,6 +42,16 @@ struct FAbyssAutoTestOptions
 	/** Seed of the new game (GetNewGameSeed). */
 	uint64 Seed = 0;
 	TArray<FName> IgnoredLogCategories;
+	/** -abyssnoshots: no screenshot is ever requested (the pacing of the picture points is kept). */
+	bool bNoShots = false;
+	/** -abyssstatunit: `stat unit` on, thread and GPU times sampled. */
+	bool bStatUnit = false;
+	/** -abysssmoothgate: a smoothness summary other than "smooth" fails the run. */
+	bool bSmoothGate = false;
+	/** -abysssmooth=: the summary's limits. */
+	AbyssSmoothnessRules::FThresholds Smooth;
+	/** -abysstimelinerows=: most rows of frames.csv. */
+	int32 TimelineRows = 120000;
 	/** Unusable switch values (unknown scenario / class): the run reports them and fails without playing. */
 	TArray<FString> Problems;
 };

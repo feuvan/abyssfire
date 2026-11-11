@@ -16,8 +16,9 @@ the smoke autotest ran. A real compile confirms exactly one thing about this fil
 DIRECTLY exists in 5.8.3 with a compatible signature. That closes #3 and #8 (see *Closed by the first engine build*)
 and confirms the module-side resolutions of #2 and #7. It does not close a hedged call: `if constexpr (requires ...)`
 compiles whichever way the engine is, so the build cannot say which branch 5.8.3 took. #1, #4, #5 and #6 stay open
-until the engine headers are read (the greps below) or the run log shows the fallback's message. None of the four can
-stop a build. The build was the editor target on the Mac only: the game, Android and iOS targets have not been built.
+until the engine headers are read (the greps below) or the run log shows the fallback's message; so does #9, added
+after that build with the autotest's smoothness measurement and hedged from the start. None of the five can stop a
+build. The build was the editor target on the Mac only: the game, Android and iOS targets have not been built.
 
 ## What to check on the Mac (one question per open entry)
 
@@ -30,6 +31,7 @@ means for the module.
 | 5 | `grep -n MarkRenderInstancesDirty Runtime/Engine/Classes/Components/ActorComponent.h`: declared, and under `public:`? | Nothing fails to compile. The log shows once "Instanced meshes: UActorComponent::MarkRenderInstancesDirty not found on this engine" and instance updates re-create scene proxies: apply the alternative of entry 5 if the frame time shows it |
 | 4 | `grep -n TCopyQualifiersFromTo_T Runtime/CoreUObject/Public/Templates/Casts.h`: do `Cast` / `CastChecked` return a qualifier-copying pointer? | Nothing fails (the SDK has the strict form); the check is then stricter than the engine for casts of const objects |
 | 6 | `grep -n "GetAudioListenerPosition" Runtime/Engine/Classes/GameFramework/PlayerController.h`: is it `const`? | Nothing fails (the module calls it on a non-const controller) |
+| 9 | `grep -n "struct FStatUnitData" -A 40 Runtime/Engine/Public/UnrealClient.h` and `grep -n GetStatUnitData Runtime/Engine/Public/UnrealClient.h`: does `FCommonViewportClient` have a public `GetStatUnitData()`, and does the struct have `RawGameThreadTime`, `RawRenderThreadTime`, `RawRHITTime`, `RawGPUFrameTime[]`? | Nothing fails to compile. An autotest run with `-abyssstatunit` then logs "stat unit data NOT on this engine (thread times null)" at its start and `report.json` has `perf.threadTimes.framesWithThreadTimes` 0: read `stat unit` off the screen instead (entry 9) |
 
 The first 5.8 build closed #8 and #3 (their rows are gone from this table and their `// UNVERIFIED` markers from the
 SDK). For the hedged entries the run log is a second signal: #5's fallback logs "Instanced meshes:
@@ -135,6 +137,58 @@ whole SDK against a real engine tree.
   the smoke autotest's complete warning list although instanced components were updated throughout (every VFX pool,
   each frame it draws). 5.8.3 therefore has the function and the module calls it. Kept open only for the
   header check; nothing depends on the answer.
+
+### 9. `FCommonViewportClient::GetStatUnitData()` and the members of `FStatUnitData` (hedged in the module)
+
+- **Where**: `Source/Abyssfire/Private/Framework/AbyssAutoTestSubsystem.cpp`, `AbyssAutoTest_ReadStatUnit` /
+  `AbyssAutoTest_CopyStatUnit` (called from `FAbyssAutoTestRun::CloseFrame`, only in an autotest run with
+  `-abyssstatunit`, after the stat was turned on at the title screen: `AbyssAutoTest_SetStatUnit`, hedged
+  `GEngine->SetEngineStat(World, GameViewportClient, "Unit", true)`, else `GEngine->Exec(World, TEXT("stat unit"))`).
+- **What the code assumes**: `UGameViewportClient` inherits `const FStatUnitData* GetStatUnitData() const` (and
+  `bool IsStatEnabled(const FString&) const`, asked with "Unit" before the toggle is sent) from `FCommonViewportClient`, and the struct has the unfiltered values of the last `stat unit` draw in milliseconds:
+  `RawGameThreadTime`, `RawRenderThreadTime`, `RawRHITTime`, `RawGPUFrameTime[GPU index]`. The numbers describe the
+  frame before the one at whose end they are read (the stat is drawn from last frame's thread timers), so the autotest
+  writes them one sample back (`AbyssSmoothnessRules::ShiftThreadTimesBack`), next to the `frameMs` they time. Also:
+  `UEngine::SetEngineStat(UWorld*, FCommonViewportClient*, const FString& InName, const bool bShow)` is public, takes
+  the stat's name without `STAT_`, and sets rather than toggles (it sends the toggle only when
+  `ViewportClient->IsStatEnabled(InName) != bShow`).
+- **Why this and not the engine globals**: `stat unit` itself reads `GGameThreadTime`, `GRenderThreadTime`,
+  `GRHIThreadTime` (RenderCore) and `RHIGetGPUFrameCycles()` (RHI). Those are plain global variables and a free
+  function; their header and even their existence changed between 5.x releases (the GPU profiler was reworked), and C++
+  has no way to ask at compile time whether a global name exists, so a direct use cannot be hedged: on an engine
+  without the name the Mac build breaks. A class member can be asked for (`requires { Data.RawGameThreadTime; }`), so
+  the module reads the copy `stat unit` keeps. The same reasoning rules out `GNumDrawCallsRHI` /
+  `GNumPrimitivesDrawnRHI` (draw calls, triangles) and the Slate batch counters: they stay operator console steps
+  (`report.json` `perf.operatorConsole`, README "In-game autotest").
+- **Evidence for**: memory of `UnrealClient.h` (4.2x through 5.x): `struct FStatUnitData` with the filtered and the
+  `Raw...` floats, `FCommonViewportClient::GetStatUnitData()` returning the pointer allocated in its constructor, and
+  `UGameViewportClient::Draw` calling `DrawStat` while the stat is enabled. **Against**: not reflected (nothing in the
+  5.6 Python stub); the member names are from memory; whether Metal reports a GPU time in `-game` is unknown (the
+  audit asks for exactly that check).
+- **The hedge**: `if constexpr (requires { Engine->SetEngineStat(World, Client, FString(), true); })` for the switch-on
+  (absent, or the stat not on afterwards by `IsStatEnabled`: the console command is sent, as before; the run log says
+  which of "set on the game viewport" / "requested by console command" happened).
+  `if constexpr (requires { Client->GetStatUnitData(); })`, then one `requires` per member. A missing
+  entry point or member leaves the value at `Unavailable`, which `report.json` writes as `null` and `frames.csv` as an
+  empty field, never as 0. A value of exactly 0 from the engine (the stat is not being drawn, or the RHI has no GPU
+  timer) is treated as unavailable too.
+- **What the SDK declares**: `struct FStatUnitData` and `FCommonViewportClient::GetStatUnitData()` in
+  `sdk/Runtime/Engine/Public/UnrealClient.h`, in two blocks marked `// UNVERIFIED`, and `UEngine::SetEngineStat` in
+  `sdk/Runtime/Engine/Classes/Engine/Engine.h` in a third, all on by default;
+  `--define UE_STUB_UNVERIFIED_NO_STAT_UNIT_DATA=1` removes the three. Both branches type-check:
+  `./run.sh --only Framework` and the same with that `--define`.
+- **The fallback is not silent**: every autotest run logs at its start which of `FApp::GetIdleTime` and the stat unit
+  data this build has (`AutoTest: frame samples with FApp::GetIdleTime yes, stat unit data readable ...`), and
+  `report.json` `perf.threadTimes` counts the frames that carried thread and GPU times.
+- **Residual risk**: none for the build. A wrong assumption about what the values mean (filtered instead of raw, a
+  different unit) would show as thread times that do not add up against `frameMs`: compare one run's `perf.run.threads`
+  with the overlay on screen. A wrong assumption about the one-frame offset (the values time the same frame, or the
+  render / GPU ones lag two) would put a hitch's split on the row before or after it in `longestFrames` / `frames.csv`
+  (group averages are unaffected): on the first run look at a zone-build row, whose `gameMs` should hold its
+  `zoneBuildMs`.
+- **Mac checklist**: the two greps in the table above, and `grep -n SetEngineStat Runtime/Engine/Classes/Engine/Engine.h`;
+  then one run with `-abyssstatunit` and a look at
+  `perf.threadTimes.framesWithGpuTime` (0 = Metal gives no GPU number in `-game`: use `stat gpu` / Instruments).
 
 ### 6. `APlayerController::GetAudioListenerPosition`: const or not (hedged in the module)
 
@@ -303,3 +357,9 @@ nothing about declarations the module does not reach.
 | `USkinnedMeshComponent::SetForcedLOD` on a husk whose component tick is paused (`AAbyssCharacterActor::SetForcedBodyLod`, audit F8) | Reflected (5.6 stub). The LOD is believed to be chosen, and its bones refreshed, in the component's tick, so the body ticks again for a few drawn frames; the held pose is believed to re-evaluate at the new LOD | A settled husk snaps to its reference pose or keeps LOD0. Mac check: playtest P-list husks at maximum zoom after the crumble |
 | Slate ticks a widget from its paint, after the window's layout prepass (`SAbyssCombatLog::Tick` rebuilding its child tree, audit F3 / S-A review R1) | From memory (`SWidget::Paint` calls `Tick`; `SWindow`'s prepass runs before the paint). The code does not depend on it: `Rebuild` calls `SlatePrepass(GetPrepassLayoutScaleMultiplier())` on the tree it built before putting it into `ChildSlot`, which is right in either order (one extra prepass of about ten widgets per rebuild if the engine prepasses after tick) | If the prepass in `Rebuild` were wrong or missing: the log's header and lines blank for one frame per logged line. Mac check: step frame by frame through a fight |
 | `UDirectionalLightComponent::SetShadowDistanceFadeoutFraction` (`AAbyssZoneActor::ApplyQuality`, audit F1) | Reflected: a UFUNCTION with that name and a float in the 5.6 stub (`check_reflected.py` verifies it on every run); called directly, not hedged | 5.8 without it: `AbyssZoneActor.cpp` fails to compile in every target; set the `ShadowDistanceFadeoutFraction` property and `MarkRenderStateDirty()` instead |
+| `FApp::GetIdleTime()` (autotest frame samples, `AbyssAutoTest_IdleMs`) | Seconds the game thread slept in this frame for the frame-rate cap (`t.MaxFPS`), set in `UEngine::UpdateTimeAndHandleMaxTickRate`; long-standing static of `FApp`. Called through a hedge (`requires { AppType::GetIdleTime(); }`) | Missing: `idleMs` is null in `report.json` / empty in `frames.csv`, and the run's first log line says so. A different meaning (it also counts the vsync wait, or excludes the "overshoot") only shifts how much of a frame is reported as idle |
+| `FGenericPlatformMisc::GetPrimaryGPUBrand()` / `GetCPUBrand()` (autotest `environment.gpu` / `.cpu`) | Static `FString` getters on `FPlatformMisc`; hedged the same way. Used instead of `GRHIAdapterName` (a global, in some releases a macro over `GRHIGlobals`: not hedgeable) | Missing: an empty string in the report |
+| `GEngine->Exec(World, TEXT("stat unit"))` and `FCommonViewportClient::IsStatEnabled(TEXT("Unit"))` (autotest `-abyssstatunit`; the fallback since `UEngine::SetEngineStat` is tried first, entry 9) | The command turns the engine stat on for the game viewport (the form `AbyssPlatform.cpp` already uses for `DisableAllScreenMessages`, which compiled on 5.8.3). It toggles, so the autotest sends it once per run and not at all when `IsStatEnabled` (hedged with `requires`, declared in the `// UNVERIFIED` block of entry 9) says the stat already shows | Not handled: the run logs "stat unit not handled by this build" and the thread times stay null. No `IsStatEnabled` on this engine, or another stat name: a stat that an operator or a config had already turned on is toggled off by the autotest (thread times null, `framesWithThreadTimes` 0): do not combine the two |
+| `FViewport::GetSizeXY()` / `IsFullscreen()`, `UGameUserSettings::GetFullscreenMode()` / `IsVSyncEnabled()` / `GetScreenResolution()` (autotest `environment`) | The viewport's size in pixels and its fullscreen flag from source knowledge; the three settings getters are reflected (5.6 stub). Called directly | A wrong value in the report's environment block only |
+| Console variable names read into `environment.consoleVariables` (`GAbyssAutoTestConsoleVariables`: `r.SecondaryScreenPercentage.GameViewport`, `r.TSR.History.ScreenPercentage`, `r.PSOPrecaching`, the twelve `sg.*` groups, ...) | Names from memory (the audit rates `r.SecondaryScreenPercentage.GameViewport` at about 85 %). Looked up with `IConsoleManager::FindConsoleVariable`, never written | A name this engine lacks is listed under `environment.consoleVariablesMissing` instead of being reported with a value: that list is the answer to "does 5.8 have it" |
+| Order of `FTSTicker::GetCoreTicker()` in the engine frame (autotest frame boundary, `FAbyssAutoTestRun::Tick`) | Ticked once per `FEngineLoop::Tick`, after the world tick and the Slate tick of the frame. A sample's `frameMs` is the time between two such ticks, so it is exact wherever the ticker sits; the tags and the driver's numbers of "this frame" assume the world tick came before it | Ticker before the world tick: every tag, step count and hook counter is attributed one frame late (the sums and percentiles do not change; `longestFrames` would show a zone build on the frame after the long one) |

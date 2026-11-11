@@ -25,6 +25,8 @@
 
 #include <string_view>
 
+#include "Framework/AbyssPerfProbe.h"
+
 #if WITH_EDITOR
 // Uncooked runs compile shaders on first use. Until a material's shader map is ready UE draws its primitives with the
 // engine's default material (lit grey, near black away from the sun: the scene's only light is the directional sun),
@@ -240,6 +242,7 @@ bool UAbyssAssetLibrary::DoesAssetExist(const FSoftObjectPath& Path) const
 	{
 		return false;
 	}
+	AbyssPerfProbe::Count(AbyssPerfProbe::ECounter::PackageProbes);
 	return FPackageName::DoesPackageExist(Path.GetLongPackageName());
 }
 
@@ -277,6 +280,7 @@ UObject* UAbyssAssetLibrary::LoadObjectAt(const FSoftObjectPath& Path, UClass* E
 			UE_LOG(LogAbyss, Warning, TEXT("Asset missing: %s (run Scripts/build_content.py)"), *Path.ToString());
 			return nullptr;
 		}
+		const AbyssPerfProbe::FScope ProbeScope(AbyssPerfProbe::ECounter::SyncLoads);
 		Object = Path.TryLoad();
 	}
 	if (Object == nullptr || (ExpectedClass != nullptr && !Object->IsA(ExpectedClass)))
@@ -332,6 +336,8 @@ UMaterialInterface* UAbyssAssetLibrary::LoadMaterial(const TCHAR* MaterialName)
 	{
 		return nullptr;
 	}
+	// Autotest: a lookup that got past the resolved-name cache (about one per distinct name and zone after audit F5).
+	const AbyssPerfProbe::FScope ProbeScope(AbyssPerfProbe::ECounter::MaterialLookups);
 	for (const TCHAR* Folder : Folders)
 	{
 		const FSoftObjectPath Path = FAbyssArtManifest::MakeObjectPath(Folder, Name);
@@ -510,6 +516,20 @@ int32 UAbyssAssetLibrary::LoadCategoryStaticMeshes(FName Category)
 	return Count;
 }
 
+bool UAbyssAssetLibrary::GetPendingCompilation(int32& OutShaderJobs, int32& OutAssetBuilds)
+{
+#if WITH_EDITOR
+	using namespace AbyssAssetLibraryPrivate;
+	OutShaderJobs = PendingShaderJobs(GShaderCompilingManager);
+	OutAssetBuilds = PendingAssetBuilds(FAssetCompilingManager::Get());
+	return OutShaderJobs >= 0 || OutAssetBuilds >= 0;
+#else
+	OutShaderJobs = -1;
+	OutAssetBuilds = -1;
+	return false;
+#endif
+}
+
 EAbyssCompileWait UAbyssAssetLibrary::WaitForPendingCompilation(bool bZoneEntry)
 {
 #if WITH_EDITOR
@@ -524,6 +544,12 @@ EAbyssCompileWait UAbyssAssetLibrary::WaitForPendingCompilation(bool bZoneEntry)
 	FAssetCompilingManager& AssetCompiling = FAssetCompilingManager::Get();
 	const int32 AssetBuilds = PendingAssetBuilds(AssetCompiling);
 	const int32 ShaderJobs = PendingShaderJobs(GShaderCompilingManager);
+	if (AbyssPerfProbe::IsActive() && bZoneEntry)
+	{
+		// The backlog a zone entry met: the autotest's warm-or-cold-cache evidence (the most of the zone's first frames).
+		GAbyssPerfProbe->ShaderJobsAtWait = FMath::Max(GAbyssPerfProbe->ShaderJobsAtWait, ShaderJobs);
+		GAbyssPerfProbe->AssetBuildsAtWait = FMath::Max(GAbyssPerfProbe->AssetBuildsAtWait, AssetBuilds);
+	}
 	if (AssetBuilds == 0 && ShaderJobs == 0)
 	{
 		return EAbyssCompileWait::None;

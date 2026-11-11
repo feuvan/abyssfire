@@ -34,6 +34,7 @@
 #include "Actors/AbyssPropActor.h"
 #include "Framework/AbyssActorRegistry.h"
 #include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssText.h"
 #include "Framework/AbyssUnits.h"
@@ -450,6 +451,9 @@ int32 UAbyssVfxSystem::FindOrCreatePool(const FAbyssVfxLayer& Layer)
 	{
 		return INDEX_NONE;
 	}
+	// Autotest: a pool created on the spawn path (a load, a material instance, a registered component: audit M8).
+	// Cancelled on a lookup that finds its pool.
+	AbyssPerfProbe::FScope ProbeScope(AbyssPerfProbe::ECounter::VfxPoolCreations);
 
 	// Mesh layers: one pool per mesh (its own materials, or M_AF_FX_Mesh when it exists). Missing mesh -> sprite.
 	if (!Layer.Mesh.IsNone())
@@ -457,6 +461,7 @@ int32 UAbyssVfxSystem::FindOrCreatePool(const FAbyssVfxLayer& Layer)
 		const FName Key = AbyssVfxSystemPrivate::MakeId(TEXT("M:"), Layer.Mesh);
 		if (const int32* Found = PoolIndexByKey.Find(Key))
 		{
+			ProbeScope.Cancel();
 			return *Found;
 		}
 		if (UStaticMesh* Mesh = Assets->LoadStaticMeshByName(Layer.Mesh))
@@ -499,6 +504,7 @@ int32 UAbyssVfxSystem::FindOrCreatePool(const FAbyssVfxLayer& Layer)
 	const FName Key = AbyssVfxSystemPrivate::MakeId(bTranslucent ? TEXT("T:") : TEXT("A:"), Layer.Sprite);
 	if (const int32* Found = PoolIndexByKey.Find(Key))
 	{
+		ProbeScope.Cancel();
 		return *Found;
 	}
 	UTexture* Sprite = Assets->LoadFxTexture(Layer.Sprite);
