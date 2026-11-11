@@ -16,15 +16,18 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHECK_DIR = os.path.dirname(HERE)
 MODULE_DIR = os.path.join(os.path.dirname(CHECK_DIR), 'Source', 'Abyssfire')
+sys.dont_write_bytecode = True  # no __pycache__ next to the sources
+sys.path.insert(0, HERE)
+from stubpath import find_stub  # noqa: E402
 
 # name, file, text to find (must occur exactly once), replacement, expected diagnostic (file suffix, message regex), run
 FAULTS = [
     {
         'name': 'wrong engine argument type',
-        'what': 'APlayerController::ProjectWorldLocationToScreen(FVector, FVector2D&, bool) called with the two vectors swapped',
+        'what': 'FSceneView::ProjectWorldToScreen(const FVector&, const FIntRect&, const FMatrix&, FVector2D&) called with the two vectors swapped',
         'file': 'Private/Input/AbyssPicking.cpp',
-        'find': 'Controller.ProjectWorldLocationToScreen(Corner, Projected,',
-        'replace': 'Controller.ProjectWorldLocationToScreen(Projected, Corner,',
+        'find': 'FSceneView::ProjectWorldToScreen(Corner, Projection.ViewRect, Projection.ViewProjection, Projected)',
+        'replace': 'FSceneView::ProjectWorldToScreen(Projected, Projection.ViewRect, Projection.ViewProjection, Corner)',
         'expect_file': 'Private/Input/AbyssPicking.cpp',
         'expect': r'no viable conversion|cannot bind|no matching (member )?function|cannot initialize a parameter',
         'run': 'A',
@@ -249,6 +252,7 @@ FAULTS = [
         'expect': r"property-shadow.*'RootComponent' cannot be defined in 'AAbyssCameraRig'",
         'run': 'B',
         'uht': True,
+        'needs_stub': True,   # the rule reads the engine classes from the Python stub
     },
     {
         'name': 'UHT rule: a UObject class by value as a UPROPERTY',
@@ -260,6 +264,7 @@ FAULTS = [
         'expect': r'property-type.*UObject class used by value',
         'run': 'B',
         'uht': True,
+        'needs_stub': True,   # the rule reads the engine classes from the Python stub
     },
     {
         'name': 'configurations: a fault inside #if PLATFORM_ANDROID || PLATFORM_IOS',
@@ -642,6 +647,15 @@ def main(args=None):
     core_public = os.path.join(os.path.dirname(CHECK_DIR), 'Source', 'AbyssCore', 'Public')
     ok = True
     rows = []
+    # Faults whose rule reads the engine's classes from the Python stub cannot bite without it: say so up front and
+    # fail for that reason, not as "NOT DETECTED" (which reads as a hole in the lint).
+    stub = find_stub(os.path.dirname(CHECK_DIR))
+    have_stub = os.path.exists(stub)
+    if not have_stub:
+        needing = [f['name'] for f in FAULTS if f.get('needs_stub')]
+        print('== selftest: no engine Python stub at %s (set ABYSS_UNREAL_STUB): %d planted faults need it and are not run:' % (stub, len(needing)))
+        for name in needing:
+            print('              %s' % name)
     for run_name, only in sorted(RUNS.items()):
         scratch = os.path.join(root, run_name, 'Abyssfire')
         if os.path.exists(scratch):
@@ -656,6 +670,11 @@ def main(args=None):
                 shutil.rmtree(scratch_core)
             shutil.copytree(core_public, scratch_core)
         for fault in faults:
+            if fault.get('needs_stub') and not have_stub:
+                rows.append((fault['name'], 'NEEDS STUB', 'not run: the engine Python stub was not found (%s; set ABYSS_UNREAL_STUB)' % stub))
+                ok = False
+                fault['planted'] = False
+                continue
             path = os.path.join(scratch_core, fault['core_file']) if 'core_file' in fault else os.path.join(scratch, fault['file'])
             shown = fault.get('core_file') or fault['file']
             text = open(path, encoding='utf-8').read()
@@ -707,7 +726,10 @@ def main(args=None):
         print('              %s' % detail[:300])
     planted = sum(1 for f in FAULTS if f.get('planted'))
     print('%d faults planted in %d runs' % (planted, len(RUNS)))
-    print('SELFTEST: %s' % ('PASS (every planted fault and every negative case was reported)' if ok else 'FAIL (the check missed a planted fault: the SDK / fake UHT / a lint is too permissive)'))
+    needs_stub_only = not ok and not any(status in ('NOT DETECTED', 'CANNOT PLANT', 'CANNOT RUN') for _, status, _ in rows)
+    fail_text = ('FAIL (incomplete: the stub-dependent faults were not run, no engine Python stub; everything that ran was reported)' if needs_stub_only
+                 else 'FAIL (the check missed a planted fault: the SDK / fake UHT / a lint is too permissive)')
+    print('SELFTEST: %s' % ('PASS (every planted fault and every negative case was reported)' if ok else fail_text))
     return 0 if ok else 1
 
 

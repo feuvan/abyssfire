@@ -94,6 +94,8 @@ struct FAbyssCorpseState
 		/** The cap ended it early (presentation only: the entry is still in the registry). */
 		bool bRetired = false;
 		bool bCrumblePlayed = false;
+		/** Audit F8: the crumble is over (latched): no cast shadow, LOD1 (AbyssCorpseRules::HuskSettled). */
+		bool bSettled = false;
 		/** Its story beat ended since it appeared (a later busy director no longer holds it). */
 		bool bBeatEndedSinceAdded = false;
 		/** corpse.burn waits for the end of the dispatch (the fire kill's own hit names its colour). */
@@ -267,6 +269,7 @@ void UAbyssCorpseLayer::UnbindEvents()
 void UAbyssCorpseLayer::ApplyQuality(const FAbyssQualityProfile& Profile)
 {
 	HuskCap = AbyssCorpseRules::HuskCap(Profile.Tier, Profile.bMobile);
+	bHuskCapCountsSeeds = Profile.bMobile;
 	// 2G review X4: husks cast the sun's CSM on desktop only (the world builder's quality refresh reaches the living).
 	bHuskSunShadow = AbyssCorpseRules::HuskCastsSunShadow(Profile.bMobile);
 	if (State.IsValid())
@@ -275,7 +278,7 @@ void UAbyssCorpseLayer::ApplyQuality(const FAbyssQualityProfile& Profile)
 		{
 			if (AAbyssCharacterActor* Actor = Entry.Actor.Get())
 			{
-				Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bHuskSunShadow);
+				Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bHuskSunShadow && !Entry.bSettled);
 			}
 		}
 	}
@@ -1084,6 +1087,7 @@ void UAbyssCorpseLayer::Tick(const FAbyssFrameInfo& Frame, const abyss::Snapshot
 
 	// ---- the visible cap: overflow retires the oldest (seeds and story-held bodies kept first) ----
 	S.CapEntries.clear();
+	int32 LiveSeeds = 0;
 	for (const FAbyssCorpseState::FEntry& Entry : S.Entries)
 	{
 		if (Entry.Actor.IsValid() && Entry.Husk.End == EEnd::None)
@@ -1093,9 +1097,11 @@ void UAbyssCorpseLayer::Tick(const FAbyssFrameInfo& Frame, const abyss::Snapshot
 			Cap.DeathMs = Entry.DeathMs;
 			Cap.bSeeded = Entry.bSeeded;
 			Cap.bStoryHeld = Entry.Husk.bStoryHeld;
+			LiveSeeds += Entry.bSeeded ? 1 : 0;
 		}
 	}
-	OverflowHusks(S.CapEntries, HuskCap, S.CapScratch, S.Overflow);
+	// desktop: the cap counts kill bodies, the map's seeds come on top (HuskCapWithSeeds)
+	OverflowHusks(S.CapEntries, HuskCapWithSeeds(HuskCap, LiveSeeds, bHuskCapCountsSeeds), S.CapScratch, S.Overflow);
 	for (const uint32 Id : S.Overflow)
 	{
 		const int32 Index = S.IndexOf(Id);
@@ -1141,6 +1147,13 @@ void UAbyssCorpseLayer::Tick(const FAbyssFrameInfo& Frame, const abyss::Snapshot
 			}
 			++I;
 			continue;
+		}
+		if (!Entry.bSettled && HuskSettled(Look.Phase))
+		{
+			// Audit F8: a settled husk leaves the shadow depth pass (its blob stays) and draws LOD1.
+			Entry.bSettled = true;
+			Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bHuskSunShadow && !Entry.bSettled);   // HuskCastsSunShadowNow
+			Actor->SetForcedBodyLod(SettledHuskForcedLod);
 		}
 		const double TopCm = HuskGeometry(Entry.Block, AbyssCorpsesPrivate::BodyScaleOf(Actor), AbyssCorpsesPrivate::DefaultHuskRadiusCm).TopCm;
 		Actor->SetAshLook(static_cast<float>(Look.Grey), static_cast<float>(Look.Dissolve), static_cast<float>(TopCm));

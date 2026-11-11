@@ -732,14 +732,28 @@ namespace AbyssCorpseRules
 		}
 	}
 
-	/** Husks drawn at once per quality tier (the core keeps 24 kill bodies + the map's seeds; overflow only). */
+	/** Husks drawn at once per quality tier (the core keeps 24 kill bodies + the map's seeds; overflow only). Desktop:
+	 *  16 on low / balanced, 32 on high (performance audit F8: a husk is a full character, 19 draws for a footman; the
+	 *  cap retires the oldest kill bodies first and never a seed or a story body). On desktop the map's seeds do not
+	 *  count against it: see HuskCapWithSeeds. */
 	inline int HuskCap(int Tier, bool bMobile)
 	{
 		if (!bMobile)
 		{
-			return 32;
+			return Tier >= 2 ? 32 : 16;
 		}
 		return Tier <= 0 ? 12 : (Tier == 1 ? 20 : 32);
+	}
+
+	/**
+	 * The cap the overflow runs against, given how many of the live husks are map seeds. Desktop: HuskCap counts kill
+	 * bodies only, the seeds come on top (S-A review R2: with the seeds inside a cap of 16 the Sheepfold's 6 left 10
+	 * kill bodies drawn while the core keeps 24 a Corpseherd can raise, and a map with 16 seeds would have shown none).
+	 * Mobile: the seeds stay inside the cap, as shipped (the cap is the device's body budget).
+	 */
+	inline int HuskCapWithSeeds(int Cap, int Seeds, bool bMobile)
+	{
+		return bMobile ? Cap : Cap + (std::max)(0, Seeds);
 	}
 
 	/**
@@ -751,6 +765,23 @@ namespace AbyssCorpseRules
 	{
 		return !bMobile;
 	}
+
+	/** A husk has settled once its crumble is over (and a seed from the start): nothing about it moves any more. The
+	 *  glue latches it: an ending that follows keeps the settled look. */
+	inline bool HuskSettled(EPhase Phase)
+	{
+		return Phase == EPhase::Husk;
+	}
+
+	/** Audit F8: a settled husk leaves the shadow depth pass on every platform (its blob shadow stays) ... */
+	inline bool HuskCastsSunShadowNow(bool bMobile, bool bSettled)
+	{
+		return HuskCastsSunShadow(bMobile) && !bSettled;
+	}
+
+	/** ... and draws LOD1. USkinnedMeshComponent::SetForcedLOD is 1-based (0 = automatic): 2 forces LOD1; the engine
+	 *  clamps it for a mesh with a single LOD. */
+	inline constexpr int SettledHuskForcedLod = 2;
 
 	struct FHuskEntry
 	{

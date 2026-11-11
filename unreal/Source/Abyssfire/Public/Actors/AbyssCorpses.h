@@ -130,6 +130,8 @@ private:
 
 	TSharedPtr<FAbyssCorpseState> State;
 	int32 HuskCap = 32;
+	/** Mobile: the map's seeds count against HuskCap; desktop: they come on top (AbyssCorpseRules::HuskCapWithSeeds). */
+	bool bHuskCapCountsSeeds = false;
 	/** AbyssCorpseRules::HuskCastsSunShadow for the render tier (2G review X4). */
 	bool bHuskSunShadow = true;
 	bool bEventsBound = false;

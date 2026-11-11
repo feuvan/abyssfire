@@ -107,6 +107,17 @@ void UAbyssActorRegistry::ForEach(TFunctionRef<void(abyss::EntityId, AActor*, ab
 	}
 }
 
+void UAbyssActorRegistry::ForEachReadOnly(TFunctionRef<void(abyss::EntityId, AActor*, abyss::EntityKind)> Visitor) const
+{
+	for (const TPair<uint32, FEntry>& Pair : Entries)
+	{
+		if (AActor* Actor = Pair.Value.Actor.Get())
+		{
+			Visitor(Pair.Key, Actor, Pair.Value.Kind);
+		}
+	}
+}
+
 void UAbyssActorRegistry::Deinitialize()
 {
 	Reset();

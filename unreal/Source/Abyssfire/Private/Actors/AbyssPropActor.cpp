@@ -144,6 +144,7 @@ bool AAbyssPropActor::InitProp(const FAbyssPropSetup& Setup, UAbyssAssetLibrary&
 			SkeletalMesh->SetRelativeScale3D(FVector(FMath::Max(0.01f, Art->Scale) * BaseScale));
 			SkeletalMesh->SetCastShadow(Setup.bCastShadow);
 			SkeletalMesh->SetVisibility(true);
+			SkeletalMesh->SetComponentTickEnabled(true);
 			Mesh->SetStaticMesh(nullptr);
 			Mesh->SetVisibility(false);
 			Clips.Reset();
@@ -184,6 +185,8 @@ bool AAbyssPropActor::InitProp(const FAbyssPropSetup& Setup, UAbyssAssetLibrary&
 			Mesh->SetCastShadow(Setup.bCastShadow);
 			Mesh->SetVisibility(true);
 			SkeletalMesh->SetVisibility(false);
+			// Audit F6a: a static prop (loot, most props) never shows its skeletal component: it does not tick either.
+			SkeletalMesh->SetComponentTickEnabled(false);
 			bHasArt = true;
 		}
 	}
@@ -191,6 +194,7 @@ bool AAbyssPropActor::InitProp(const FAbyssPropSetup& Setup, UAbyssAssetLibrary&
 	{
 		Mesh->SetVisibility(false);
 		SkeletalMesh->SetVisibility(false);
+		SkeletalMesh->SetComponentTickEnabled(false);
 		UE_LOG(LogAbyss, Verbose, TEXT("Prop %u has no art (asset %s)"), EntityId,
 			Art != nullptr ? *Art->Name.ToString() : TEXT("none"));
 	}

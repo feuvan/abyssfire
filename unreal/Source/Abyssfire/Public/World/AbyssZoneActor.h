@@ -12,7 +12,7 @@
 //   lily pads.
 // * Light and look (DECISIONS P10, P11, P14 as revised by the art pass): the movable directional sun (manifest key light,
 //   pi lux x the mood's sun colour, lighting channel 0 only; the shadow-catcher toon reads its shadow term), CSM per tier
-//   (desktop 2 cascades on every tier, high-tier mobile 1) over 1.35 x the live camera distance, contact shadows on
+//   (1 cascade: desktop every tier, high-tier mobile; a 5 % fade-out) over 1.35 x the live camera distance, contact shadows on
 //   desktop balanced / high; an ExponentialHeightFog per mood (zone_moods.json port.fog) starting 1 m beyond the camera
 //   focus distance; the unbound post-process: manual exposure, tone curve 0.4, the built-in grade at 55 % of the mood
 //   (no M_AF_PP_Grade), vignette, bloom and SSAO (+ M_AF_PP_AOComposite) per tier. UpdateView re-fits the shadow
@@ -194,6 +194,7 @@ private:
 		float Fade = 0.f;
 		bool bLootOnly = false;     // low dressing: fades for ground loot only, never for the hero or monsters
 		bool bEllipsoid = false;    // R1 decor (trees, rocks, camp props, story props): bounds-ellipsoid test; walls: cylinder
+		bool bStructure = false;    // a set-piece structure (U4): upright-cylinder test (AbyssSetPieceRules::StructureCoversRay)
 		bool bGhosted = false;      // drawn by its fade ghost (own instance hidden), FFadeGhost::Occluders lists it
 		bool bSuppressed = false;   // a set piece hidden for a defend target (U4): never covers, stays unfaded
 	};

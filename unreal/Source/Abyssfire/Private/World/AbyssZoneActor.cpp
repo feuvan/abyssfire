@@ -39,6 +39,8 @@
 #include "World/AbyssArtManifest.h"
 #include "World/AbyssAssetLibrary.h"
 #include "World/AbyssSetPieces.h"
+#include "World/AbyssQualityRules.h"
+#include "World/AbyssSetPieceRules.h"
 #include "World/AbyssThemeRules.h"
 #include "World/AbyssWorldStateRules.h"
 
@@ -147,16 +149,15 @@ namespace AbyssZonePrivate
 
 	// ---- light and look (DECISIONS P10 / P11 / P14, art pass) ----
 	// Sun CSM: distance = 1.35 x the live camera distance (2870 cm at the 2125 cm default; the top screen edge's ground is
-	// ~26 m away), 2 cascades with a linear split on desktop, 1 cascade on high-tier mobile. Re-fitted when the camera
-	// distance moves by more than 2 % (zoom, level-up pulse). UE splits from the near plane (DirectionalLightComponent
-	// GetSplitDistance), and at pitch -50 the visible ground lies at 66-90 % of the distance in view depth (1907-2573 cm
-	// at the default framing, the same ratio at every zoom): with 2 linear cascades all of it falls in the far one
-	// [0.5, 1] x distance (0.55 cm per texel at 4096, about as fine as 3 cascades' last one, 0.51), the near cascade
-	// covers the air under the camera and draws next to nothing. A third cascade bought nothing on screen; 1 cascade
-	// would be 0.79 cm per texel (r.Shadow.CSM.MaxCascades 1 to A/B on the Mac).
+	// ~26 m away), ONE cascade on desktop and on high-tier mobile (AbyssQualityRules::SunCascades; performance audit F7).
+	// Re-fitted when the camera distance moves by more than 2 % (zoom, level-up pulse). UE splits from the near plane
+	// (DirectionalLightComponent GetSplitDistance), and at pitch -50 the visible ground lies at 66-90 % of the distance
+	// in view depth (1907-2573 cm at the default framing, the same ratio at every zoom): with 2 linear cascades all of
+	// it fell in the far one [0.5, 1] x distance (0.55 cm per texel at 4096) while the near one covered the air under
+	// the camera, drew next to nothing on screen and still took every zone-sized caster's draw. One cascade is 0.79 cm
+	// per texel at 4096; blob and contact shadows seat the feet. The CSM fades over the last 5 % of the distance
+	// (SunShadowFadeoutFraction, a property of the light component: there is no console variable for it).
 	constexpr float ShadowDistanceScale = 1.35f;
-	constexpr int32 DesktopCascades = 2;
-	constexpr int32 MobileCascades = 1;
 	constexpr float CascadeDistributionExponent = 1.f;
 	constexpr float ViewRefitFraction = 0.02f;
 	// Shadow acne on the shadow-catcher toon (its fake normal is the key light direction): a little more bias than UE's
@@ -1464,15 +1465,17 @@ void AAbyssZoneActor::ApplyQuality(const FAbyssQualityProfile& Quality)
 	QualityProfile = Quality;
 	if (Sun != nullptr)
 	{
-		// DECISIONS P10 (revised, art pass; binding over ue58-platform.md 6.2 / 6.8): CSM with 2 cascades and a linear
-		// split on desktop (every tier), 1 cascade on high-tier mobile; low / mid mobile have no shadow-depth pass at all
+		// DECISIONS P10 (revised, art pass; binding over ue58-platform.md 6.2 / 6.8; audit F7: one cascade): CSM with 1
+		// cascade on desktop (every tier) and on high-tier mobile; low / mid mobile have no shadow-depth pass at all
 		// (blob shadows only, matching UAbyssWorldBuilder's bCsm = !mobile || tier >= 2). Device profiles cap
 		// r.Shadow.CSM.MaxMobileCascades the same way; the world builder sets r.Shadow.MaxCSMResolution & co. The
 		// distance follows the camera (ApplyViewDistance).
 		const bool bShadows = Quality.bMobile ? Quality.Tier >= 2 : true;
 		Sun->SetCastShadows(bShadows);
-		Sun->SetDynamicShadowCascades(Quality.bMobile ? MobileCascades : DesktopCascades);
+		Sun->SetDynamicShadowCascades(AbyssQualityRules::SunCascades(Quality.bMobile));
 		Sun->SetCascadeDistributionExponent(CascadeDistributionExponent);
+		// The 5 % fade at the shadow distance (audit F1: it was a console variable that does not exist).
+		Sun->SetShadowDistanceFadeoutFraction(AbyssQualityRules::SunShadowFadeoutFraction);
 		// Screen-space contact shadows (the feet / blade on the ground) on desktop balanced / high.
 		const float Contact = !Quality.bMobile && Quality.Tier >= 1 ? ContactShadowLength : 0.f;
 		if (!FMath::IsNearlyEqual(Sun->ContactShadowLength, Contact))
@@ -1705,6 +1708,16 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstAr
 						continue;
 					}
 					const double Lateral = FMath::Abs(FVector2D::CrossProduct(Dir, Rel));
+					if (Occluder.bStructure)
+					{
+						// A set-piece structure (belfry, cottage, name wall): its upright bounding cylinder.
+						if (AbyssSetPieceRules::StructureCoversRay(Along, Lateral, Target.Z - Occluder.Location.Z, TanElevation,
+							Occluder.RadiusCm, Occluder.HeightCm))
+						{
+							Covering.Add(Index);
+						}
+						continue;
+					}
 					if (Occluder.bEllipsoid)
 					{
 						// R1 decor: a target standing behind the prop (15.6; behind its centre, seen from the camera)

@@ -68,6 +68,8 @@ float SAbyssCombatLog::LineAlpha(int32 IndexFromNewest, double Age) const
 	return IndexFromNewest < 3 ? Fade * Weights[IndexFromNewest] : 0.f;
 }
 
+// AddLine / AddLocalLine / Clear / SetExpanded / SetTouch only mark the log dirty; Tick rebuilds the text blocks once
+// (audit F3: a busy combat frame with 6-10 log lines used to rebuild and prepass every block per line).
 void SAbyssCombatLog::AddLine(const abyss::LocText& Text, abyss::LogType Type)
 {
 	FLine Line;
@@ -79,7 +81,7 @@ void SAbyssCombatLog::AddLine(const abyss::LocText& Text, abyss::LogType Type)
 	{
 		Buffer.RemoveAt(0);
 	}
-	Rebuild();
+	bDirty = true;
 }
 
 void SAbyssCombatLog::AddLocalLine(const FString& Text, abyss::LogType Type)
@@ -93,13 +95,13 @@ void SAbyssCombatLog::AddLocalLine(const FString& Text, abyss::LogType Type)
 	{
 		Buffer.RemoveAt(0);
 	}
-	Rebuild();
+	bDirty = true;
 }
 
 void SAbyssCombatLog::Clear()
 {
 	Buffer.Reset();
-	Rebuild();
+	bDirty = true;
 }
 
 void SAbyssCombatLog::SetExpanded(bool bInExpanded)
@@ -107,7 +109,7 @@ void SAbyssCombatLog::SetExpanded(bool bInExpanded)
 	if (bExpanded != bInExpanded)
 	{
 		bExpanded = bInExpanded;
-		Rebuild();
+		bDirty = true;
 	}
 }
 
@@ -117,7 +119,7 @@ void SAbyssCombatLog::SetTouch(bool bInTouch)
 	{
 		bTouch = bInTouch;
 		bExpanded = !bTouch;
-		Rebuild();
+		bDirty = true;
 	}
 }
 
@@ -128,12 +130,21 @@ void SAbyssCombatLog::Tick(const FGeometry& AllottedGeometry, const double InCur
 	if (!bExpanded && InCurrentTime >= NextCollapsedRefresh)
 	{
 		NextCollapsedRefresh = InCurrentTime + 0.25;
+		bDirty = true;
+	}
+	// One rebuild per frame however many lines arrived (audit F3): the sim driver dispatches a tick's EvLog events
+	// before Slate ticks, so the lines of this frame are all in the buffer by now and none is shown a frame late.
+	// Slate ticks a widget from its paint, after the window's layout prepass of the frame: Rebuild prepasses the tree
+	// it builds itself, so the new header and line column are arranged with their sizes in this same frame.
+	if (bDirty)
+	{
 		Rebuild();
 	}
 }
 
 void SAbyssCombatLog::Rebuild()
 {
+	bDirty = false;
 	const FAbyssUiStyle& UiStyle = Ctx->Style();
 	const FVector2D Size = GetDesignSize();
 	const float FontPx = bTouch ? 19.f : 12.f;
@@ -206,8 +217,7 @@ void SAbyssCombatLog::Rebuild()
 	const float HeaderPx = bTouch ? 16.f : 12.f;
 	const double HeaderH = FMath::Max(18.0, HeaderPx + 6.0);   // AbyssUi::SectionHeader's height
 	const TSharedRef<FAbyssUiContext> Context = Ctx.ToSharedRef();
-	ChildSlot
-	[
+	const TSharedRef<SWidget> Root =
 		SNew(SBox)
 		.WidthOverride(static_cast<float>(Size.X))
 		.HeightOverride(static_cast<float>(Size.Y))
@@ -256,7 +266,19 @@ void SAbyssCombatLog::Rebuild()
 					]
 				]
 			]
-		]
+		];
+	// The rebuild runs in Tick, which Slate calls while painting, after this frame's layout prepass: a tree that is
+	// not prepassed here would be arranged once with desired size 0 (the header in a 0 x 0 slot, the auto-sized line
+	// column with no height below the clip), so the log would blank for one frame per logged line. Prepassing the new
+	// tree is right whichever way the engine orders tick and prepass. The outer box has the same fixed size as the
+	// one it replaces, so this widget's own desired size does not change.
+	if (bCanMeasure)
+	{
+		Root->SlatePrepass(LayoutScale);
+	}
+	ChildSlot
+	[
+		Root
 	];
 }
 

@@ -11,6 +11,7 @@
 //   that yield to a defend target; the tiles the pieces cover (non-blocking zone decoration there is not drawn: no
 //   grass through a cottage floor).
 // * Queries: the cue spots of a played cue, the echo anchor of a lore id, the yielding piece under a defend target.
+// * Occlusion (StructureCoversRay): an `occluder` piece fades as an upright cylinder, not as the decor's ellipsoid.
 // * Event labels (the world layer): `<key>.<zone>` before `<key>`, the rule of the core's RevZoneKey (RandomEvents.cpp),
 //   for the treasure cache, the wandering merchant and the puzzle; in a themed zone only, the rescue's name is
 //   `sys.event.rescue.<zone>`, else zone.event.rescue.fallbackName (unthemed zones keep the unlabelled rescue prop).
@@ -21,6 +22,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -326,6 +328,36 @@ namespace AbyssSetPieceRules
 			}
 		}
 		return Best;
+	}
+
+	/**
+	 * Occlusion of a built structure (a set piece marked `occluder`: the belfry, the cottages, the name wall). The zone's
+	 * R1 decor test is a bounds ellipsoid, right for a tree's crown or a boulder; a structure is a box, and the ellipsoid
+	 * leaves its upper corners out: at the first Mac run's spawn the hero stood 3.7 tiles straight behind the 3.4 m
+	 * belfry (Knellwatch, playerStart on the camera diagonal through it), the roof's edge covered the hero's legs and
+	 * the belfry never faded. A structure is tested as its upright bounding cylinder: the ray from the target toward
+	 * the camera (rising TanElevation per unit of ground distance) is covered when the target stands behind the
+	 * structure's centre and the ray meets the cylinder below its top.
+	 *
+	 * Along / Lateral: the structure's centre in the target's frame (Along toward the camera, cm);
+	 * TargetAboveBaseCm: the target point's height over the structure's ground point.
+	 */
+	inline bool StructureCoversRay(double Along, double Lateral, double TargetAboveBaseCm, double TanElevation,
+		double RadiusCm, double HeightCm)
+	{
+		if (Lateral < 0.0)
+		{
+			Lateral = -Lateral;
+		}
+		if (!(RadiusCm > 0.0) || !(HeightCm > 0.0) || Along < 0.0 || Lateral > RadiusCm)
+		{
+			return false;   // in front of its centre (seen from the camera), or beside it
+		}
+		// Where the ray enters the cylinder's side (0 when the target stands inside its footprint).
+		const double HalfChord = std::sqrt(RadiusCm * RadiusCm - Lateral * Lateral);
+		const double Enter = Along - HalfChord > 0.0 ? Along - HalfChord : 0.0;
+		const double EnterHeight = TargetAboveBaseCm + Enter * TanElevation;
+		return EnterHeight < HeightCm;
 	}
 
 	/**

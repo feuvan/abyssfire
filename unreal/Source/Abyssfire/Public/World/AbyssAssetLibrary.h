@@ -114,6 +114,8 @@ private:
 
 	TMap<FName, uint32> LastZoneUse;
 	TSet<FName> MissingPaths;
+	/** LoadMaterial: material name -> the `Loaded` key of the folder it was found in (audit F5: no repeated folder probes). */
+	TMap<FName, FName> MaterialKeys;
 	uint32 ZoneCounter = 0;
 	bool bLightingCollectionResolved = false;
 };

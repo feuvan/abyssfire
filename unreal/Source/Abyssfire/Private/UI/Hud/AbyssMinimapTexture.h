@@ -1,5 +1,5 @@
 // The zone's minimap texture (save-ui-input 6.11, world-map-nav 11, DECISIONS W2 / W4 / U8): one texel per tile, coloured
-// by tile type, with the explored fog of the current visit (unexplored tiles dark). Built once per zone, re-uploaded when
+// by tile type in the zone's palette (the presentation theme's terrain style, AbyssMinimapRules), with the explored fog of the current visit (unexplored tiles dark). Built once per zone, re-uploaded when
 // the explored set grows (checked every 250 ms, the web refresh). Shared by the HUD minimap and the world-map panel.
 #pragma once
 
@@ -31,10 +31,12 @@ public:
 	uint32 GetRevision() const { return Revision; }
 	bool IsExplored(int32 Col, int32 Row) const;
 
-	/** Tile colour of the web minimap (layer 1). */
-	static FColor TileColor(uint8 TileType);
+	/** Tile colour of the current zone: its presentation theme's terrain style, else the web minimap's (layer 1). */
+	FColor TileColor(uint8 TileType) const;
 
 private:
+	/** Picks the zone's palette (AbyssMinimapRules::PaletteFor) when a zone's texture is built. */
+	void ResolvePalette(const std::string& InMapId);
 	void Upload(bool bCreate);
 
 	TWeakObjectPtr<UAbyssUiSubsystem> Owner;
@@ -48,4 +50,7 @@ private:
 	int32 ExploredCount = -1;
 	double NextCheck = 0.0;
 	uint32 Revision = 0;
+	/** 0xRRGGBB per tile type 0..6 (web colours until the first zone). */
+	uint32 TileColors[7] = { 0x4a8c3f, 0x8b7355, 0x6a6a6a, 0x1a5276, 0x4a4a4a, 0x9e7c52, 0x5c4834 };
+	uint32 UnknownTileColor = 0x222222;
 };

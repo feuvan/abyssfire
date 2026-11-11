@@ -61,6 +61,8 @@ class AActor;
 class AAbyssCameraRig;
 /** The NPCs a story beat still needs (Private/World/AbyssWorldBuilder.cpp over AbyssWorldStateRules::FStoryNpcHolds). */
 struct FAbyssStoryNpcHolds;
+/** What the last quality refresh applied (Private/World/AbyssWorldBuilder.cpp over AbyssQualityRules::FRefreshState). */
+struct FAbyssQualityRefresh;
 class AAbyssCharacterActor;
 class AAbyssPropActor;
 class AAbyssZoneActor;
@@ -184,7 +186,9 @@ private:
 	/** U4: OnCuePlayed of the audio system (a game-instance subsystem), bound once it exists. */
 	void BindAudioCues();
 	void ApplySettings(const FAbyssUserSettings& Settings);
-	void RefreshQuality();
+	/** Applies the tier's profile on change only (audit F1): the systems / actors when the profile changed or `bForce`
+	 *  (world begin, zone build), the console variables when what we want changed (AbyssConsoleVars). */
+	void RefreshQuality(bool bForce = false);
 	void EnsureCameraRig();
 	void EnsureHelpers();
 
@@ -319,6 +323,7 @@ private:
 	TArray<FEchoPlayback> Echoes;
 	/** 2G stage H: the beats a quest event queued and the NPCs they name (AbyssWorldStateRules::FStoryNpcHolds). */
 	TSharedPtr<FAbyssStoryNpcHolds> StoryNpcHolds;
+	TSharedPtr<FAbyssQualityRefresh> QualityRefresh;
 	/** Brightness setting as an exposure bias (EV), pushed to every zone actor. */
 	float BrightnessEv = 0.f;
 	TWeakInterfacePtr<IAbyssWorldUi> WorldUi;

@@ -35,6 +35,7 @@ public:
 	void SetExpanded(bool bInExpanded);
 	bool IsExpanded() const { return bExpanded; }
 	void SetTouch(bool bInTouch);
+	/** Rebuilds the text blocks now (layout changes). The mutators above only mark the log dirty; Tick rebuilds. */
 	void Rebuild();
 	void Clear();
 	/** Size of the widget in the current mode (the HUD positions it). */
@@ -60,6 +61,8 @@ private:
 	bool bExpanded = true;
 	bool bTouch = false;
 	double NextCollapsedRefresh = 0.0;
+	/** Lines or mode changed since the last Rebuild: Tick rebuilds once per frame (audit F3). */
+	bool bDirty = false;
 };
 
 /** 6.12 quest tracker (QuestTrackerHUD): guided / zone / other sorting, main before side, collapsed lines, expansion. */

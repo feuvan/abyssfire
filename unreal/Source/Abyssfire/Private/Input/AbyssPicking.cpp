@@ -2,10 +2,11 @@
 
 #include "Camera/PlayerCameraManager.h"
 #include "Components/MeshComponent.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/LocalPlayer.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/PlayerController.h"
-
-#include <limits>
+#include "SceneView.h"
 
 #include "abyss/sim/Snapshot.h"
 
@@ -14,6 +15,7 @@
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssTypes.h"
 #include "Framework/AbyssUnits.h"
+#include "Input/AbyssPickRules.h"
 
 namespace
 {
@@ -73,38 +75,76 @@ namespace
 		return FBox(Base - FVector(Radius, Radius, 0.0), Base + FVector(Radius, Radius, Height));
 	}
 
-	/** Screen rectangle (viewport px) of a world box; false when a corner is behind the camera. */
-	bool AbyssPick_ProjectBox(const APlayerController& Controller, const FBox& Box, FVector2D& OutMin, FVector2D& OutMax)
+	/** One pick's projection, fetched once (audit F4: APlayerController::ProjectWorldLocationToScreen rebuilt the
+	 *  view-projection matrix for each of the 8 corners of each candidate). */
+	struct FAbyssPickProjection
 	{
-		OutMin = FVector2D(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
-		OutMax = FVector2D(std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest());
+		FMatrix ViewProjection = FMatrix::Identity;
+		FIntRect ViewRect;
+		AbyssPickRules::FView Rules;
+	};
+
+	/** What UGameplayStatics::ProjectWorldToScreen reads per call: the local player's projection data. False when the
+	 *  controller has no viewport (the per-corner call then failed for every corner: nothing was pickable). */
+	bool AbyssPick_FetchProjection(const APlayerController& Controller, FAbyssPickProjection& Out)
+	{
+		const ULocalPlayer* LocalPlayer = Controller.GetLocalPlayer();
+		if (LocalPlayer == nullptr || LocalPlayer->ViewportClient == nullptr || LocalPlayer->ViewportClient->Viewport == nullptr)
+		{
+			return false;
+		}
+		FSceneViewProjectionData ProjectionData;
+		if (!LocalPlayer->GetProjectionData(LocalPlayer->ViewportClient->Viewport, ProjectionData))
+		{
+			return false;
+		}
+		Out.ViewProjection = ProjectionData.ComputeViewProjectionMatrix();
+		Out.ViewRect = ProjectionData.GetConstrainedViewRect();
+		for (int32 Row = 0; Row < 4; ++Row)
+		{
+			for (int32 Col = 0; Col < 4; ++Col)
+			{
+				Out.Rules.M[Row][Col] = Out.ViewProjection.M[Row][Col];
+			}
+		}
+		Out.Rules.RectX = Out.ViewRect.Min.X;
+		Out.Rules.RectY = Out.ViewRect.Min.Y;
+		Out.Rules.RectW = Out.ViewRect.Width();
+		Out.Rules.RectH = Out.ViewRect.Height();
+		return true;
+	}
+
+	/** Screen rectangle (viewport px) of a world box; false when a corner is behind the camera. The engine's own
+	 *  projection with the cached matrix: the numbers ProjectWorldLocationToScreen(bPlayerViewportRelative false) gave. */
+	bool AbyssPick_ProjectBox(const FAbyssPickProjection& Projection, const FBox& Box, AbyssPickRules::FRect& OutRect)
+	{
+		AbyssPickRules::FVec2 Corners[8];
 		for (int32 CornerIndex = 0; CornerIndex < 8; ++CornerIndex)
 		{
 			const FVector Corner((CornerIndex & 1) ? Box.Max.X : Box.Min.X, (CornerIndex & 2) ? Box.Max.Y : Box.Min.Y,
 				(CornerIndex & 4) ? Box.Max.Z : Box.Min.Z);
 			FVector2D Projected;
-			if (!Controller.ProjectWorldLocationToScreen(Corner, Projected, /*bPlayerViewportRelative*/ false))
+			if (!FSceneView::ProjectWorldToScreen(Corner, Projection.ViewRect, Projection.ViewProjection, Projected))
 			{
 				return false;
 			}
-			// FVector2D has no ComponentMin / ComponentMax (those are FVector / FIntPoint members): the per-component
-			// minimum / maximum of two 2D vectors are the static FVector2D::Min / Max.
-			OutMin = FVector2D::Min(OutMin, Projected);
-			OutMax = FVector2D::Max(OutMax, Projected);
+			Corners[CornerIndex] = AbyssPickRules::FVec2{ Projected.X, Projected.Y };
 		}
+		OutRect = AbyssPickRules::RectOf(Corners);
 		return true;
 	}
 
 	/**
 	 * The pickable entity under ScreenPosition: web press priority, then the most centred rectangle, then the nearest to the
-	 * camera. bMonstersOnly: only living monsters compete (PickMonster).
+	 * camera (AbyssPickRules::FPicker). bMonstersOnly: only living monsters compete (PickMonster).
 	 */
 	FAbyssPickResult AbyssPick_Best(const APlayerController& Controller, const FVector2D& ScreenPosition, float SlopPixels,
 		bool bMonstersOnly)
 	{
 		FAbyssPickResult Best;
 		const UAbyssActorRegistry* Registry = UAbyssActorRegistry::Get(&Controller);
-		if (Registry == nullptr || Registry->Num() == 0)
+		FAbyssPickProjection Projection;
+		if (Registry == nullptr || Registry->Num() == 0 || !AbyssPick_FetchProjection(Controller, Projection))
 		{
 			return Best;
 		}
@@ -112,12 +152,11 @@ namespace
 			? Controller.PlayerCameraManager->GetCameraLocation()
 			: FVector::ZeroVector;
 		const double Slop = FMath::Max(0.0, static_cast<double>(SlopPixels));
+		const AbyssPickRules::FVec2 Pointer{ ScreenPosition.X, ScreenPosition.Y };
+		AbyssPickRules::FPicker Picker(Pointer, Slop);
 
-		int32 BestPriority = TNumericLimits<int32>::Max();
-		double BestCentredness = TNumericLimits<double>::Max();
-		double BestDepth = TNumericLimits<double>::Max();
-
-		Registry->ForEach([&](abyss::EntityId Id, AActor* Actor, abyss::EntityKind Kind)
+		// Read-only visit (no registry copy): nothing below registers or unregisters an actor.
+		Registry->ForEachReadOnly([&](abyss::EntityId Id, AActor* Actor, abyss::EntityKind Kind)
 		{
 			if (Actor == nullptr || Actor->IsHidden() || (bMonstersOnly && Kind != abyss::EntityKind::Monster))
 			{
@@ -127,42 +166,31 @@ namespace
 			int32 Priority = AbyssPickPriorityWalk;
 			const EAbyssPickAction Action = AbyssPicking::ClassifyEntity(Controller, Id, Kind, Tile, Priority);
 			if (Action == EAbyssPickAction::None || (bMonstersOnly && Action != EAbyssPickAction::Attack)
-				|| Priority > BestPriority)
+				|| !Picker.CanWin(Priority))
 			{
 				return;
 			}
-			FVector2D RectMin;
-			FVector2D RectMax;
-			if (!AbyssPick_ProjectBox(Controller, AbyssPick_ActorWorldBox(*Actor, Kind), RectMin, RectMax))
+			const FBox Box = AbyssPick_ActorWorldBox(*Actor, Kind);
+			// Pre-cull: a conservative screen bound of the box. Only boxes near the pointer are projected corner by corner.
+			const double BoxMin[3] = { Box.Min.X, Box.Min.Y, Box.Min.Z };
+			const double BoxMax[3] = { Box.Max.X, Box.Max.Y, Box.Max.Z };
+			if (!AbyssPickRules::MayContain(Projection.Rules, BoxMin, BoxMax, Pointer, Slop))
 			{
 				return;
 			}
-			RectMin -= FVector2D(Slop, Slop);
-			RectMax += FVector2D(Slop, Slop);
-			if (ScreenPosition.X < RectMin.X || ScreenPosition.X > RectMax.X || ScreenPosition.Y < RectMin.Y
-				|| ScreenPosition.Y > RectMax.Y)
+			AbyssPickRules::FRect Rect;
+			if (!AbyssPick_ProjectBox(Projection, Box, Rect))
 			{
 				return;
 			}
-			const FVector2D Centre = (RectMin + RectMax) * 0.5;
-			const FVector2D HalfSize = (RectMax - RectMin) * 0.5;
-			const double Centredness = FVector2D::Distance(ScreenPosition, Centre) / FMath::Max(1.0, HalfSize.GetMax());
 			const double Depth = FVector::DistSquared(CameraLocation, Actor->GetActorLocation());
-
-			const bool bBetter = Priority < BestPriority
-				|| (Priority == BestPriority && (Centredness < BestCentredness - 1.0e-3
-					|| (FMath::Abs(Centredness - BestCentredness) <= 1.0e-3 && Depth < BestDepth)));
-			if (!bBetter)
+			if (Picker.Offer(Id, Priority, Rect, Depth))
 			{
-				return;
+				Best.Id = Id;
+				Best.Kind = Kind;
+				Best.Action = Action;
+				Best.Tile = Tile;
 			}
-			BestPriority = Priority;
-			BestCentredness = Centredness;
-			BestDepth = Depth;
-			Best.Id = Id;
-			Best.Kind = Kind;
-			Best.Action = Action;
-			Best.Tile = Tile;
 		});
 		return Best;
 	}

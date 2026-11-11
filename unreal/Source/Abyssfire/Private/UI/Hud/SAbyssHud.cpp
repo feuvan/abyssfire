@@ -357,8 +357,10 @@ void SAbyssHud::SyncTarget(const abyss::Snapshot& Snap)
 	FAbyssHudState& S = *State;
 	// 6.7: the frame shows the attack target, else the ring indicator (the lock, else the C14 auto-pick: the nearest alive
 	// monster within 8 tiles), so it appears on auto-acquire as the web's TARGET_CHANGED does (third playtest: no frame
-	// while trading hits). It stays hidden for a dead or vanished monster.
-	const abyss::EntityId Candidate = Snap.hero.target != abyss::kNoEntity ? Snap.hero.target : Snap.hero.indicator;
+	// while trading hits). The auto-pick is named only once a fight is on (AbyssHudRules::IndicatorIsATarget: first Mac
+	// run, an idle footman at the camp's edge was the "target" on arrival). It stays hidden for a dead or vanished monster.
+	const bool bLocked = Snap.hero.target != abyss::kNoEntity;
+	const abyss::EntityId Candidate = bLocked ? Snap.hero.target : Snap.hero.indicator;
 	S.Target = abyss::kNoEntity;
 	S.bTargetFound = false;
 	S.TargetName.Reset();
@@ -368,7 +370,8 @@ void SAbyssHud::SyncTarget(const abyss::Snapshot& Snap)
 		{
 			if (Monster.id == Candidate)
 			{
-				if (Monster.alive)
+				const bool bFighting = AbyssHudRules::IndicatorIsATarget(Snap.hero.inCombat, Monster.state, Monster.windingUp);
+				if (Monster.alive && AbyssHudRules::TargetFrameEntity(Snap.hero.target, Snap.hero.indicator, bFighting) == Candidate)
 				{
 					S.Target = Candidate;
 					S.bTargetFound = true;

@@ -14,6 +14,7 @@
 #include "abyss/base/I18n.h"
 #include "abyss/base/Json.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/monsters/Monster.h"
 #include "abyss/sim/Events.h"
 
 #include "UI/Hud/AbyssHudRules.h"
@@ -439,5 +440,29 @@ TEST_SUITE("hud")
 		CHECK(CharacterStatusTint(0u, 2, false, T).Alpha == doctest::Approx(0.35f));
 		CHECK(CharacterStatusTint(Bit(StatusType::Ashnumb), 0, false, T).Alpha == doctest::Approx(0.30f));
 		CHECK_FALSE(CharacterStatusTint(0u, 0, false, T).bFound);
+	}
+	TEST_CASE("target frame: the lock always, the auto-pick only once a fight is on")
+	{
+		using abyss::MonsterState;
+		using namespace AbyssHudRules;
+		// arrival at the camp (first Mac run): no lock, not in combat, the nearest footman idles or patrols 7 tiles away
+		CHECK_FALSE(IndicatorIsATarget(/*bHeroInCombat*/ false, MonsterState::Idle, /*bWindingUp*/ false));
+		CHECK_FALSE(IndicatorIsATarget(false, MonsterState::Patrol, false));
+		CHECK_FALSE(IndicatorIsATarget(false, MonsterState::Returning, false));
+		CHECK_FALSE(IndicatorIsATarget(false, MonsterState::Dead, false));
+		CHECK(TargetFrameEntity(abyss::kNoEntity, 42, false) == abyss::kNoEntity);
+		// it has turned on the hero, or runs from the fight
+		CHECK(IndicatorIsATarget(false, MonsterState::Chase, false));
+		CHECK(IndicatorIsATarget(false, MonsterState::Attack, false));
+		CHECK(IndicatorIsATarget(false, MonsterState::Flee, false));
+		CHECK(IndicatorIsATarget(false, MonsterState::Idle, /*bWindingUp*/ true));
+		// trading hits (third playtest: the frame must show on auto-acquire): the hero is in combat
+		CHECK(IndicatorIsATarget(true, MonsterState::Idle, false));
+		CHECK(TargetFrameEntity(abyss::kNoEntity, 42, true) == 42u);
+		// the attack lock is the player's choice: shown whatever the monster does
+		CHECK(TargetFrameEntity(7, 7, false) == 7u);
+		CHECK(TargetFrameEntity(7, 42, false) == 7u);
+		CHECK(TargetFrameEntity(7, 42, true) == 7u);
+		CHECK(TargetFrameEntity(abyss::kNoEntity, abyss::kNoEntity, true) == abyss::kNoEntity);
 	}
 }

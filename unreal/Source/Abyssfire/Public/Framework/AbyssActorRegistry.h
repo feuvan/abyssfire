@@ -45,6 +45,9 @@ public:
 
 	/** Every live registered actor (snapshot of the map; safe to unregister inside the callback). */
 	void ForEach(TFunctionRef<void(abyss::EntityId, AActor*, abyss::EntityKind)> Visitor) const;
+	/** The same visit without the copy, for per-frame readers (picking, audit F4): the visitor must not register or
+	 *  unregister. */
+	void ForEachReadOnly(TFunctionRef<void(abyss::EntityId, AActor*, abyss::EntityKind)> Visitor) const;
 	int32 Num() const { return Entries.Num(); }
 
 	// USubsystem

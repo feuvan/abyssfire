@@ -53,8 +53,8 @@ shared library of the same clang (found under `/usr/lib/llvm-*/lib`; `ABYSS_LIBC
 is skipped and says so). Results are cached per translation unit (dependency files), so a re-run after an edit only
 recompiles and rescans what the edit reaches; `--force` ignores the cache. A result that stopped at a missing header
 is never reused (the dependency file cannot name a header that did not exist yet), so a file is compiled again as soon
-as the SDK gains the header. A full uncached run takes about 5 minutes on 3 otherwise idle cores (4 x 102 compiles,
-then 4 x 101 scans); the selftest 3 to 4.
+as the SDK gains the header. A full uncached run takes about 5 minutes on 3 otherwise idle cores (4 x 103 compiles,
+then 4 x 102 scans); the selftest 3 to 4.
 
 `--stdlib libc++` compiles against LLVM's libc++ instead of the system default (libstdc++ on Linux): Xcode and the
 Android NDK both use libc++, whose headers include each other differently, so a missing `<std>` include can pass with one
@@ -69,7 +69,9 @@ list of `// UNVERIFIED` SDK blocks the result rests on, and `build/report.json`,
 `build/compile_commands.json`.
 
 The engine Python stub is found at `unreal/Scripts/.cache/unreal_stub/unreal.py` (in a git worktree: the main
-checkout's copy; `ABYSS_UNREAL_STUB` overrides). Without it the reflected cross-check and the UHT type lint are skipped.
+checkout's copy; `ABYSS_UNREAL_STUB` overrides). Without it the reflected cross-check and the UHT type lint are skipped, the `RESULT`
+line says so ("reflected API and UHT type lint NOT checked") instead of "SDK consistent with the engine stub", and
+`--selftest` names the two stub-dependent UHT faults as `NEEDS STUB` and fails as incomplete.
 
 ## What a run does
 
@@ -97,7 +99,7 @@ checkout's copy; `ABYSS_UNREAL_STUB` overrides). Without it the reflected cross-
      files, or the same undeclared helper name in one named namespace of two `.cpp` files with different parameters.
      The unity unit of step 5 only catches the pairs that are a redefinition; two functions with different parameters
      compile there, silently become one overload set, and a call can bind to the other file's helper in a unity build
-     only. The module has 345 internal-linkage names and no collision.
+     only. The module has 347 internal-linkage names and no collision.
    - `undefined`: declared in a module file, used (or virtual, or a destructor) and defined in no translation unit.
    - `duplicate` / `header-definition`: a non-inline definition in two files / in a header.
    - `core-export` (the modular editor configuration): a non-inline AbyssCore function the module uses without
@@ -200,17 +202,16 @@ A PASS rests on three kinds of unconfirmed knowledge, in decreasing order of ris
 
 1. **Open entries of `API_UNCERTAIN.md`** (engine API the module calls that could not be confirmed for 5.8). Each is
    declared in the SDK in a block marked `// UNVERIFIED`, and every run ends its summary with those blocks and whether
-   each was compiled. Today:
-   - #8, Slate's `FVector2D` bridge (`UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS`): on in 5.6 (the Python stub
-     shows it), believed on in 5.8. If it is off, 22 lines in 12 files fail in every target. The one entry that can
-     stop a game target.
+   each was compiled. The first engine build (UE 5.8.3, macOS, commit `83228c4`: the editor target compiled) closed
+   the two that were direct calls: #8, Slate's `FVector2D` bridge (22 argument sites), and #3,
+   `FCoreDelegates::GetApplicationWillTerminateDelegate()`. The hedged ones stay open, because a hedge compiles
+   whichever way the engine is and the build cannot say which branch was taken:
    - #1, `UMaterialInterface::GetMaterialResource` (feature level or shader platform): hedged in the module with
      `if constexpr (requires ...)`; editor target only.
-   - #3, `FCoreDelegates::GetApplicationWillTerminateDelegate()`: believed real; two lines.
    - #5, `UActorComponent::MarkRenderInstancesDirty()`: hedged; the fallback compiles and logs once per run.
    - #4 (`Cast` keeps constness) and #6 (`GetAudioListenerPosition` is const): cannot break the build either way.
-   `API_UNCERTAIN.md` starts with one `grep` per entry to run on the Mac.
-2. **Lower-confidence SDK declarations** (the table at the end of `API_UNCERTAIN.md`): 66 rows of declarations
+   `API_UNCERTAIN.md` starts with one `grep` per open entry to run on the Mac.
+2. **Lower-confidence SDK declarations** (the table at the end of `API_UNCERTAIN.md`): 71 rows of declarations
    made from memory where it matters which way they are wrong, each with what happens if it is.
 3. **Everything else that is not reflected**: all of Core's templates and Slate's widgets as remembered.
    `tools/sdk_usage.py` lists the 2,300-odd SDK declarations the module uses; the reflected ones (418 UFUNCTIONs, 454

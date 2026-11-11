@@ -11,17 +11,17 @@
 
 // As in the engine the mechanism is a switch: with UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS 0 the bridge types
 // are plain FVector2f and every implicit FVector2D <-> Slate conversion in a module stops compiling. The engine default
-// (1) is believed unchanged through 5.x (API_UNCERTAIN.md, "Slate FVector2D bridge");
+// (1) holds in 5.8.3 (the first engine build; API_UNCERTAIN.md #8, closed);
 // `./run.sh --define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=0` lists what the module would have to convert.
 #ifndef UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS
 #define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS 1
 #endif
 
 #if UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS
-// UNVERIFIED (API_UNCERTAIN.md #8): that 5.8 still builds with the FVector2D bridge on. The module passes FVector2D
-// arguments to Slate through it in 22 places. In 5.6 it is on: the Python stub reflects FDeprecateSlateVector2D as a
-// struct derived from Vector2f (checked by tools/check_reflected.py through the marker below) and types
-// FSlateBrush::ImageSize with it; with the mechanism off that property would be a plain Vector2f.
+// 5.8 still builds with the FVector2D bridge on: confirmed by the first engine build (UE 5.8.3, commit 83228c4), where
+// the module's 22 FVector2D arguments to Slate compiled (API_UNCERTAIN.md #8, closed). In 5.6 it is on too: the Python
+// stub reflects FDeprecateSlateVector2D as a struct derived from Vector2f (checked by tools/check_reflected.py through
+// the marker below) and types FSlateBrush::ImageSize with it; with the mechanism off that would be a plain Vector2f.
 // The bridge structs are global-scope types, as in the engine (FDeprecateSlateVector2D is a USTRUCT, and UHT types
 // are never in a namespace): only the aliases Slate's signatures use live in UE::Slate.
 struct FDeprecateSlateVector2D : public FVector2f

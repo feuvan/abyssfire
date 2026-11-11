@@ -463,6 +463,7 @@ class Checker:
             return 2
         # the reflected part of the SDK against the engine's own Python stub (classes, bases, modules, headers, UFUNCTIONs)
         sdk_ok = True
+        stub_checked = os.path.exists(args.stub)
         if os.path.exists(args.stub):
             refl_code, refl_out = run([sys.executable, os.path.join(HERE, 'check_reflected.py'), '--stub', args.stub, '--cache-dir', self.build])
             print('== stub SDK vs the engine Python stub (reflected API)')
@@ -560,12 +561,16 @@ class Checker:
         overall_ok = overall_ok and link_ok
         self.print_summary(report, configs, uht_report)
         report['ok'] = overall_ok
+        report['stub_checked'] = stub_checked
         with open(os.path.join(self.build, 'report.json'), 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=1)
         print('\nreport: %s' % os.path.join(self.build, 'report.json'))
         scanned = 'no UHT / Build.cs / link-scan error' if not report['link_scan'].get('skipped') else 'no UHT / Build.cs error; link scan not run'
         scope = 'every file in every configuration' if not args.only and len(configs) == len(CONFIGS) else 'every selected file in the selected configurations'
-        print('RESULT: %s' % ('PASS (%s, %s, SDK consistent with the engine stub)' % (scope, scanned) if overall_ok else 'FAIL'))
+        # the RESULT line states only what ran: without the engine Python stub the reflected API and the UHT type lint
+        # were not checked, and a direct call that rests on "it is reflected" is not covered by this PASS
+        stub_text = 'SDK consistent with the engine stub' if stub_checked else 'reflected API and UHT type lint NOT checked: no engine stub, set ABYSS_UNREAL_STUB'
+        print('RESULT: %s' % ('PASS (%s, %s, %s)' % (scope, scanned, stub_text) if overall_ok else 'FAIL'))
         return 0 if overall_ok else 1
 
     def print_summary(self, report, configs, uht_report):

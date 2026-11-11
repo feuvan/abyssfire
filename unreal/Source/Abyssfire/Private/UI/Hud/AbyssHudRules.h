@@ -14,6 +14,9 @@
 //   (S1: 玛勒的苦药 / Marl's Bitter Draught), else the quest's name; one `ui.permanentReward.<field>` line ("+N" and the
 //   stat) per field above 0, in the event's order (max life, stat points, skill points, respec tokens).
 //
+// - The target frame (6.7): the attack lock always; the C14 auto-pick (the ring indicator) only once a fight is on, so
+//   an idle monster near the camp is not announced as a target (IndicatorIsATarget).
+//
 // Std + AbyssCore public headers only (no CoreMinimal, no UE macros): the module includes it after CoreMinimal.h, the
 // macro shim (PresentationTests/shim) compiles it under the UE / Windows / Apple macros.
 #pragma once
@@ -25,6 +28,8 @@
 #include <vector>
 
 #include "abyss/base/Enums.h"
+#include "abyss/base/Types.h"
+#include "abyss/monsters/Monster.h"
 #include "abyss/sim/Events.h"
 
 namespace AbyssHudRules
@@ -192,5 +197,33 @@ namespace AbyssHudRules
 	inline bool ShowsRewardToast(const abyss::EvPermanentReward& Event)
 	{
 		return !Event.questId.empty() && !PermanentRewardLines(Event).empty();
+	}
+	// =================================================================================================================
+	// Target frame (save-ui-input 6.7)
+	// =================================================================================================================
+
+	/**
+	 * Whether the frame may name the ring indicator's monster when the hero holds no attack lock. The indicator is the
+	 * C14 auto-pick, the nearest living monster within 8 tiles, fight or no fight: on arrival at Knellwatch a footman
+	 * idling at the palisade was "Target: Risen Footman" (first Mac run) although nothing was fighting. The frame shows
+	 * the auto-pick only once a fight is on: the hero is in combat (a monster attacks, or the lock's target lives), or
+	 * that monster has turned on the hero (it chases, attacks, winds up) or runs from the fight. An idle, patrolling or
+	 * returning monster is not a target yet. The ground ring and the rim keep following the indicator (C14: they mark
+	 * whom an attack key would hit).
+	 */
+	inline bool IndicatorIsATarget(bool bHeroInCombat, abyss::MonsterState State, bool bWindingUp)
+	{
+		return bHeroInCombat || bWindingUp || State == abyss::MonsterState::Chase || State == abyss::MonsterState::Attack
+			|| State == abyss::MonsterState::Flee;
+	}
+
+	/** The monster the target frame names: the attack lock always, else the indicator under IndicatorIsATarget. */
+	inline abyss::EntityId TargetFrameEntity(abyss::EntityId Lock, abyss::EntityId Indicator, bool bIndicatorIsATarget)
+	{
+		if (Lock != abyss::kNoEntity)
+		{
+			return Lock;
+		}
+		return bIndicatorIsATarget ? Indicator : abyss::kNoEntity;
 	}
 }

@@ -554,9 +554,10 @@ void AAbyssCharacterActor::SetShadowMode(bool bBlob, bool bCastDynamic)
 	{
 		BlobShadow->SetVisibility(bBlob && bHasBlobAssets);
 		// DECISIONS P10 revised: under the sun CSM the blob keeps 0.7 of its alpha (Fade 0.3), so the feet stay grounded
-		// without doubling the cast shadow; PresentFrame folds the death fade in.
+		// without doubling the cast shadow. The same product as PresentFrame's (death fade x husk thinning x the CSM
+		// factor): leaving HuskShadowAlpha out here popped a husk's blob to full for a frame at each quality refresh.
 		BlobShadow->SetCustomPrimitiveDataFloat(AbyssCpd::Fade,
-			1.f - (1.f - CpdValues[AbyssCpd::Fade]) * (bCastDynamic ? BlobAlphaUnderSunShadow : 1.f));
+			1.f - (1.f - CpdValues[AbyssCpd::Fade]) * HuskShadowAlpha * (bCastDynamic ? BlobAlphaUnderSunShadow : 1.f));
 	}
 	TArray<UPrimitiveComponent*, TInlineAllocator<6>> Casters = { Body.Get(), MainHandMesh.Get(), OffHandMesh.Get() };
 	for (UStaticMeshComponent* Item : ExtraItems)
@@ -1819,6 +1820,24 @@ void AAbyssCharacterActor::UpdateHeldPoseTick()
 	}
 }
 
+void AAbyssCharacterActor::SetForcedBodyLod(int32 OneBasedLod)
+{
+	const int32 Lod = FMath::Max(0, OneBasedLod);
+	if (Body == nullptr || Body->GetForcedLOD() == Lod)
+	{
+		return;
+	}
+	Body->SetForcedLOD(Lod);
+	// The LOD is chosen and its bones refreshed in the component's tick: a held pose whose tick has stopped
+	// (UpdateHeldPoseTick) ticks again for a few drawn frames, then stops as before.
+	HeldPoseRenderedFrames = 0;
+	if (bBodyTickPaused)
+	{
+		Body->SetComponentTickEnabled(true);
+		bBodyTickPaused = false;
+	}
+}
+
 void AAbyssCharacterActor::SetHuskShadowAlpha(float Alpha)
 {
 	HuskShadowAlpha = FMath::Clamp(Alpha, 0.f, 1.f);
@@ -2133,12 +2152,12 @@ FVector2D AAbyssCharacterActor::SingleViewFacing(const FVector2D& Desired, bool 
 	return (Side - ScreenUp).GetSafeNormal();
 }
 
-void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float DeltaSec)
+bool AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float DeltaSec)
 {
 	using namespace AbyssCharacterPrivate;
 	if (bDying)
 	{
-		return;
+		return false;
 	}
 	FVector2D Desired = Frame.Facing;
 	bool bAimed = false;
@@ -2170,7 +2189,7 @@ void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float
 	}
 	if (Desired.IsNearlyZero())
 	{
-		return;
+		return false;
 	}
 	if (bSingleView)
 	{
@@ -2187,7 +2206,7 @@ void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float
 		const float Delta = FMath::FindDeltaAngleDegrees(CurrentYawDeg, DesiredYaw);
 		if (FMath::Abs(Delta) < YawDeadbandDeg)
 		{
-			return;
+			return false;
 		}
 		float RateDegPerSec = TurnRateDegPerSec;
 		if (AimBudgetSec > 0.f && DeltaSec > 0.f)
@@ -2197,7 +2216,7 @@ void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float
 		}
 		CurrentYawDeg = FMath::FixedTurn(CurrentYawDeg, DesiredYaw, RateDegPerSec * DeltaSec);
 	}
-	SetActorRotation(FRotator(0.f, CurrentYawDeg, 0.f));
+	return true;   // the caller applies CurrentYawDeg with this frame's location in one transform update (audit F6c)
 }
 
 void AAbyssCharacterActor::UpdateLocomotion(const FAbyssCharacterFrame& Frame)
@@ -2543,11 +2562,22 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 	const float ActionDelta = bFrozen ? 0.f : VisualDeltaSec;
 
 	// ---- root ----
-	if (!GetActorLocation().Equals(Frame.Location, 0.01))
+	// One transform update per frame for a character that moves and turns (audit F6c: SetActorLocation followed by
+	// SetActorRotation updated the whole attachment tree twice). The facing is still decided before the locomotion.
+	const bool bMoved = !GetActorLocation().Equals(Frame.Location, 0.01);
+	const bool bTurned = UpdateFacing(Frame, ActionDelta);
+	if (bMoved && bTurned)
+	{
+		SetActorLocationAndRotation(Frame.Location, FRotator(0.f, CurrentYawDeg, 0.f));
+	}
+	else if (bMoved)
 	{
 		SetActorLocation(Frame.Location);
 	}
-	UpdateFacing(Frame, ActionDelta);
+	else if (bTurned)
+	{
+		SetActorRotation(FRotator(0.f, CurrentYawDeg, 0.f));
+	}
 
 	// ---- actions / locomotion ----
 	if (ActionState.Action != EAbyssCharacterAction::None && ActionState.Action != EAbyssCharacterAction::Death)

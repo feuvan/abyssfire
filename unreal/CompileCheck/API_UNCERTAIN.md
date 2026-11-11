@@ -9,11 +9,15 @@ UE 5.8 build or by moving the module to an API that is not in doubt.
 Verdict vocabulary: see README.md ("The three verdicts").
 
 The final audit went through every entry and gave each a verdict from UE 5.x source knowledge (it had no engine
-either, so a verdict is a second opinion, not a confirmation). Each entry ends with that verdict. In short: #2 and #7
-are closed by a module change; #4, #5 and #6 are believed to be exactly as the SDK declares them and cannot break the
-build either way (strict form chosen, or hedged in the module); #3 is believed real with a different delegate type
-(the SDK now declares that type; the module compiles with both); #1 and #8 are the two to settle with the first real
-5.8 build, and only #8 can stop a game target from compiling.
+either, so a verdict is a second opinion, not a confirmation). Each entry ends with that verdict.
+
+**First engine build (2026-11): UE 5.8.3 (Release-5.8), macOS arm64, commit `83228c4`.** `AbyssfireEditor` compiled and
+the smoke autotest ran. A real compile confirms exactly one thing about this file: every engine call the module makes
+DIRECTLY exists in 5.8.3 with a compatible signature. That closes #3 and #8 (see *Closed by the first engine build*)
+and confirms the module-side resolutions of #2 and #7. It does not close a hedged call: `if constexpr (requires ...)`
+compiles whichever way the engine is, so the build cannot say which branch 5.8.3 took. #1, #4, #5 and #6 stay open
+until the engine headers are read (the greps below) or the run log shows the fallback's message. None of the four can
+stop a build. The build was the editor target on the Mac only: the game, Android and iOS targets have not been built.
 
 ## What to check on the Mac (one question per open entry)
 
@@ -22,15 +26,18 @@ means for the module.
 
 | # | Question | If the answer is "no" |
 |---|---|---|
-| 8 | `grep -n UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS Runtime/SlateCore/Public/Types/SlateVector2.h`: is it still defined as 1 (behind `#ifndef`)? | 22 lines in 12 files fail with "no viable conversion from 'FVector2D'": wrap each listed argument in `UE::Slate::CastToVector2f(...)` (entry 8 lists them and the alternative) |
 | 1 | `grep -n GetMaterialResource Runtime/Engine/Classes/Materials/MaterialInterface.h`: is there an overload taking `ERHIFeatureLevel::Type` or one taking `EShaderPlatform`, returning `FMaterialResource*`? And `grep -n "FinishCompilation\|GetCompileErrors\|IsCompilationFinished" Runtime/Engine/Public/MaterialShared.h`? | Editor target only: `AbyssContentBuildLibrary.cpp` / `AbyssZoneActor.cpp` fail in `AbyssEditorMaterialResource` / `ShaderGateResource`; return an empty error list / switch the shader gate off (entry 1) |
-| 3 | `grep -n ApplicationWillTerminateDelegate Runtime/Core/Public/Misc/CoreDelegates.h`: is there a static `GetApplicationWillTerminateDelegate()`? | `AbyssGameInstance.cpp:65`, `:82` fail in every target: use the static member `ApplicationWillTerminateDelegate`, or drop the two lines (entry 3) |
 | 5 | `grep -n MarkRenderInstancesDirty Runtime/Engine/Classes/Components/ActorComponent.h`: declared, and under `public:`? | Nothing fails to compile. The log shows once "Instanced meshes: UActorComponent::MarkRenderInstancesDirty not found on this engine" and instance updates re-create scene proxies: apply the alternative of entry 5 if the frame time shows it |
 | 4 | `grep -n TCopyQualifiersFromTo_T Runtime/CoreUObject/Public/Templates/Casts.h`: do `Cast` / `CastChecked` return a qualifier-copying pointer? | Nothing fails (the SDK has the strict form); the check is then stricter than the engine for casts of const objects |
 | 6 | `grep -n "GetAudioListenerPosition" Runtime/Engine/Classes/GameFramework/PlayerController.h`: is it `const`? | Nothing fails (the module calls it on a non-const controller) |
 
-After the first successful 5.8 build, delete the entries it confirms and remove their `// UNVERIFIED` markers from the
-SDK; the README says how to re-check the whole SDK against a real engine tree.
+The first 5.8 build closed #8 and #3 (their rows are gone from this table and their `// UNVERIFIED` markers from the
+SDK). For the hedged entries the run log is a second signal: #5's fallback logs "Instanced meshes:
+UActorComponent::MarkRenderInstancesDirty not found on this engine" once per run. The smoke run at `83228c4` played
+fights (VFX pools update their instances every frame there) and its `report.json` lists all 34 Warning lines of the
+run: that line is not among them, so 5.8.3 took the direct branch. #5 is left under *Open* with this noted, until the
+header is read: a log is evidence of the branch taken, not of the declaration. The README says how to re-check the
+whole SDK against a real engine tree.
 
 ## Open
 
@@ -63,39 +70,6 @@ SDK; the README says how to re-check the whole SDK against a real engine tree.
   non-const) exists at least through 5.6; a shader-platform overload next to a deprecated (not yet removed)
   feature-level one is plausible for 5.7 / 5.8; `FMaterial::FinishCompilation` / `IsCompilationFinished` /
   `GetCompileErrors` exist under `WITH_EDITOR`. Keep the hedge. Stays open: editor target only.
-
-### 3. `FCoreDelegates::GetApplicationWillTerminateDelegate()`
-
-- **Where**: `Source/Abyssfire/Private/Framework/AbyssGameInstance.cpp:65` (`AddUObject`) and `:82` (`RemoveAll`).
-- **What the code assumes**: a static accessor `FCoreDelegates::GetApplicationWillTerminateDelegate()` returning a
-  reference to a multicast delegate without parameters that has `AddUObject(Object, &Class::Method)` and
-  `RemoveAll(Object)`.
-- **Evidence for**: in UE 5.x the lifecycle delegate is reached through this accessor in engine code, and direct use of
-  the static member `ApplicationWillTerminateDelegate` is deprecated in its favour (the module's own README lists the
-  member as deprecated for that reason). The delegate type is thread-safe (`TTSMulticastDelegate<void()>`), which has
-  both members the module calls.
-- **Evidence against**: none found, but nothing here can confirm it either: `FCoreDelegates` is not reflected (the
-  5.6 Python stub has no such class; its `application_will_terminate_delegate` hits belong to `UApplicationLifecycleComponent`, a Blueprint-facing
-  component), there is no engine source in the container and the API reference could not be opened. The release in
-  which the accessor appeared and the exact return type (the thread-safe `FTSSimpleMulticastDelegate&`, as now
-  declared, or `FApplicationLifetimeDelegate&`, as declared before the final audit) are from memory.
-- **What the SDK declares**: both forms in `sdk/Runtime/Core/Public/Misc/CoreDelegates.h`: the static member (a plain
-  `FSimpleMulticastDelegate`, the form the accessor replaced), and the accessor inside a block marked `// UNVERIFIED`,
-  returning `FTSSimpleMulticastDelegate&` since the final audit (it was typed `FApplicationLifetimeDelegate&` before).
-  The accessor is on by default because the module calls it; the marker is what records that a PASS of
-  `AbyssGameInstance.cpp` rests on it.
-- **Audit verdict**: the accessor exists in 5.x, next to `GetMemoryTrimDelegate` / `GetOutOfMemoryDelegate`, with their
-  thread-safe type `FTSSimpleMulticastDelegate`; only the return type was in doubt, and the module's two calls
-  (`AddUObject`, `RemoveAll`) exist on every multicast delegate type. Believed real; stays marked until a 5.8 header
-  shows it.
-- **Residual risk**: one line each way. If 5.8 lacks the accessor, both calls fail to compile in every target; if it
-  has the accessor with another delegate type, they still compile as long as that type has `AddUObject` / `RemoveAll`.
-- **Safest alternative**: `FCoreDelegates::ApplicationWillTerminateDelegate.AddUObject(...)` / `.RemoveAll(this)`, the
-  long-standing static member (UE 4 through 5.x). It was not chosen because it is the form believed deprecated: it
-  would trade a possible error for a likely deprecation warning, and for an error once the member is removed. The
-  module does not depend on the callback for correctness (the save that counts runs on
-  `ApplicationWillEnterBackgroundDelegate`; terminate may never fire on mobile), so if both forms fail on the Mac the
-  two lines can be dropped without losing a save.
 
 ### 4. `Cast` / `CastChecked` / `ExactCast`: does the result keep the constness of the argument
 
@@ -157,6 +131,10 @@ SDK; the README says how to re-check the whole SDK against a real engine tree.
   frame without a trace. Mac checklist: search the first editor log for "Instanced meshes:".
 - **Audit verdict**: believed as written (`void MarkRenderInstancesDirty();`, public on `UActorComponent` since 5.4);
   the hedge is harmless and stays.
+- **Run evidence (first engine run, UE 5.8.3, commit `83228c4`)**: the fallback's once-per-run Warning is absent from
+  the smoke autotest's complete warning list although instanced components were updated throughout (every VFX pool,
+  each frame it draws). 5.8.3 therefore has the function and the module calls it. Kept open only for the
+  header check; nothing depends on the answer.
 
 ### 6. `APlayerController::GetAudioListenerPosition`: const or not (hedged in the module)
 
@@ -181,63 +159,34 @@ SDK; the README says how to re-check the whole SDK against a real engine tree.
 - **Safest form for new code**: call it on a non-const controller.
 - **Audit verdict**: believed as written (const in 5.x). No build risk in either case.
 
-### 8. The Slate `FVector2D` bridge (`UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS`)
+## Closed by the first engine build (UE 5.8.3, commit `83228c4`)
 
-- **Where**: every place the module hands an `FVector2D` to Slate or takes one back without an explicit conversion.
-  With the bridge switched off (`./run.sh --define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=0`) the check reports
-  22 lines in 12 files, all of them ARGUMENTS:
-  `FGeometry::AbsoluteToLocal(FVector2D)` (`Private/Input/Touch/SAbyssTouchButton.cpp:99`,
-  `SAbyssTouchControls.cpp:702`, `SAbyssVirtualJoystick.cpp:85`, `:102`, `Private/UI/Root/SAbyssUiRoot.cpp:437`, `:447`,
-  `:1315`, `:1363`, `:1401`, `Private/UI/Widgets/AbyssUiWidgets.cpp:840`), `FGeometry::IsUnderLocation(FVector2D)`
-  (`Private/UI/Panels/SAbyssSkillTreePanel.cpp:224`, `Private/UI/Widgets/AbyssUiWidgets.cpp:973`),
-  `FSlateApplication::LocateWindowUnderMouse(FVector2D, ...)` (`Private/Input/AbyssPlayerControllerInput.cpp:1056`),
-  `FSlateRect(FVector2D, FVector2D)` (`Private/Input/Touch/SAbyssTouchControls.cpp:750`),
-  `FSlateImageBrush(UObject*, FVector2D)` (`Private/UI/Core/AbyssUiContext.cpp:606`, `:628`,
-  `Private/UI/Core/AbyssUiStyle.cpp:307`) and `SScrollBox::FArguments::ScrollBarThickness(FVector2D)`
-  (`Private/UI/Widgets/AbyssUiWidgets.cpp:81` and four panels).
-- **What the code assumes**: Slate's 5.2+ float API still accepts and returns `FVector2D` implicitly through
-  `UE::Slate::FDeprecateSlateVector2D` (an `FVector2f` that converts from and to `FVector2d`), i.e. the engine is built
-  with `UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS` 1.
-- **Evidence for**: `Types/SlateVector2.h` has defined the macro as 1 (behind `#ifndef`) since the float conversion in
-  5.2 and, as far as remembered, through 5.5; `UE_REPORT_SLATE_VECTOR_DEPRECATION` (default 0) would first turn the
-  conversions into deprecation WARNINGS, which do not fail a UE build. No release note about its removal is known here.
-- **Evidence for, from the 5.6 Python stub (found in CC5)**: the stub has `class DeprecateSlateVector2D(Vector2f)`
-  (module SlateCore, file `SlateVector2.h`) and types `SlateBrush.image_size` and `ComboBoxStyle.shadow_offset` with
-  it. The engine build that produced the stub therefore had the mechanism ON: with it off those properties would be
-  plain `Vector2f`. The SDK now marks the struct as reflected, so `tools/check_reflected.py` verifies its name, base
-  and header on every run. This settles 5.6, not 5.8.
-- **Evidence against**: it is named a deprecation mechanism, so it will go at some point; nothing here can show the
-  5.8 state (the stub is 5.6, there is no engine source, the API reference is not reachable).
-- **What the SDK declares**: both sides of the engine's switch in `sdk/Runtime/SlateCore/Public/Types/SlateVector2.h`:
-  on by default; with the macro 0 the bridge types are plain `FVector2f`. Which Slate functions use the bridge types
-  and which still take `FVector2D` (the `SLATE_ATTRIBUTE(FVector2D, ...)` arguments: canvas slot `Position` / `Size`,
-  `ShadowOffset`, `RenderTransformPivot`, ...) is itself from memory, so the bridge-off run is an estimate, not a
-  proof.
-- **What changed in the module**: results were already wrapped (`FVector2D X(Geometry.GetLocalSize())`) nearly
-  everywhere; the eight remaining implicit RESULT conversions now are too (`FSlateApplication::GetCursorPos()` at
-  `AbyssPlayerControllerInput.cpp:1055`, `SAbyssHudBottom.cpp:291`, `SAbyssSkillTreePanel.cpp:651`;
-  `SWidget::GetDesiredSize()` at `SAbyssUiRoot.cpp:194`, `:1321`, `:1369`; `FPointerEvent::GetScreenSpacePosition()` at
-  `AbyssUiWidgets.cpp:852`, `:861`). `FVector2D(x)` is valid whether `x` is an `FVector2D`, an `FVector2f` or the bridge
-  type. The 22 argument sites were left alone on purpose: wrapping them in `FVector2f(...)` would only be right if the
-  parameter really is a Slate float type in 5.8, and would break the build if one of them still takes `FVector2D`.
-- **Residual risk**: if 5.8 ships with the mechanism off, the 22 lines above fail to compile ("no viable conversion from
-  'TVector2<double>' to 'TVector2<float>'"), in every target.
-- **Safest alternative**: on the Mac, either add `GlobalDefinitions.Add("UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=1")`
-  to the two `Target.cs` files (the macro is `#ifndef`-guarded; with an installed engine a target may only change
-  global definitions when it has its own build environment, `BuildEnvironment = TargetBuildEnvironment.Unique`) or wrap
-  each reported argument in `UE::Slate::CastToVector2f(...)` / `FVector2f(...)`. The five lines of the panels are
-  `.ScrollBarThickness(FVector2D(6.0, 6.0))` in `SAbyssAchievementsPanel.cpp`, `SAbyssSettingsPanel.cpp`,
-  `SAbyssShopPanel.cpp` and `SAbyssSkillTreePanel.cpp` (`FVector2f(6.f, 6.f)` there) and
-  `MyGeometry.IsUnderLocation(End)` at `SAbyssSkillTreePanel.cpp:224` (`FVector2f(End)`); CC5 re-ran the bridge-off
-  estimate and got the same 22 lines in 12 files.
-- **SDK corrections of the final audit**: `FDeprecateSlateVector2D` / `FDeprecateSlateOptionalVector2D` are now
-  global-scope structs, as a USTRUCT must be (they were inside `UE::Slate`; only the aliases
-  `FDeprecateVector2DParameter` / `FDeprecateVector2DResult` / `FDeprecateOptionalVector2DParameter` live there;
-  negative case 206), and the `const TArray<FVector2D>&` overloads of `FSlateDrawElement::MakeLines` are behind the
-  switch too, so the bridge-off run would also list a caller that passes `FVector2D` points (the module's three
-  `MakeLines` calls pass `TArray<FVector2f>`). The final bridge-off run gives the same 22 lines in 12 files.
-- **Audit verdict**: exists as written through 5.6 and is believed still on by default in 5.8. It stays the one open
-  entry that can stop a game target from compiling (22 argument sites), so it is the first line of the Mac checklist.
+Both were direct calls; the module compiled against the real headers, so the API exists as the module uses it. The
+`// UNVERIFIED` markers are removed from the SDK. What the build does not show is noted per entry.
+
+### 3. `FCoreDelegates::GetApplicationWillTerminateDelegate()` (closed)
+
+- **Where**: `Source/Abyssfire/Private/Framework/AbyssGameInstance.cpp` (`AddUObject` at Init, `RemoveAll` at
+  Shutdown).
+- **Was in doubt**: whether 5.8 has the static accessor, and its return type.
+- **Closed by**: the two lines compiled on 5.8.3. The accessor exists and returns a multicast delegate with
+  `AddUObject` / `RemoveAll`.
+- **Not shown by the build**: the exact return type (the SDK declares `FTSSimpleMulticastDelegate&`; the module does
+  not depend on it).
+
+### 8. The Slate `FVector2D` bridge (`UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS`) (closed)
+
+- **Where**: the 22 lines in 12 files where the module hands an `FVector2D` to Slate without an explicit conversion
+  (`./run.sh --define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=0` lists them: `FGeometry::AbsoluteToLocal`,
+  `IsUnderLocation`, `FSlateApplication::LocateWindowUnderMouse`, `FSlateRect`, `FSlateImageBrush`,
+  `SScrollBox::FArguments::ScrollBarThickness`).
+- **Was in doubt**: whether 5.8 still builds with the mechanism on (it was the one entry that could stop a game
+  target).
+- **Closed by**: all 22 argument sites compiled on 5.8.3, so the engine's default is still 1 there.
+- **Not shown by the build**: which Slate functions take the bridge types and which still take `FVector2D` is still
+  from memory in the SDK (both compile in the module either way), and the mechanism is a deprecation path: it will
+  go in some later engine. The bridge-off run above stays the list of lines to convert when it does
+  (`UE::Slate::CastToVector2f(...)` / `FVector2f(...)` per argument).
 
 ## Resolved by changing the module
 
@@ -251,6 +200,8 @@ SDK; the README says how to re-check the whole SDK against a real engine tree.
 - **Resolution**: the module now calls `FVector2D::Min(OutMin, Projected)` / `FVector2D::Max(OutMax, Projected)`,
   which exist in every UE 4 / 5 version and compute the same per-component result. Even if a later engine added the
   member forms, the static forms remain valid.
+- **Confirmed**: the static forms compiled on UE 5.8.3 (commit `83228c4`). The pick now builds its rectangle in
+  `Private/Input/AbyssPickRules.h` (`RectOf`) and no longer calls them.
 
 ### 7. `FSlateRenderer::GetResourceHandle(const FSlateBrush&, FVector2f, float)`: type of the size parameter
 
@@ -265,6 +216,7 @@ SDK; the README says how to re-check the whole SDK against a real engine tree.
   `SMeshWidget` and other engine code have used since UE 4 (non-virtual since 5.0, forwarding a zero size and scale 1,
   which only a vector image would read). Same result for a texture brush; no dependence on the parameter type.
   `tests/negative_cases.cpp` case 175 pins the by-reference parameter.
+- **Confirmed**: the one-argument call compiled on UE 5.8.3 (commit `83228c4`).
 - **Residual risk**: none known. The SDK still declares the three-argument virtual with `FVector2f` (unused by the
   module).
 
@@ -272,6 +224,11 @@ SDK; the README says how to re-check the whole SDK against a real engine tree.
 
 These are not used in a way that decides a verdict today, but later stages should know they are from memory. None is
 reflected in a form the Python stub exposes.
+
+After the first engine build (UE 5.8.3): a row whose "If wrong" names a line the module calls directly is confirmed
+in the direction that matters for the build (the call compiles); the `BindAction` payload row is one of them. A row
+where the SDK is the stricter side, or that the module does not use, is as unconfirmed as before: the build says
+nothing about declarations the module does not reach.
 
 | SDK declaration | Assumption | If wrong |
 |---|---|---|
@@ -342,3 +299,7 @@ reflected in a form the Python stub exposes.
 | `TBitArray` / `TSparseArray` (final audit) | Not in the SDK, although the engine's `CoreMinimal.h` includes `Containers/BitArray.h` and `Containers/SparseArray.h` | Strict side: a first use in the module is reported as "no template named 'TBitArray'": add the two headers then, with their real members. The module uses neither |
 | `[[nodiscard]]` (final audit: `Math/UnrealMathUtility.h`, `Math/Vector.h`, `Vector2D.h`, `Vector4.h`, `Rotator.h`, `Quat.h`, `Containers/Array.h`, `Map.h`, `Set.h`) | Every value-returning function of `FMath` / `FGenericPlatformMath`, the value-returning const / static members of the vector, rotator and quaternion types, and the queries of the containers (`Num`, `IsEmpty`, `Contains`, `Find`, `FindByKey`, `FindByPredicate`, `IndexOfByKey`, `FilterByPredicate`, `Last`, `Top`, `GetData`, ...; not `Add`, `Emplace`, `AddUnique`, `Remove*`, `Pop`, `FindOrAdd`, `Normalize`) carry the attribute, as the engine's do since 5.1 (`UE_NODISCARD`). That each single one carries it in 5.8 is from memory | Strict side where wrong: a discarded result is `-Werror,-Wunused-result` here (negative cases 207-210) and would only be dead code in the engine; write `(void)` or use the value. The module discards none (a libclang scan of the audit, and every run since) |
 | UE clang warning set in `tools/compile_check.py` | `-Wall -Werror` minus UE's `-Wno-*` list, `-Wshadow` and `-Wundef` as errors | A warning UE disables could fail here (strict side) or the reverse |
+| `FSceneView::ProjectWorldToScreen` with one `ULocalPlayer::GetProjectionData` per pick (`Private/Input/AbyssPicking.cpp`, audit F4) | The same screen point as `APlayerController::ProjectWorldLocationToScreen(World, Out, false)`, which is believed to do exactly this per call and then run `PostProcessWorldToScreen` (a no-op outside split screen). The declarations compiled on 5.8.3 already (`SAbyssWorldLayer.cpp` uses the same pattern); the equivalence is from memory | A pick rectangle offset from before by whatever the controller's post-process adds. Mac check: hover and click a monster at each screen edge |
+| `USkinnedMeshComponent::SetForcedLOD` on a husk whose component tick is paused (`AAbyssCharacterActor::SetForcedBodyLod`, audit F8) | Reflected (5.6 stub). The LOD is believed to be chosen, and its bones refreshed, in the component's tick, so the body ticks again for a few drawn frames; the held pose is believed to re-evaluate at the new LOD | A settled husk snaps to its reference pose or keeps LOD0. Mac check: playtest P-list husks at maximum zoom after the crumble |
+| Slate ticks a widget from its paint, after the window's layout prepass (`SAbyssCombatLog::Tick` rebuilding its child tree, audit F3 / S-A review R1) | From memory (`SWidget::Paint` calls `Tick`; `SWindow`'s prepass runs before the paint). The code does not depend on it: `Rebuild` calls `SlatePrepass(GetPrepassLayoutScaleMultiplier())` on the tree it built before putting it into `ChildSlot`, which is right in either order (one extra prepass of about ten widgets per rebuild if the engine prepasses after tick) | If the prepass in `Rebuild` were wrong or missing: the log's header and lines blank for one frame per logged line. Mac check: step frame by frame through a fight |
+| `UDirectionalLightComponent::SetShadowDistanceFadeoutFraction` (`AAbyssZoneActor::ApplyQuality`, audit F1) | Reflected: a UFUNCTION with that name and a float in the 5.6 stub (`check_reflected.py` verifies it on every run); called directly, not hedged | 5.8 without it: `AbyssZoneActor.cpp` fails to compile in every target; set the `ShadowDistanceFadeoutFraction` property and `MarkRenderStateDirty()` instead |

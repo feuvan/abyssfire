@@ -45,6 +45,7 @@
 #include "Audio/AbyssAudioSystem.h"
 #include "Camera/AbyssCameraRig.h"
 #include "Framework/AbyssActorRegistry.h"
+#include "Framework/AbyssConsoleVars.h"
 #include "Framework/AbyssGameInstance.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssText.h"
@@ -57,6 +58,7 @@
 #include "Vfx/AbyssVfxSystem.h"
 #include "World/AbyssArtManifest.h"
 #include "World/AbyssAssetLibrary.h"
+#include "World/AbyssQualityRules.h"
 #include "World/AbyssSetPieceRules.h"
 #include "World/AbyssThemeRules.h"
 #include "World/AbyssWorldStateRules.h"
@@ -74,6 +76,11 @@ static TAutoConsoleVariable<float> CVarAbyssInkScale(
 struct FAbyssStoryNpcHolds
 {
 	AbyssWorldStateRules::FStoryNpcHolds Rules;
+};
+
+struct FAbyssQualityRefresh
+{
+	AbyssQualityRules::FRefreshState Rules;
 };
 
 namespace AbyssWorldBuilderPrivate
@@ -265,6 +272,8 @@ void UAbyssWorldBuilder::Initialize(FSubsystemCollectionBase& Collection)
 	Collection.InitializeDependency<UAbyssTelegraphSystem>();
 	Collection.InitializeDependency<UAbyssCorpseLayer>();
 	StoryNpcHolds = MakeShared<FAbyssStoryNpcHolds>();
+	QualityRefresh = MakeShared<FAbyssQualityRefresh>();
+	AbyssConsoleVars::ForgetWishes();   // a new world asserts its console variables once (the ledger outlives a PIE session)
 	if (UAbyssSimDriver* Driver = Collection.InitializeDependency<UAbyssSimDriver>())
 	{
 		Driver->RegisterWorldView(this);
@@ -277,7 +286,7 @@ void UAbyssWorldBuilder::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 	BindEvents();
-	RefreshQuality();
+	RefreshQuality(/*bForce*/ true);
 	EnsureCameraRig();
 	EnsureHelpers();
 }
@@ -436,11 +445,11 @@ void UAbyssWorldBuilder::ApplySettings(const FAbyssUserSettings& Settings)
 	RefreshQuality();
 }
 
-void UAbyssWorldBuilder::RefreshQuality()
+void UAbyssWorldBuilder::RefreshQuality(bool bForce)
 {
 	const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
 	const abyss::DataStore* Data = GetData();
-	if (GameInstance == nullptr)
+	if (GameInstance == nullptr || !QualityRefresh.IsValid())
 	{
 		return;
 	}
@@ -471,7 +480,8 @@ void UAbyssWorldBuilder::RefreshQuality()
 	}
 	Quality = Profile;
 
-	// 3D resolution cap: 720 x scale px of height (ue58-platform.md 6.8); UI stays native.
+	// Apply on change only (audit F1, AbyssQualityRules): this runs at world begin, on settings, after each zone build
+	// (forced: new receivers) and as a poll every 60th frame for the window size.
 	int32 ViewportHeight = 0;
 	if (GEngine != nullptr && GEngine->GameViewport != nullptr)
 	{
@@ -479,33 +489,44 @@ void UAbyssWorldBuilder::RefreshQuality()
 		GEngine->GameViewport->GetViewportSize(Size);
 		ViewportHeight = static_cast<int32>(Size.Y);
 	}
-	if (ViewportHeight > 0)
+	AbyssQualityRules::FProfileKey Key;
+	Key.Tier = Profile.Tier;
+	Key.MaxDynamicLights = Profile.MaxDynamicLights;
+	Key.LightingUpdateIntervalMs = Profile.LightingUpdateIntervalMs;
+	Key.ParticleFrequencyMultiplier = Profile.ParticleFrequencyMultiplier;
+	Key.ResolutionScale = Profile.ResolutionScale;
+	Key.bBloom = Profile.bBloom;
+	Key.bColorGrading = Profile.bColorGrading;
+	Key.bMobile = Profile.bMobile;
+	const AbyssQualityRules::FRefreshPlan Plan = AbyssQualityRules::PlanRefresh(QualityRefresh->Rules, Key, ViewportHeight, bForce);
+
+	if (Plan.bConsole)
 	{
-		const float Percentage = 100.f * FMath::Min(1.f, 720.f * Quality.ResolutionScale / static_cast<float>(ViewportHeight));
-		if (IConsoleVariable* ScreenPercentage = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage")))
+		// Each write goes through AbyssConsoleVars: only when the value we want changed and the engine's differs, so a
+		// console A/B survives; an unknown name logs one Warning and is listed by the autotest report.
+		// 3D resolution cap: 720 x scale px of height (ue58-platform.md 6.8); UI stays native. Follows the window size.
+		const float Percentage = AbyssQualityRules::ScreenPercentage(ViewportHeight, Quality.ResolutionScale);
+		if (Percentage > 0.f)
 		{
-			ScreenPercentage->Set(FMath::Clamp(Percentage, 25.f, 100.f), ECVF_SetByCode);
+			AbyssConsoleVars::Apply(TEXT("r.ScreenPercentage"), Percentage);
+		}
+		if (!Quality.bMobile)
+		{
+			// FXAA on low, TSR otherwise (desktop deferred; mobile keeps MSAA from the config).
+			AbyssConsoleVars::Apply(TEXT("r.AntiAliasingMethod"), Quality.Tier == 0 ? 1 : 4);
+			// DECISIONS P10 (revised, art pass): sun CSM resolution per tier, every caster (characters included) in the
+			// shadow. The 5 % fade at the shadow distance is the sun component's ShadowDistanceFadeoutFraction
+			// (AAbyssZoneActor::ApplyQuality): there is no console variable for it. Mobile keeps the device profile's
+			// r.Shadow.MaxCSMResolution 2048 (high tier) and its defaults.
+			AbyssConsoleVars::Apply(TEXT("r.Shadow.MaxCSMResolution"), Quality.Tier == 0 ? 2048 : 4096);
+			AbyssConsoleVars::Apply(TEXT("r.Shadow.RadiusThreshold"), 0.f);
+			// DECISIONS P14: SSAO on balanced (1 level) / high (2 levels); the zone post-process sets its intensity (0 on low).
+			AbyssConsoleVars::Apply(TEXT("r.AmbientOcclusionLevels"), Quality.Tier == 0 ? 0 : (Quality.Tier == 1 ? 1 : 2));
 		}
 	}
-	auto SetCVar = [](const TCHAR* Name, auto Value)
+	if (!Plan.bProfile)
 	{
-		if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(Name))
-		{
-			Variable->Set(Value, ECVF_SetByCode);
-		}
-	};
-	if (!Quality.bMobile)
-	{
-		// FXAA on low, TSR otherwise (desktop deferred; mobile keeps MSAA from the config).
-		SetCVar(TEXT("r.AntiAliasingMethod"), Quality.Tier == 0 ? 1 : 4);
-		// DECISIONS P10 (revised, art pass): sun CSM resolution per tier, every caster (characters included) in the
-		// shadow, a short fade at the shadow distance (1.35 x the camera distance, AAbyssZoneActor). Mobile keeps the
-		// device profile's r.Shadow.MaxCSMResolution 2048 (high tier) and its defaults.
-		SetCVar(TEXT("r.Shadow.MaxCSMResolution"), Quality.Tier == 0 ? 2048 : 4096);
-		SetCVar(TEXT("r.Shadow.RadiusThreshold"), 0.f);
-		SetCVar(TEXT("r.Shadow.CSMShadowDistanceFadeoutFraction"), 0.05f);
-		// DECISIONS P14: SSAO on balanced (1 level) / high (2 levels); the zone post-process sets its intensity (0 on low).
-		SetCVar(TEXT("r.AmbientOcclusionLevels"), Quality.Tier == 0 ? 0 : (Quality.Tier == 1 ? 1 : 2));
+		return;
 	}
 
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
@@ -779,7 +800,7 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 	bZoneBuilt = true;
 	CompileWaitFrames = ZoneCompileWaitFrames;
 	ReconcileMarkers(Snap);
-	RefreshQuality();
+	RefreshQuality(/*bForce*/ true);   // the new zone actor and its characters
 }
 
 void UAbyssWorldBuilder::ClearZone()
@@ -2392,7 +2413,8 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 	}
 	UpdateWorldWidgets();
 
-	// The screen-percentage cap follows the viewport height (window resize / rotation).
+	// The screen-percentage cap follows the viewport height (window resize / rotation) and abyss.RenderScale: a poll
+	// that does nothing unless one of them, or the tier, changed (audit F1).
 	if ((Frame.FrameNumber % 60u) == 0u)
 	{
 		RefreshQuality();

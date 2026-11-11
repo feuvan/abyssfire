@@ -559,15 +559,47 @@ TEST_SUITE("corpse")
 		CHECK(R.Remove.empty());
 	}
 
+	TEST_CASE("a settled husk leaves the shadow pass and draws LOD1 (audit F8)")
+	{
+		// settled = the crumble is over; falling, holding, greying and crumbling bodies still cast on desktop
+		CHECK_FALSE(HuskSettled(EPhase::Falling));
+		CHECK_FALSE(HuskSettled(EPhase::Hold));
+		CHECK_FALSE(HuskSettled(EPhase::Grey));
+		CHECK_FALSE(HuskSettled(EPhase::Crumble));
+		CHECK(HuskSettled(EPhase::Husk));
+		CHECK(HuskCastsSunShadowNow(/*bMobile*/ false, /*bSettled*/ false));
+		CHECK_FALSE(HuskCastsSunShadowNow(false, true));
+		CHECK_FALSE(HuskCastsSunShadowNow(true, false));   // mobile husks never cast (2G review X4)
+		CHECK_FALSE(HuskCastsSunShadowNow(true, true));
+		CHECK(SettledHuskForcedLod == 2);                    // SetForcedLOD is 1-based: LOD1
+
+		// a kill settles when its crumble ends; a seed is settled from its first frame
+		const FTimeline T;
+		const FHuskState Kill = MakeHusk(1000.0, 400.0, /*bBornHusk*/ false, /*bStoryHeld*/ false);
+		const double CrumbleEnd = CrumbleStartMs(Kill, T) + T.CrumbleMs;
+		CHECK_FALSE(HuskSettled(Evaluate(Kill, T, CrumbleEnd - 1.0).Phase));
+		CHECK(HuskSettled(Evaluate(Kill, T, CrumbleEnd + 1.0).Phase));
+		const FHuskState Seed = MakeHusk(0.0, 400.0, /*bBornHusk*/ true, false);
+		CHECK(HuskSettled(Evaluate(Seed, T, 0.0).Phase));
+	}
+
 	TEST_CASE("the visible cap keeps seeds and story bodies, then the newest")
 	{
-		CHECK(HuskCap(0, false) == 32);
+		// Performance audit F8: 16 on desktop low / balanced (a husk is a full character's draws), 32 on high.
+		CHECK(HuskCap(0, false) == 16);
+		CHECK(HuskCap(1, false) == 16);
 		CHECK(HuskCap(2, false) == 32);
 		CHECK(HuskCap(0, true) == 12);
 		CHECK(HuskCap(1, true) == 20);
 		CHECK(HuskCap(2, true) == 32);
-		// the core's worst case (24 kill bodies + the Sheepfold's 6 seeds) fits every desktop tier
-		CHECK(HuskCap(0, false) >= 30);
+		// the core's worst case (24 kill bodies + the Sheepfold's 6 seeds) fits desktop high uncapped; below it the cap
+		// retires the oldest kill bodies and never a seed (the cases below), and every tier keeps the 6 seeds
+		CHECK(HuskCap(2, false) >= 30);
+		for (int Tier = 0; Tier < 3; ++Tier)
+		{
+			CHECK(HuskCap(Tier, false) > 6);
+			CHECK(HuskCap(Tier, true) > 6);
+		}
 		std::vector<FHuskEntry> Entries;
 		for (uint32_t I = 1; I <= 6; ++I)
 		{
@@ -602,6 +634,69 @@ TEST_SUITE("corpse")
 		OverflowHusks(Entries, 12, Scratch, Out);
 		CHECK(Scratch.capacity() == Capacity);
 		CHECK(Out.size() == 18u);
+	}
+
+	TEST_CASE("desktop: the cap counts kill bodies, the map's seeds come on top")
+	{
+		// S-A review R2: with the seeds inside the desktop cap of 16, the Sheepfold's 6 left 10 kill bodies drawn of the
+		// 24 the core keeps raisable. Mobile keeps its body budget: seeds inside the cap, as shipped.
+		CHECK(HuskCapWithSeeds(16, 6, /*bMobile*/ false) == 22);
+		CHECK(HuskCapWithSeeds(16, 0, false) == 16);
+		CHECK(HuskCapWithSeeds(16, -3, false) == 16);
+		CHECK(HuskCapWithSeeds(20, 6, /*bMobile*/ true) == 20);
+		CHECK(HuskCapWithSeeds(12, 40, true) == 12);
+
+		const auto Scene = [](uint32_t Seeds, uint32_t Kills)
+		{
+			std::vector<FHuskEntry> Entries;
+			for (uint32_t I = 1; I <= Seeds; ++I)
+			{
+				Entries.push_back({ I, 0.0, true, false });
+			}
+			for (uint32_t I = Seeds + 1; I <= Seeds + Kills; ++I)
+			{
+				Entries.push_back({ I, 1000.0 * I, false, false });
+			}
+			return Entries;
+		};
+		const auto Retired = [](const std::vector<FHuskEntry>& Entries, int Tier, bool bMobile)
+		{
+			int Seeds = 0;
+			for (const FHuskEntry& Entry : Entries)
+			{
+				Seeds += Entry.bSeeded ? 1 : 0;
+			}
+			std::vector<FHuskEntry> Scratch;
+			std::vector<uint32_t> Out;
+			OverflowHusks(Entries, HuskCapWithSeeds(HuskCap(Tier, bMobile), Seeds, bMobile), Scratch, Out);
+			return Out;
+		};
+		// the Sheepfold's worst case, desktop balanced: 6 seeds + 24 kills -> the 16 newest kills and every seed stay
+		const std::vector<FHuskEntry> Sheepfold = Scene(6, 24);
+		std::vector<uint32_t> Out = Retired(Sheepfold, 1, false);
+		CHECK(Out.size() == 8u);
+		for (const uint32_t Id : Out)
+		{
+			CHECK(Id >= 7u);    // never a seed
+			CHECK(Id <= 14u);   // the 8 oldest kills
+		}
+		CHECK(Retired(Sheepfold, 0, false).size() == 8u);
+		CHECK(Retired(Sheepfold, 2, false).empty());
+		// a map with as many seeds as the cap (or more) still shows its kill bodies
+		for (const uint32_t Seeds : { 16u, 40u })
+		{
+			CAPTURE(Seeds);
+			Out = Retired(Scene(Seeds, 24), 1, false);
+			CHECK(Out.size() == 8u);
+			CHECK(*std::min_element(Out.begin(), Out.end()) == Seeds + 1);
+			CHECK(*std::max_element(Out.begin(), Out.end()) == Seeds + 8);
+		}
+		// under the cap: nothing retires
+		CHECK(Retired(Scene(6, 16), 1, false).empty());
+		// mobile balanced (20): seeds inside the cap -> 14 kills stay, 10 retire
+		Out = Retired(Sheepfold, 1, true);
+		CHECK(Out.size() == 10u);
+		CHECK(*std::min_element(Out.begin(), Out.end()) == 7u);
 	}
 
 	TEST_CASE("an unadopted corpse-holding death falls back to the fade")

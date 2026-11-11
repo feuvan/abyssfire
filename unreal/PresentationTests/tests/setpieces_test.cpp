@@ -613,4 +613,92 @@ TEST_SUITE("setpieces")
 		}
 		CHECK(Echoes > 0);
 	}
+	TEST_CASE("a structure covers as its upright cylinder: the belfry at the Knellwatch spawn (first Mac run)")
+	{
+		// The shipped scene: the hero starts on the camera diagonal straight behind the belfry.
+		const abyss::DataStore& Data = SpData();
+		REQUIRE(Data.IsFinalized());
+		const abyss::MapDef* Map = Data.FindMap("emerald_plains");
+		REQUIRE(Map != nullptr);
+		REQUIRE(Data.SetPieces().loaded);
+		const double CameraYawDeg = Data.World().constants.cameraYawDeg;
+		const double CameraPitchDeg = Data.World().constants.cameraPitchDeg;
+		const abyss::SetPieceFrame Frame{ -90.0, CameraYawDeg };
+		std::vector<abyss::SetPiecePlacement> Placements;
+		for (const abyss::SetPieceZoneDef& Zone : Data.SetPieces().zones)
+		{
+			if (Zone.zone == Map->id)
+			{
+				abyss::ExpandSetPieces(Zone, *Map, Data, Frame, Placements);
+			}
+		}
+		const abyss::SetPiecePlacement* Belfry = nullptr;
+		for (const abyss::SetPiecePlacement& P : Placements)
+		{
+			if (P.def != nullptr && P.def->id == "knellwatch_bell_frame")
+			{
+				Belfry = &P;
+			}
+		}
+		REQUIRE(Belfry != nullptr);
+		CHECK(Belfry->def->occluder);
+		const abyss::JsonValue& Bounds = SpManifest().Get("assets").Get("SM_Prop_March_BellFrame").Get("boundsCm");
+		REQUIRE(Bounds.Get("max").IsArray());
+		const double RadiusCm = (std::max)(Bounds.Get("max").At(0).AsDouble(0.0), Bounds.Get("max").At(1).AsDouble(0.0));
+		const double HeightCm = Bounds.Get("max").At(2).AsDouble(0.0);
+		CHECK(RadiusCm > 100.0);
+		CHECK(HeightCm > 300.0);
+
+		// The target's frame, as AAbyssZoneActor::UpdateOcclusion builds it: Along toward the camera (the camera sits at
+		// the back of its yaw), Lateral across; the ray rises tan(-pitch) per cm of ground.
+		const double Pi = 3.14159265358979323846;
+		const double DirX = -std::cos(CameraYawDeg * Pi / 180.0);
+		const double DirY = -std::sin(CameraYawDeg * Pi / 180.0);
+		const double Tan = std::tan(-CameraPitchDeg * Pi / 180.0);
+		const double RelX = (Belfry->pos.x - Map->playerStart.col) * 100.0;
+		const double RelY = (Belfry->pos.y - Map->playerStart.row) * 100.0;
+		const double Along = RelX * DirX + RelY * DirY;
+		const double Lateral = std::fabs(DirX * RelY - DirY * RelX);
+		CAPTURE(Along);
+		CAPTURE(Lateral);
+		// Whatever the content does with the start tile later, the rule must hold for the scene of the run: the hero 2.6
+		// tiles down both axes from the belfry (368 cm behind it, dead centre).
+		const double RunAlong = 2.6 * 100.0 * std::sqrt(2.0);
+		// the feet target (30 cm) is covered: the roof's edge hid the hero's legs; the chest and the head are not
+		CHECK(StructureCoversRay(RunAlong, 0.0, 30.0, Tan, RadiusCm, HeightCm));
+		CHECK_FALSE(StructureCoversRay(RunAlong, 0.0, 110.0, Tan, RadiusCm, HeightCm));
+		CHECK_FALSE(StructureCoversRay(RunAlong, 0.0, 170.0, Tan, RadiusCm, HeightCm));
+		// ... which the decor's bounds ellipsoid misses for every target (it never faded): the ray passes over the
+		// ellipsoid's shoulder. (The ellipsoid test, transcribed: is the quadratic's minimum <= 0.)
+		const auto Ellipsoid = [](double A0, double L, double Z0, double T, double R, double Hs)
+		{
+			const double InvR2 = 1.0 / (R * R), InvH2 = 1.0 / (Hs * Hs);
+			const double A = InvR2 + T * T * InvH2;
+			const double B = 2.0 * (Z0 * T * InvH2 - A0 * InvR2);
+			const double C = (A0 * A0 + L * L) * InvR2 + Z0 * Z0 * InvH2 - 1.0;
+			const double S = (std::max)(0.0, -B / (2.0 * A));
+			return (A * S + B) * S + C <= 0.0;
+		};
+		CHECK_FALSE(Ellipsoid(RunAlong, 0.0, 30.0 - HeightCm * 0.5, Tan, RadiusCm, HeightCm * 0.5));
+		if (std::fabs(Along - RunAlong) < 1.0 && Lateral < 1.0)
+		{
+			CHECK(StructureCoversRay(Along, Lateral, 30.0, Tan, RadiusCm, HeightCm));   // the data still has that scene
+		}
+
+		// a hero in front of the structure (camera side of its centre) or beside it is never covered
+		CHECK_FALSE(StructureCoversRay(-1.0, 0.0, 30.0, Tan, RadiusCm, HeightCm));
+		CHECK_FALSE(StructureCoversRay(-RadiusCm * 0.5, 0.0, 30.0, Tan, RadiusCm, HeightCm));
+		CHECK_FALSE(StructureCoversRay(RunAlong, RadiusCm + 1.0, 30.0, Tan, RadiusCm, HeightCm));
+		CHECK(StructureCoversRay(RunAlong, 40.0, 30.0, Tan, RadiusCm, HeightCm));
+		CHECK(StructureCoversRay(RunAlong, -40.0, 30.0, Tan, RadiusCm, HeightCm));               // the side does not matter
+		CHECK_FALSE(StructureCoversRay(RunAlong, RadiusCm - 1.0, 30.0, Tan, RadiusCm, HeightCm));   // its round edge: the ray is over the roof there
+		// standing in its footprint behind the centre (inside the frame): covered up to its top
+		CHECK(StructureCoversRay(40.0, 0.0, 110.0, Tan, RadiusCm, HeightCm));
+		CHECK_FALSE(StructureCoversRay(40.0, 0.0, HeightCm + 1.0, Tan, RadiusCm, HeightCm));
+		// far behind: the ray clears the roof (no fade for a hero tiles away)
+		CHECK_FALSE(StructureCoversRay(900.0, 0.0, 30.0, Tan, RadiusCm, HeightCm));
+		// a degenerate structure covers nothing
+		CHECK_FALSE(StructureCoversRay(100.0, 0.0, 30.0, Tan, 0.0, HeightCm));
+		CHECK_FALSE(StructureCoversRay(100.0, 0.0, 30.0, Tan, RadiusCm, 0.0));
+	}
 }

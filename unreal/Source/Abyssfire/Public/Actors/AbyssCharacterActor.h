@@ -244,6 +244,8 @@ public:
 	void BeginAshRise(float StartGrey, float StartDissolve, double StartSimMs, double SpanMs);
 	/** The husk's blob shadow alpha (1 = as alive); it follows the pelvis while the body lies. */
 	void SetHuskShadowAlpha(float Alpha);
+	/** Forces the body's LOD (USkinnedMeshComponent::SetForcedLOD: 1-based, 0 = automatic); a settled husk draws LOD1. */
+	void SetForcedBodyLod(int32 OneBasedLod);
 	/** World location of Socket on the held item showing the static mesh ItemAsset (EvBlock: the tower shield's face). */
 	bool GetHeldItemSocket(FName ItemAsset, FName Socket, FVector& OutLocation) const;
 	/** The art clip ClipName carries FX_* notifies of its own (a buff / call clip that shows its pulse on its beats). */
@@ -318,7 +320,8 @@ private:
 	/** bForceLoop: hold / stun poses loop whatever the clip's own loop flag (AbyssAnimActionRules::ForcesLoop). */
 	void PlayClip(const FAbyssArtClip& Clip, float Rate, float StartSec, const char* ToState, bool bForceLoop = false);
 	void UpdateLocomotion(const FAbyssCharacterFrame& Frame);
-	void UpdateFacing(const FAbyssCharacterFrame& Frame, float DeltaSec);
+	/** Advances CurrentYawDeg; true when it changed (PresentFrame applies it together with the location). */
+	bool UpdateFacing(const FAbyssCharacterFrame& Frame, float DeltaSec);
 	/** bSingleView: the facing shown for a desired one (se / sw toward the camera; bAimed keeps an aim in front). */
 	FVector2D SingleViewFacing(const FVector2D& Desired, bool bAimed);
 	void UpdateRecoil(float DeltaSec);

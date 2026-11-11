@@ -4,10 +4,18 @@
 #include "RHI.h"
 #include "TextureResource.h"
 
+#include <string_view>
+
+#include "abyss/data/DataStore.h"
 #include "abyss/world/Exploration.h"
 #include "abyss/world/Grid.h"
 
+#include "Abyssfire.h"
+#include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssText.h"
 #include "UI/AbyssUiSubsystem.h"
+#include "UI/Hud/AbyssMinimapRules.h"
+#include "World/AbyssThemeRules.h"
 
 FAbyssMinimapTexture::FAbyssMinimapTexture(UAbyssUiSubsystem& InOwner)
 	: Owner(&InOwner)
@@ -19,19 +27,29 @@ FAbyssMinimapTexture::~FAbyssMinimapTexture()
 	Reset();
 }
 
-FColor FAbyssMinimapTexture::TileColor(uint8 TileType)
+FColor FAbyssMinimapTexture::TileColor(uint8 TileType) const
 {
-	switch (TileType)
+	const uint32 Rgb = TileType < AbyssMinimapRules::TileKinds ? TileColors[TileType] : UnknownTileColor;
+	return FColor(static_cast<uint8>((Rgb >> 16) & 0xff), static_cast<uint8>((Rgb >> 8) & 0xff), static_cast<uint8>(Rgb & 0xff));
+}
+
+void FAbyssMinimapTexture::ResolvePalette(const std::string& InMapId)
+{
+	// The zone's presentation theme picks the terrain style the colours come from (AbyssMinimapRules): the march and
+	// the Pit are drawn in their own ground colours, a zone without a theme in the web minimap's.
+	const UAbyssUiSubsystem* Subsystem = Owner.Get();
+	const UAbyssGameInstance* GameInstance = Subsystem != nullptr ? Cast<UAbyssGameInstance>(Subsystem->GetGameInstance()) : nullptr;
+	const abyss::DataStore* Data = GameInstance != nullptr ? GameInstance->GetData() : nullptr;
+	const std::string_view Theme = Data != nullptr ? AbyssThemeRules::ThemeOf(Data->FindMap(InMapId)) : std::string_view();
+	const AbyssMinimapRules::FPalette Palette =
+		AbyssMinimapRules::PaletteFor(Data != nullptr ? Data->RawTable("terrain_styles.json") : nullptr, Theme);
+	for (int32 Index = 0; Index < AbyssMinimapRules::TileKinds; ++Index)
 	{
-	case 0: return FColor(0x4a, 0x8c, 0x3f);   // grass
-	case 1: return FColor(0x8b, 0x73, 0x55);   // dirt
-	case 2: return FColor(0x6a, 0x6a, 0x6a);   // stone
-	case 3: return FColor(0x1a, 0x52, 0x76);   // water
-	case 4: return FColor(0x4a, 0x4a, 0x4a);   // wall
-	case 5: return FColor(0x9e, 0x7c, 0x52);   // camp
-	case 6: return FColor(0x5c, 0x48, 0x34);   // camp wall (palisade)
-	default: return FColor(0x22, 0x22, 0x22);
+		TileColors[Index] = Palette.Tile[static_cast<size_t>(Index)];
 	}
+	UnknownTileColor = Palette.Unknown;
+	UE_LOG(LogAbyss, Log, TEXT("Minimap palette for %s: %s"), *AbyssText::ToFString(InMapId),
+		Palette.Style.empty() ? TEXT("web colours (no presentation theme)") : *AbyssText::ToFString(Palette.Style));
 }
 
 void FAbyssMinimapTexture::Reset()
@@ -86,6 +104,7 @@ void FAbyssMinimapTexture::Update(const abyss::Snapshot& Snap, double Now)
 	{
 		Reset();
 		MapId = Snap.zone.mapId;
+		ResolvePalette(MapId);
 		Cols = Grid->Cols();
 		Rows = Grid->Rows();
 		Tiles.SetNumUninitialized(Cols * Rows);

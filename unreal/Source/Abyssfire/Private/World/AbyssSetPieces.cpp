@@ -121,9 +121,15 @@ void AAbyssZoneActor::BuildSetPieces(const abyss::Snapshot& Snap, const abyss::D
 		const FAbyssArtAsset* Art = nullptr;
 		FTransform Transform;
 		// Tall pieces fade between the camera and the hero (R1, the decor fade target); none blocks anything.
+		const int32 OccludersBefore = Occluders.Num();
 		if (!PlaceArt(Ids, Hash, Location, YawDeg, Scale, Def.occluder, 0.f, Key, &Art, &Transform) || Art == nullptr)
 		{
 			continue;   // PlaceArt counts it for the zone-build warning; Collect lists the piece as unresolved
+		}
+		if (Def.occluder && Occluders.Num() == OccludersBefore + 1)
+		{
+			// A structure is a box, not a crown: it covers as its upright cylinder (the belfry at the spawn).
+			Occluders.Last().bStructure = true;
 		}
 		AbyssSetPieceRules::PlacedArt& Placed = Arts[Index];
 		Placed.bResolved = true;

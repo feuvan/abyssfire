@@ -428,8 +428,15 @@ and before the telegraphs / VFX) only converts. DECISIONS DR6 (ash mode), DR5, D
   expiry.
 * **Story hold**: the Corpseherd's body during `cs_rf_herd` and Valdras's during `cs_rf_marshal_falls` keep their death
   pose (no grey) while the beat plays or the director is busy before it ends; the hold counts from the beat's end.
-* **Cap** (`ApplyQuality`): 32 husks on desktop; mobile 12 / 20 / 32 (low / balanced / high). Overflow retires the
-  oldest early (seeds and story-held bodies kept first) with `corpse.expire`.
+* **Cap** (`ApplyQuality`): desktop 16 / 16 / 32, mobile 12 / 20 / 32 (low / balanced / high; the desktop low and
+  balanced caps were 32 before the performance audit, F8). Overflow retires the oldest early (seeds and story-held
+  bodies kept first) with `corpse.expire`. On desktop the cap counts kill bodies only and the map's seeds come on top
+  (`AbyssCorpseRules::HuskCapWithSeeds`; the Sheepfold: 6 seeds + 16 kills); on mobile the seeds are inside it. The
+  core keeps up to 24 kill bodies, so below desktop high the oldest 8 can be undrawn while still raisable or edible:
+  a raise from one plays its VFX with no body to stand up from.
+* **Settled husks** (audit F8, `AbyssCorpseRules::HuskSettled`): once the crumble is over (a seed: from its first
+  frame) a husk stops casting the sun's shadow (its blob stays) and its body is forced to LOD1
+  (`AAbyssCharacterActor::SetForcedBodyLod`; the body ticks a few drawn frames to take the LOD, then stops again).
 * **Gnawers and the Feed**: the gnawer's Consume channel (`EvPlayAnim{clip Consume}`) plays `corpse.consume` once from
   its jaws toward the husk (stopped when the channel is cut short: `EvMonsterAttackCancelled`, a stun, the body
   burned); the eaten body crumbles away. A boss Feed (`EvMonsterFeed`) drains the held body toward .85 dissolve by its
@@ -572,6 +579,52 @@ What the three stages share, from the cross-stage review (DECISIONS DR16 (43)-(4
   copy of its body with `M_AF_Toon_Ashnumb` on its toon slots when it is built. Their pipeline states precache behind
   the zone fade, not at the first kill's grey or the first Ashnumb stack.
 * **Autotest probe** (`Private/Framework/AbyssPresenceRules.h`, `presence_test.cpp`): see *In-game autotest*.
+
+## First engine run (UE 5.8.3, macOS arm64, Metal)
+
+The module's first real build and run, at commit `83228c4`:
+
+* **Build**: `AbyssfireEditor` compiles; the content build with `--shaders` finished with 0 errors and 0 warnings
+  (1099 assets, all 25 master materials). Every engine call the module makes directly exists in 5.8.3 with a
+  compatible signature; calls behind an `if constexpr (requires ...)` hedge compile either way, so the build does not
+  say which branch 5.8.3 takes (`CompileCheck/API_UNCERTAIN.md` records both).
+* **Autotest**: `-abyssautotest=smoke -abyssclass=warrior` passed (exit 0, no Error or Ensure line, 24 screenshots;
+  see *In-game autotest* for the switches and `report.json`). It was an uncooked first run: about half of its 502 s
+  sat in a handful of frames that combined the shader backlog with a screenshot, so its frame times say little about
+  the game yet.
+* **What the run found, and what changed for it** (rules headers and tests named; the performance audit's ids):
+  * `r.Shadow.CSMShadowDistanceFadeoutFraction` does not exist (31 failed lookups in the log). The 5 % fade is now the
+    sun component's `ShadowDistanceFadeoutFraction` (`AAbyssZoneActor::ApplyQuality`). The quality refresh applies on
+    change only (F1; `Private/World/AbyssQualityRules.h`, `quality_test.cpp`): the profile fans out when it changes or
+    a zone is built, a console variable is written when the value we want changes and the engine's differs
+    (`Private/Framework/AbyssConsoleVars`), so a console A/B is no longer overwritten every second; an unknown name
+    logs one Warning and is listed in `report.json` (`missingConsoleVariables`). The window size is still polled every
+    60th frame for the screen percentage.
+  * The sun has **1 cascade** on desktop (F7; was 2, whose near cascade covered the air under the camera).
+  * The combat log rebuilds once per frame, not once per line (F3), and prepasses the tree it builds: the rebuild
+    runs in the widget's tick, which Slate calls after the frame's layout prepass. The hover / click pick fetches the projection once
+    and projects only the boxes a conservative screen bound leaves near the pointer; it picks exactly what it picked
+    before (F4; `Private/Input/AbyssPickRules.h`, `pick_test.cpp` plays the old and the new pick on random scenes).
+    `LoadMaterial` remembers where a name resolved (F5). A static prop's hidden skeletal component no longer ticks and
+    a character that moves and turns updates its transform once (F6). Husks: see *Dark remake corpses* (F8).
+  * The minimap and the world map drew the Red March in the plains' green. A zone with a presentation theme now takes
+    its tile colours from that theme's terrain style (`terrain_styles.json`), along its parents when it has none of
+    its own (`pit` -> `march`); other zones keep the web minimap's colours (`Private/UI/Hud/AbyssMinimapRules.h`,
+    `minimap_test.cpp`). In a themed palette the camp ground is lifted to the brightest walkable colour (1.25 x the
+    brightest of grass / dirt / stone) and a water without a hue is as dark as a wall, so the camp still reads as
+    the map's landmark on the march's greys.
+  * On arrival the target frame named a footman idling at the camp's edge. The frame names the attack lock always,
+    the auto-picked indicator only once a fight is on (`AbyssHudRules::IndicatorIsATarget`, `hud_test.cpp`); the
+    ground ring and the rim still follow the indicator (C14).
+  * The belfry stood between the camera and the hero at the start tile and did not fade: the decor's bounds ellipsoid
+    leaves a box's upper corners out. A set piece marked `occluder` is tested as its upright cylinder
+    (`AbyssSetPieceRules::StructureCoversRay`, `setpieces_test.cpp`).
+* **Still open for the next run**: the in-game autotest for the mage and the rogue, the look-and-listen script below,
+  and every measurement of the audit's "measure first" list (the median frame time has no explanation yet).
+  Three checks from the review of these changes: step frame by frame through a fight and watch the combat log for
+  a blank frame when a line arrives; find the Knellwatch camp on the minimap and the world map from 30 tiles away;
+  on low / balanced, let a Corpseherd raise after more than 16 kills (a raise from a body the cap retired shows its
+  VFX and a footman, no husk).
 
 ## Mac playtest script (1C + 2G)
 
@@ -797,6 +850,8 @@ shows its leader's diamond; the bonegorgers at the midden (95,90) Clapper Slam l
    it; build the annulus mesh only if it is over.
 4. Valdras's P3 and the Trenches' husks on high: the frame-time threshold, `abyss.Vfx.Status` with no burst spawn
    dropped, husks with their blob only (no CSM: AbyssCorpseRules::HuskCastsSunShadow) up to 32.
+   On desktop: a husk that has finished crumbling casts no sun shadow and holds its pose at LOD1 without a pop that
+   draws the eye; at most 16 lie at once on low / balanced (32 on high).
 5. Touch: the progress-only card (P14.1) and the turn-in tap card (P7.1).
 
 ## In-game autotest (`-abyssautotest`)
@@ -858,7 +913,9 @@ What a run does:
 `class`, `seed` (a string; replay it with `-abyssseed=<seed>`, or in the core with
 `ABYSS_PT_SWEEP=1 ABYSS_PT_SWEEP_BASE=<seed> CoreTests/run.sh` — same RNG streams, though UE's frame pacing makes the
 bot's timing differ), `buildSha`, `rhi` (`GDynamicRHI->GetName()`: `Vulkan`, `Null`, ...), `screenshotsEnabled`, `renderOffScreen`,
-`nullRhi`, `engineVersion`, `platform`, `commandLine`, `durations` (`totalSec`, `bootSec`, `menuToGameSec`, `inGameSec`,
+`nullRhi`, `engineVersion`, `platform`, `commandLine`, `missingConsoleVariables` (every engine console variable the
+module tried to set that this engine does not have, `AbyssConsoleVars`; empty on a healthy run, and each name is also
+one `LogAbyss` Warning), `durations` (`totalSec`, `bootSec`, `menuToGameSec`, `inGameSec`,
 `simPlayTimeSec`, `simNowSec`), `scenarioCompleted`, `pilot` (bot ok / failure / last checkpoint / step / frames / commands
 / last notes), `stats` (kills, deaths, level-ups, casts, potions, loot, ...), `presentation` (`strikeTelegraphs`,
 `hazards`, `arenas`, `corpses`, `ashnumbFrames`, `peakDecals`, `peakArenaDecals`, `peakHusks`, `bandFrames`, `failure`),

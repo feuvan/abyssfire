@@ -44,6 +44,7 @@
 #include "Actors/AbyssCharacterActor.h"
 #include "Actors/AbyssCorpses.h"
 #include "Framework/AbyssAutoTest.h"
+#include "Framework/AbyssConsoleVars.h"
 #include "Framework/AbyssEventRouter.h"
 #include "Framework/AbyssGameInstance.h"
 #include "Framework/AbyssPlayerController.h"
@@ -509,7 +510,7 @@ public:
 
 		// The bot's timers count frames tuned for 60 Hz (abyss/tools/AutoPilot.h): never run it faster (an uncapped
 		// -nullrhi run would shrink every timeout). Slower frame rates only make it react later in sim time.
-		if (IConsoleVariable* MaxFps = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS")))
+		if (IConsoleVariable* MaxFps = AbyssConsoleVars::FindForWrite(TEXT("t.MaxFPS")))
 		{
 			const float Current = MaxFps->GetFloat();
 			if (Current <= 0.0f || Current > 60.0f)
@@ -1328,6 +1329,15 @@ private:
 		Num("maxFps", MaxFpsApplied);
 		Flag("fixedTimeStep", FApp::UseFixedTimeStep());
 		Flag("scenarioCompleted", ScenarioCompleted());
+		// Audit F1: every console variable the module tried to set that this engine does not have (AbyssConsoleVars).
+		// Empty on a healthy run; a name here is a setting that silently never applied.
+		W.Key("missingConsoleVariables");
+		W.StartArray();
+		for (const FString& Name : AbyssConsoleVars::MissingNames())
+		{
+			W.String(AbyssText::ToStd(Name));
+		}
+		W.EndArray();
 
 		W.Key("durations");
 		W.StartObject();

@@ -227,6 +227,7 @@ void UAbyssAssetLibrary::Deinitialize()
 	Loaded.Reset();
 	LastZoneUse.Reset();
 	MissingPaths.Reset();
+	MaterialKeys.Reset();
 	LightingCollection = nullptr;
 	bLightingCollectionResolved = false;
 	Manifest.Reset();
@@ -314,6 +315,23 @@ UMaterialInterface* UAbyssAssetLibrary::LoadMaterial(const TCHAR* MaterialName)
 {
 	static const TCHAR* const Folders[] = { TEXT("Materials"), TEXT("Materials/Instances"), TEXT("Materials/FX") };
 	const FName Name(MaterialName);
+	// Audit F5: the folder a name resolved to is remembered, and so is a name found nowhere. Without it every call for
+	// an FX-folder master (the blob shadow of each character, the ghost and light pool of each prop) probed the two
+	// folders before it with FPackageName::DoesPackageExist, a disk lookup in uncooked runs.
+	if (const FName* ResolvedKey = MaterialKeys.Find(Name))
+	{
+		if (const TObjectPtr<UObject>* Found = Loaded.Find(*ResolvedKey); Found != nullptr && Found->Get() != nullptr)
+		{
+			TouchLoaded(*ResolvedKey);
+			return Cast<UMaterialInterface>(Found->Get());
+		}
+		// Trimmed since (TrimToRecentZones): resolve again below.
+	}
+	const FName MissingKey(*FString::Printf(TEXT("material:%s"), MaterialName));
+	if (MissingPaths.Contains(MissingKey))
+	{
+		return nullptr;
+	}
 	for (const TCHAR* Folder : Folders)
 	{
 		const FSoftObjectPath Path = FAbyssArtManifest::MakeObjectPath(Folder, Name);
@@ -321,6 +339,7 @@ UMaterialInterface* UAbyssAssetLibrary::LoadMaterial(const TCHAR* MaterialName)
 		if (const TObjectPtr<UObject>* Found = Loaded.Find(Key); Found != nullptr && Found->Get() != nullptr)
 		{
 			TouchLoaded(Key);
+			MaterialKeys.Add(Name, Key);
 			return Cast<UMaterialInterface>(Found->Get());
 		}
 		if (!DoesAssetExist(Path))
@@ -329,16 +348,13 @@ UMaterialInterface* UAbyssAssetLibrary::LoadMaterial(const TCHAR* MaterialName)
 		}
 		if (UMaterialInterface* Material = Cast<UMaterialInterface>(LoadObjectAt(Path, UMaterialInterface::StaticClass())))
 		{
+			MaterialKeys.Add(Name, Key);
 			return Material;
 		}
 	}
-	const FName MissingKey(*FString::Printf(TEXT("material:%s"), MaterialName));
-	if (!MissingPaths.Contains(MissingKey))
-	{
-		MissingPaths.Add(MissingKey);
-		UE_LOG(LogAbyss, Warning, TEXT("Material %s not found under %s/Materials (run Scripts/build_content.py)"),
-			MaterialName, FAbyssArtManifest::ContentRoot());
-	}
+	MissingPaths.Add(MissingKey);
+	UE_LOG(LogAbyss, Warning, TEXT("Material %s not found under %s/Materials (run Scripts/build_content.py)"),
+		MaterialName, FAbyssArtManifest::ContentRoot());
 	return nullptr;
 }
 
