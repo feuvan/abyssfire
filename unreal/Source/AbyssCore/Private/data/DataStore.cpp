@@ -530,7 +530,25 @@ bool DataStore::Finalize(DataLoadReport& report) {
     for (size_t i = 0; i < m.spawns.size(); ++i) {
       const MapSpawnDef& sp = m.spawns[i];
       const std::string spPath = StrCat(path, ".spawns[", i, "]");
-      checkPos(m, spPath, sp.pos);
+      checkPos(m, sp.hasGeneratorAnchor ? spPath + ".at" : spPath, sp.pos);
+      if (sp.hasGeneratorAnchor) checkPos(m, spPath, sp.generatorAnchor);  // map.spawnAt: col / row stay the generator's
+      if (sp.hasGeneratorAnchor && !subDungeonMap) {
+        // map.spawnAt (the exporter's rules): only a generated map has generator tiles to keep, and the pack does not
+        // stand inside a camp's safe radius (ZoneRuntime::InSafeZone is strict: every placement try would be refused
+        // and the whole pack would stand on `at` itself, inside the camp).
+        if (!m.generated) {
+          ck.Error("maps.json", spPath + ".at", "only a generated map's spawn has `at` (move the entry of a hand-built map)");
+        }
+        for (const MapCampDef& c : m.camps) {
+          const double dc = static_cast<double>(sp.pos.col - c.pos.col);
+          const double dr = static_cast<double>(sp.pos.row - c.pos.row);
+          if (dc * dc + dr * dr < m.safeZoneRadiusEffective * m.safeZoneRadiusEffective) {
+            ck.Error("maps.json", spPath + ".at",
+                     StrCat("tile (", sp.pos.col, ",", sp.pos.row, ") inside the safe radius of the camp at (", c.pos.col, ",",
+                            c.pos.row, ")"));
+          }
+        }
+      }
       if (sp.count < 0) ck.Error("maps.json", spPath + ".count", "negative spawn count");
       // K5 packs (implementation-plan.md 3 K5): a mix's counts sum to the entry's count, its ids are monsters, the leader
       // is a member, and the story boss keeps an entry of its own (its once-per-visit spawn reads the entry's monsterId).
@@ -719,6 +737,10 @@ bool DataStore::Finalize(DataLoadReport& report) {
     for (size_t i = 0; i < s.spawns.size(); ++i) {
       if (!inSub(s.spawns[i].pos)) ck.Error("maps.json", StrCat(path, ".spawns[", i, "]"), "spawn outside the sub-dungeon grid");
       if (s.spawns[i].count < 0) ck.Error("maps.json", StrCat(path, ".spawns[", i, "].count"), "negative spawn count");
+      if (s.spawns[i].hasGeneratorAnchor) {
+        ck.Error("maps.json", StrCat(path, ".spawns[", i, "].at"),
+                 "only a generated map's spawn has `at` (a hand-authored sub-dungeon has no generator: move the entry)");
+      }
     }
     if (!s.hasMap) continue;
     // K7 hand-authored sub-dungeon (the zone map's own rules ran above with the maps): the tiles the hero, the exit, the

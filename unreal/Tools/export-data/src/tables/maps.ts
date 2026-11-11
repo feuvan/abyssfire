@@ -145,7 +145,10 @@ function checkSpawns(where: string, zoneId: string, spawns: readonly RemakeMapSp
         assert(l.dCol !== 0 || l.dRow !== 0, `${dAt}.line: a line needs a step (dCol / dRow not both 0)`);
         // The most members the entry ever spawns: its count or a variant's (MapData.h SpawnMaxMembers).
         const members = Math.max(sp.count, ...(sp.variants ?? []).map(v => v.count));
-        const tileOf = (k: number) => ({ col: sp.col + (l.dCol as number) * k, row: sp.row + (l.dRow as number) * k });
+        // The line starts where the pack stands (MapData.h DormantLineTile reads MapSpawnDef::pos): the entry's `at`
+        // when it has one (map.spawnAt; its shape is checked with the map below), else its col / row.
+        const lineAt = sp.at && Number.isInteger(sp.at.col) && Number.isInteger(sp.at.row) ? sp.at : sp;
+        const tileOf = (k: number) => ({ col: lineAt.col + (l.dCol as number) * k, row: lineAt.row + (l.dRow as number) * k });
         const last = tileOf(Math.max(0, members - 1));
         assert(last.col >= 0 && last.row >= 0 && last.col < cols && last.row < rows,
           `${dAt}.line: the line's last member (${last.col},${last.row}) stands outside the grid`);
@@ -182,8 +185,9 @@ function checkSubDungeon(id: string, raw: RemakeSubDungeon, all: Readonly<Record
       assert((raw as unknown as Record<string, unknown>)[key] === undefined, `${where}.${key}: only a hand-authored sub-dungeon (one with tiles) has it`);
     }
     for (const [i, sp] of raw.spawns.entries()) {
-      for (const key of ['mix', 'leader', 'variants', 'dormant', 'guard']) {
-        assert((sp as unknown as Record<string, unknown>)[key] === undefined, `${where}.spawns[${i}].${key}: only a hand-authored sub-dungeon's spawn has it`);
+      for (const key of ['mix', 'leader', 'variants', 'dormant', 'guard', 'at']) {
+        assert((sp as unknown as Record<string, unknown>)[key] === undefined, `${where}.spawns[${i}].${key}: ` +
+          (key === 'at' ? "only a map's spawn has it" : "only a hand-authored sub-dungeon's spawn has it"));
       }
     }
     return out;
@@ -212,6 +216,7 @@ function checkSubDungeon(id: string, raw: RemakeSubDungeon, all: Readonly<Record
   let guards = 0;
   raw.spawns.forEach((sp, i) => {
     assert(sp.guard === undefined || typeof sp.guard === 'boolean', `${where}.spawns[${i}].guard: a boolean`);
+    assert(sp.at === undefined, `${where}.spawns[${i}].at: only a generated map's spawn has it (a hand-authored sub-dungeon has no generator: move the entry)`);
     if (sp.guard) assert(++guards <= 1, `${where}.spawns[${i}].guard: a second guard entry (the guardian joins one pack)`);
   });
   const entrances = ((parent as unknown as RemakeMapData).subDungeonEntrances ?? []).filter(e => e.targetSubDungeon === id);
@@ -286,6 +291,25 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
     checkSpawns(`maps.${id}`, id, raw.spawns as RemakeMapSpawn[], raw.cols, raw.rows);
     (raw.spawns as RemakeMapSpawn[]).forEach((sp, i) =>
       assert(sp.guard === undefined, `maps.${id}.spawns[${i}].guard: only a spawn of a hand-authored sub-dungeon guards its guardian`));
+    // Stage H (LoadWorld.cpp, MapData.h MapSpawnDef::generatorAnchor): `at` {col, row} is where the pack stands; the
+    // entry's col / row stay the generator's inputs, so the golden map does not move. A generated map only, an integer
+    // tile of the grid that is not the entry's own, and a walkable tile of the generated map.
+    (raw.spawns as RemakeMapSpawn[]).forEach((sp, i) => {
+      if (sp.at === undefined) return;
+      const at = `maps.${id}.spawns[${i}].at`;
+      assert(generated, `${at}: only a generated map's spawn has it (move the entry of a hand-built map)`);
+      assert(sp.at && typeof sp.at === 'object' && !Array.isArray(sp.at), `${at}: expected {col, row}`);
+      for (const k of Object.keys(sp.at)) assert(['col', 'row'].includes(k), `${at}: unknown field '${k}'`);
+      assert(Number.isInteger(sp.at.col) && Number.isInteger(sp.at.row) && sp.at.col >= 0 && sp.at.row >= 0 &&
+        sp.at.col < raw.cols && sp.at.row < raw.rows, `${at}: tile (${sp.at.col},${sp.at.row}) outside the ${raw.cols}x${raw.rows} grid`);
+      assert(sp.at.col !== sp.col || sp.at.row !== sp.row, `${at}: the entry's own tile (omit it)`);
+      // Not inside a camp's safe radius (DataStore::Finalize; the zone's test is strict): every placement try would be
+      // refused there and the whole pack would stand on `at` itself, inside the camp.
+      for (const c of raw.camps) {
+        assert(Math.hypot(sp.at.col - c.col, sp.at.row - c.row) >= (raw.safeZoneRadius ?? 9),
+          `${at}: tile (${sp.at.col},${sp.at.row}) inside the safe radius of the camp at (${c.col},${c.row})`);
+      }
+    });
     // DataStore::Finalize: an exit leads to a zone proper (K7: a sub-dungeon is entered through an entrance).
     for (const e of raw.exits) {
       assert(!(AllSubDungeons as Record<string, unknown>)[e.targetMap],
@@ -326,6 +350,12 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
       for (let r = 0; r < gen.rows; r++) for (let c = 0; c < gen.cols; c++) {
         assert(gen.collisions[r][c] === !blocking.includes(gen.tiles[r][c]), `${id}: collisions not derived from tiles at ${c},${r}`);
       }
+    }
+    // Stage H: a pack that stands off its generator anchor (`spawns[].at`) stands on a walkable tile of the generated map.
+    for (const [i, sp] of (raw.spawns as RemakeMapSpawn[]).entries()) {
+      if (sp.at === undefined) continue;
+      assert(!blocking.includes(gen.tiles[sp.at.row][sp.at.col]),
+        `maps.${id}.spawns[${i}].at: tile (${sp.at.col},${sp.at.row}) of the generated map is not walkable (tile id ${gen.tiles[sp.at.row][sp.at.col]})`);
     }
     const h = hashes(gen);
     const spec = SPEC_GOLDEN[id];

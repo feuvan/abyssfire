@@ -64,7 +64,7 @@
         {
           "kind": "hunt",
           "monsters": ["risen_footman"],
-          "anchor": [25, 20],
+          "anchor": [30, 24],
           "maxSec": 600,
           "until": [
             {"kind": "questDone", "quest": "q_rf_burial_detail"}

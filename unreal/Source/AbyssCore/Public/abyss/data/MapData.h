@@ -88,7 +88,16 @@ struct MapSpawnDef {
   // has a packAggro, and his alarm reaches the members that have one or still stand dormant (MonsterSystem::PackAlarm).
   // Only on a spawn of a hand-authored sub-dungeon, at most one entry (DataStore::Finalize).
   bool guard = false;
+  // Dark remake (remake schema map.spawnAt; maps.json spawns[].at): the pack stands at `pos` while the map generator
+  // keeps the entry's authored col / row (generatorAnchor) for its clearing, its path and its keep-clear circle, so
+  // moving a pack does not move the generated map (DECISIONS DR4). Unset: the generator reads `pos` (every web entry).
+  // Only on a spawn of a generated map (DataStore::Finalize).
+  bool hasGeneratorAnchor = false;
+  TilePos generatorAnchor{};
 };
+
+// The tile the map generator reads for the entry (MapGen: clearing, path, keep-clear, no tall props).
+inline TilePos SpawnGeneratorAnchor(const MapSpawnDef& s) { return s.hasGeneratorAnchor ? s.generatorAnchor : s.pos; }
 
 // The most members the entry ever spawns: its `count` (a mix sums to it) or the count of a K6 variant.
 inline int32_t SpawnMaxMembers(const MapSpawnDef& s) {

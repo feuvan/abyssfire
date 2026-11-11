@@ -57,7 +57,7 @@ the export is byte-identical to the web's).
   `unreal/GameData/world.ts` `REMAKE_OVERRIDES` per entry — `replace` / `add` / `remove`, via `overrideEntries` /
   `overrideById` — in `world.ts` (achievements, random-event zones + the wandering merchant, zone moods: themeByZone,
   moods, palettes, weather, weatherByTheme, campThemes, fog), `combat.ts` (elite affix definitions + `order`, zone affix
-  counts) and `ui.ts` (terrain styles). Unknown override tables, entry keys that the web table lacks (replace / remove)
+  counts) and `ui.ts` (terrain styles and `themeParents`, the remake's theme -> parent theme table). Unknown override tables, entry keys that the web table lacks (replace / remove)
   or already has (add), and a table present in REMAKE_OVERRIDES but never applied fail the export.
 * **`remake` blocks**: `main.ts` appends `{"remake": {...}}` to each written table and golden fixture the remake
   changed — override records (`replaced` / `added` / `removed`; `config.<key>` for a GameData/config.ts value that

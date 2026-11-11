@@ -59,7 +59,7 @@ one at a time (monsters.md §1.4).
 | Knellwatch (hub) | 丧钟堡 | camp (15,15), safe r9 | — | the hearth, the bell frame, the Name Wall, six NPC slots |
 | The burn pit | 焚尸坑 | playerStart (15,22) | — | where the hero wakes; the Pit entrance at (17,26) [sealed until W3] |
 | The Boneyard Gate | 埋骨门 | (10,32) | — | where the burial road leaves the fort; M5's siege |
-| Burial Trenches | 埋骨壕 | spawn (25,20), M1 area (32,12) r12 | 1-2 | risen footmen (the burial detail); barrowmoss along the edge (22,26) |
+| Burial Trenches | 埋骨壕 | the detail stands at (30,24) (generator anchor (25,20), §17), M1 area (32,12) r12 | 1-2 | risen footmen (the burial detail); barrowmoss along the edge (22,26) |
 | The Seep | 渗血洼 | spawn (20,45) | 2 | breachclots in black pools |
 | The Gnawed Field | 啃食之野 | spawn (35,40), M2 area (34,40) r15 | 3 | gravegnawers; the Marshal's Last Order on a post (45,35); Hungerbell prowls there |
 | Marl's dressing station | 救护站 | field NPC (50,30) | — | a roofless toll-house, cots, a lantern |
@@ -251,7 +251,9 @@ Corpseherd keeps them walking. This puts the raiser lesson on the main path befo
 
 The gate is 18 tiles from the camp centre, so neither the waves (spawned on the far half-ring, r8) nor a hero defending
 the gate can use the camp's safe radius (9). The gate's HP uses today's defend formula; a defend wave never respawns
-(M4). The regular trench spawn at (25,20) sits 13 tiles away; its footmen may join, which is intended.
+(M4). The regular trench detail stands at (30,24) since stage H (§17), 21.5 tiles from the gate (its entry tile
+(25,20) is 19.2 away; an earlier note here said 13 and that its footmen "may join"): with an aggro range of 4 and a
+patrol of 2 around their placement the footmen are no part of the siege at either tile; the waves are the fight.
 
 | Line | zh-CN | en |
 |---|---|---|
@@ -833,7 +835,7 @@ sheen. Camp theme `march`: charred timber, pew palisade, Knellwatch banner (blac
 
 ## 17. Map and spawn changes
 
-**Map-generator inputs kept** (zero churn): 10 spawn positions, both camps, playerStart (15,22), the exit (119,60),
+**Map-generator inputs kept** (zero churn): 10 spawn positions (an entry's `col` / `row`), both camps, playerStart (15,22), the exit (119,60),
 field-NPC tiles (50,30) (70,65), the hidden area (108,108) r6, the three story decorations (positions and `spriteType`),
 the four lore positions, the mini-boss spawn (60,55), and for the ten kept quest slots (in their `AllQuests` order) every
 questArea, objective location, gather area and count, clue and escort start / destination listed in §5-6.
@@ -853,7 +855,7 @@ Expected re-pins: `world_test` avoid-list size (28 → 30), RNG trace checkpoint
 
 | Anchor | Area | W1 entry (one id) | W2 mix (same count) |
 |---|---|---|---|
-| (25,20) | Burial Trenches | `risen_footman` ×8 | unchanged |
+| (25,20), pack at (30,24) | Burial Trenches | `risen_footman` ×8 | unchanged |
 | (35,40) | Gnawed Field | `gravegnawer` ×8 | unchanged |
 | (20,45) | The Seep | `breachclot` ×7 | unchanged |
 | (85,18) | Weeping Ditch | `cinderbloat` ×6 | `cinderbloat` ×3 + `breachclot` ×3 |
@@ -863,6 +865,15 @@ Expected re-pins: `world_test` avoid-list size (28 → 30), RNG trace checkpoint
 | (15,95) | Breach Rim | `valdras` ×1 (storyBoss) | unchanged |
 | (80,75) | Deserters' Hollow | `deserter` ×6 | `deserter` ×4 (one elite leader) + `deserter_drummer` ×1 + `deserter` ×1 |
 | (95,90) | Crowmarket midden | `bonegorger` ×3 | `bonegorger` ×1 + `gravegnawer` ×2 |
+
+*Stage H (handoff from the engine stage):* the first Mac run met a Risen Footman at Knellwatch's east palisade on
+arrival. The trench entry sat 10 tiles from playerStart and 11 from the camp centre; the placement jitter (3) and a
+patrol step (2) covered the rest. The detail now **stands at (30,24)** (spawn `at`, feature `map.spawnAt`): 15.1 tiles
+from playerStart, 17.5 from the camp centre, on S3's first clue, whose landmark already keeps that ground dry. Its
+`col` / `row` stay (25,20) and stay the generator's inputs (the clearing, the path, the keep-clear circle), because a
+spawn's tile seeds a drunk walk and every later draw follows it: moving it re-rolls the whole map (DR4). The golden
+map, its RNG checkpoints and the A* routes do not move. `playerStart` stays (15,22) for the same reason (it is the
+start of three walks); the belfry in front of it is faded by the presentation.
 
 Mini-boss `miniboss_corpseherd` at (60,55); hunts at (45,35), (60,48), (82,72). Respawn 15 s for regulars outside the
 Breach Rim; the Rim's regulars do not respawn while Valdras lives. `emerald_plains` keeps exactly one elite affix.

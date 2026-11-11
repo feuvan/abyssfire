@@ -2638,6 +2638,107 @@ TEST_SUITE("world") {
     }
   }
 
+  // Stage H (remake schema map.spawnAt; MapData.h MapSpawnDef::generatorAnchor): a pack that stands off its entry's
+  // generator tile. The generated map follows col / row alone; the pack, its respawn and the checks follow `at`.
+  TEST_CASE("map.spawnAt: the pack stands at `at`, the generator keeps the entry's tile; the data rules") {
+    const DataStore& real = test::RealData();
+    const MapDef* shipped = real.FindMap(test::ch1::kZone);
+    REQUIRE(shipped != nullptr);
+    REQUIRE_FALSE(shipped->spawns.empty());
+    REQUIRE(shipped->spawns[0].hasGeneratorAnchor);  // the shipped trench detail
+    // Without its `at` the same map is generated, tile for tile and decoration for decoration.
+    {
+      DataLoadReport report;
+      const std::unique_ptr<DataStore> plain = K7LoadEdited(
+          {{"maps.json", [](JsonValue& doc) {
+              JsonValue& sp = K7At(doc, {"maps", test::ch1::kZone, "spawns"})->MutableItems()[0];
+              REQUIRE(sp.Find("at") != nullptr);
+              sp.Remove("at");
+            }}},
+          report);
+      INFO(report.Summary());
+      REQUIRE(report.Ok());
+      const MapDef* m = plain->FindMap(test::ch1::kZone);
+      REQUIRE(m != nullptr);
+      CHECK_FALSE(m->spawns[0].hasGeneratorAnchor);
+      CHECK(m->spawns[0].pos == shipped->spawns[0].generatorAnchor);
+      CHECK(SpawnGeneratorAnchor(m->spawns[0]) == SpawnGeneratorAnchor(shipped->spawns[0]));
+      const ZoneGrid a = BuildRawZoneGrid(real, *shipped);
+      const ZoneGrid b = BuildRawZoneGrid(*plain, *m);
+      REQUIRE(a.Cols() == b.Cols());
+      REQUIRE(a.Rows() == b.Rows());
+      int32_t differ = 0;
+      for (int32_t r = 0; r < a.Rows(); ++r) {
+        for (int32_t c = 0; c < a.Cols(); ++c) differ += a.Tile(c, r) != b.Tile(c, r) ? 1 : 0;
+      }
+      CHECK(differ == 0);
+      REQUIRE(a.Decorations().size() == b.Decorations().size());
+      for (size_t i = 0; i < a.Decorations().size(); ++i) {
+        CHECK(a.Decorations()[i].col == b.Decorations()[i].col);
+        CHECK(a.Decorations()[i].row == b.Decorations()[i].row);
+        CHECK(a.Decorations()[i].type == b.Decorations()[i].type);
+      }
+    }
+    // The rules: a tile of the grid, {col, row} only; never on a sub-dungeon's spawn (hand-authored: no generator;
+    // generated: nothing spawns it).
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", [](JsonValue& doc) {
+        K7At(doc, {"maps", test::ch1::kZone, "spawns"})->MutableItems()[1].Set("at", K7Parse(R"({"col": 500, "row": 3})"));
+      });
+      CHECK(K7HasIssue(bad.errors, StrCat("maps.", test::ch1::kZone, ".spawns[1].at"), "outside the"));
+    }
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", [](JsonValue& doc) {
+        K7At(doc, {"maps", test::ch1::kZone, "spawns"})->MutableItems()[1].Set("at", K7Parse(R"({"col": 30, "row": 24, "radius": 2})"));
+      });
+      CHECK(K7HasIssue(bad.errors, "at", "unknown spawn at field 'radius'"));
+    }
+    // Stage H review: not inside a camp's safe radius (every placement try would be refused and the pack would stand
+    // on `at`, in the camp), and only on a generated map (a hand-built zone map has no generator tile to keep).
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", [](JsonValue& doc) {
+        K7At(doc, {"maps", test::ch1::kZone, "spawns"})->MutableItems()[1].Set("at", K7Parse(R"({"col": 20, "row": 20})"));
+      });
+      CHECK(K7HasIssue(bad.errors, StrCat("maps.", test::ch1::kZone, ".spawns[1].at"), "inside the safe radius of the camp at (15,15)"));
+    }
+    {
+      // (24,15) is 9 tiles from the camp centre: on the radius is outside (the zone's test is strict)
+      DataLoadReport report;
+      const std::unique_ptr<DataStore> edge = K7LoadEdited(
+          {{"maps.json", [](JsonValue& doc) {
+              K7At(doc, {"maps", test::ch1::kZone, "spawns"})->MutableItems()[1].Set("at", K7Parse(R"({"col": 24, "row": 15})"));
+            }}},
+          report);
+      INFO(report.Summary());
+      CHECK(report.Ok());
+    }
+    {
+      const std::string monster = shipped->spawns[0].monsterId;
+      const DataLoadReport bad = K7BadLoad("maps.json", [&monster](JsonValue& doc) {
+        JsonValue* tower = K7At(doc, {"maps", "ember_tower"});
+        REQUIRE(tower->Get("generated").AsBool(true) == false);  // the hand-built zone map
+        tower->FindMutable("spawns")->Append(K7Parse(
+            StrCat(R"({"col": 5, "row": 5, "at": {"col": 6, "row": 6}, "monsterId": ")", monster, R"(", "count": 1})")));
+      });
+      CHECK(K7HasIssue(bad.errors, "maps.ember_tower.spawns[0].at", "only a generated map's spawn has `at`"));
+    }
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", K7EditSub([](JsonValue& rec) {
+        JsonValue& sp = rec.FindMutable("spawns")->MutableItems()[0];
+        sp.Set("at", K7Parse(StrCat("{\"col\": ", sp.Get("col").AsInt64(0), ", \"row\": ", sp.Get("row").AsInt64(0), "}")));
+      }));
+      CHECK(K7HasIssue(bad.errors, "subDungeons.sub_fx_k7_crypt.spawns[0].at", "only a generated map's spawn has `at`"));
+    }
+    {
+      const DataLoadReport bad = K7BadLoad("maps.json", [](JsonValue& doc) {
+        JsonValue& gen = K7At(doc, {"subDungeons"})->MutableMembers()[0].value;
+        REQUIRE(gen.Find("tiles") == nullptr);
+        gen.FindMutable("spawns")->MutableItems()[0].Set("at", K7Parse(R"({"col": 1, "row": 1})"));
+      });
+      CHECK(K7HasIssue(bad.errors, "at", "a generated sub-dungeon's spawn has no 'at'"));
+    }
+  }
+
   TEST_CASE("K7 spawns: a sub-dungeon spawn takes a flag variant and a pack leader, as a map spawn does") {
     DataLoadReport r;
     K7Edits e = K7BaseEdits();
@@ -2912,6 +3013,7 @@ TEST_SUITE("world") {
     // Pinned on GCC and Clang (determinism across compilers; re-pin with the value the message prints when the event
     // order of a visit changes on purpose).
     // 3B review: re-pinned - the cleanse now settles what still stood (EvMonsterCollapsed for each).
-    CHECK(a == 10366311907818012538ull);
+    // Stage H: re-pinned - the parent zone's trench detail stands at (30,24) (map.spawnAt), so its placements move.
+    CHECK(a == 904783347280090348ull);
   }
 }

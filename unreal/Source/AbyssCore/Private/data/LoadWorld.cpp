@@ -40,7 +40,7 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
     sp.monsterId = s.Str("monsterId");
     sp.count = s.Int("count");
     if (!packs) {
-      for (const char* key : {"mix", "leader", "variants", "dormant", "guard"}) {
+      for (const char* key : {"mix", "leader", "variants", "dormant", "guard", "at"}) {
         if (s.Has(key)) {
           s.Child(key).Error(std::string("a generated sub-dungeon's spawn has no '") + key +
                              "' (only a hand-authored sub-dungeon, one with tiles, is entered)");
@@ -120,6 +120,16 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
     }
     // K7 (3B review; remake schema subDungeon.spawnGuard): the entry guards the sub-dungeon's guardian (MapData.h).
     sp.guard = s.Bool("guard", false);
+    // Dark remake (remake schema map.spawnAt): `at` {col, row} is where the pack stands; the entry's col / row stay the
+    // generator's anchor (MapData.h MapSpawnDef::generatorAnchor; DataStore checks both tiles and refuses it on a
+    // hand-authored sub-dungeon, which has no generator).
+    if (s.Has("at")) {
+      const JNode a = s.Child("at");
+      ReadSpawnCheckKeys(a, {"col", "row"}, "spawn at");
+      sp.hasGeneratorAnchor = true;
+      sp.generatorAnchor = sp.pos;
+      sp.pos = TilePos{a.Int("col"), a.Int("row")};
+    }
     out.push_back(std::move(sp));
   }
   return out;

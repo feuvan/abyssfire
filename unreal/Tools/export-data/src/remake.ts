@@ -86,6 +86,10 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
   // registered too; tables/maps.ts refuses it there, as DataStore::Finalize does.
   { kind: 'map', path: 'spawns[].guard', feature: 'subDungeon.spawnGuard', wave: 3 },
   { kind: 'subDungeon', path: 'spawns[].guard', feature: 'subDungeon.spawnGuard', wave: 3 },
+  // Stage H: a pack that stands off its generator anchor (MapSpawnDef::generatorAnchor). The spawn type is shared, so a
+  // sub-dungeon's spawn is registered too; tables/maps.ts refuses it there, as LoadWorld.cpp / DataStore::Finalize do.
+  { kind: 'map', path: 'spawns[].at', feature: 'map.spawnAt', wave: 3 },
+  { kind: 'subDungeon', path: 'spawns[].at', feature: 'map.spawnAt', wave: 3 },
   { kind: 'npc', path: 'lines', feature: 'npc.lines', wave: 2 },
   { kind: 'npc', path: 'visibleWhen', feature: 'npc.visibleWhen', wave: 2 },
   { kind: 'cutscene', path: 'steps[].anim', feature: 'story.focusAnim', wave: 1 },
@@ -275,13 +279,13 @@ export type OverridePath =
   | 'zoneMoods.themeByZone' | 'zoneMoods.moods' | 'zoneMoods.palettes' | 'zoneMoods.weather' | 'zoneMoods.weatherByTheme'
   | 'zoneMoods.campThemes' | 'zoneMoods.fog' | 'zoneMoods.lightScale' | 'zoneMoods.moodWeather' | 'zoneMoods.windupTint'
   | 'eliteAffixes.definitions' | 'eliteAffixes.zoneAffixCounts'
-  | 'terrainStyles'
+  | 'terrainStyles' | 'themeParents'
   | 'statusEffects';
 
 const OVERRIDE_PATHS: readonly OverridePath[] = ['achievements', 'randomEvents', 'zoneMoods.themeByZone', 'zoneMoods.moods',
   'zoneMoods.palettes', 'zoneMoods.weather', 'zoneMoods.weatherByTheme', 'zoneMoods.campThemes', 'zoneMoods.fog',
   'zoneMoods.lightScale', 'zoneMoods.moodWeather', 'zoneMoods.windupTint',
-  'eliteAffixes.definitions', 'eliteAffixes.zoneAffixCounts', 'terrainStyles', 'statusEffects'];
+  'eliteAffixes.definitions', 'eliteAffixes.zoneAffixCounts', 'terrainStyles', 'themeParents', 'statusEffects'];
 const ENTRY_KEYS = new Set(['replace', 'add', 'remove']);
 const applied = new Set<OverridePath>();
 

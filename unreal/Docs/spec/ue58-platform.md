@@ -608,7 +608,10 @@ FrameRateLimit=0.000000
   tracing, mesh distance fields, static lighting, sky atmosphere, auto exposure, motion blur, AO. All lighting is the
   zone's movable directional light + per-material ambient (§6.5).
 * Shadows: movable directional light with **CSM**, `DynamicShadowDistanceMovableLight` ≈ 3500 cm (the parity camera
-  sees ≈ 16 × 9 m), 2 cascades (balanced) / 3 (high), `r.Shadow.MaxCSMResolution` 2048. Characters are Unlit but still
+  sees ≈ 16 × 9 m), 2 cascades (balanced) / 3 (high), `r.Shadow.MaxCSMResolution` 2048. *As built (DECISIONS P10,
+  binding over this line):* **1 cascade on every desktop tier**, distance 1.35 × the live camera distance (2870 cm at
+  the default framing), `r.Shadow.MaxCSMResolution` 2048 on low / 4096 on balanced and high, and a 5 % fade at the
+  shadow distance set on the light (`ShadowDistanceFadeoutFraction`; no console variable). Characters are Unlit but still
   **cast** shadows (`bCastDynamicShadow` is independent of the shading model) **[API]**; only lit materials (ground,
   optionally props) **receive** them (§6.5).
 
@@ -627,7 +630,8 @@ FrameRateLimit=0.000000
   d-buffer decals supported since 5.5.
 * Shadows per tier: **low = blob only** (`art-inventory-ch1.md` §1.4 contact shadows), **balanced = blob + 1 CSM
   cascade 1024²**, **high = blob + 2 cascades 2048²** (`r.Shadow.CSM.MaxMobileCascades`, `r.Shadow.MaxCSMResolution`
-  per device profile).
+  per device profile). *As built (DECISIONS P10):* low and balanced = blob only (`MaxMobileCascades` 0), high = blob +
+  **1 cascade** 2048².
 * Many small lights (torches, spell glows, loot pools — web `LightingSystem` caps 8/16/32 by tier,
   `src/rendering/RenderQuality.ts:13-24`) are **fake lights**: additive unlit "light pool" quads/decals and emissive
   bloom, not `UPointLightComponent`s. Desktop may add ≤ 4 real point lights for hero-adjacent effects.

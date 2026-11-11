@@ -43,7 +43,7 @@
       "file": "autopilot_routes.json",
       "counts": {"routes": 1, "steps": 113},
       "bytes": 10206,
-      "sha256": "d11a4d1dc453a6a96303627e889039bb9a224aa92477bb99fec98aaa8fc31432"
+      "sha256": "e579d945b9e9e8f970b8523b7ed9d7d990f611d25c1f2c4bb921810b32fc37b3"
     },
     {
       "file": "buff_caps.json",
@@ -170,8 +170,8 @@
     {
       "file": "maps.json",
       "counts": {"maps": 6, "subDungeons": 3},
-      "bytes": 54273,
-      "sha256": "3310c7159b44783823b201807192bace4908c700a1eedd5ff9402e3146a778ac"
+      "bytes": 54313,
+      "sha256": "41f5dcc45f0da93709cd9c62d37a49fc499e646474569d44587bc268bd1db322"
     },
     {
       "file": "minibosses.json",
@@ -301,9 +301,9 @@
     },
     {
       "file": "terrain_styles.json",
-      "counts": {"themes": 7},
-      "bytes": 26465,
-      "sha256": "0488f60d36c9a1dfc0d289c740f8d482cbdfab3b0a5860e259117b353423507d"
+      "counts": {"themes": 7, "themeParents": 1},
+      "bytes": 26521,
+      "sha256": "68d21c3157832e89bf9e69ac8830ec1131aea468e27f4985bbbdf6c7110aa8ef"
     },
     {
       "file": "ui_theme.json",

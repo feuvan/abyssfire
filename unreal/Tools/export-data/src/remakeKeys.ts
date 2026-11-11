@@ -84,7 +84,7 @@ const mapEntrance = {
 type WebSpawn = Elem<Web.MapData['spawns']>;
 const mapSpawn = {
   web: { col: true, row: true, monsterId: true, count: true } satisfies Exact<KeysOf<WebSpawn>>,
-  remake: { mix: true, leader: true, variants: true, dormant: true, guard: true } satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
+  remake: { mix: true, leader: true, variants: true, dormant: true, guard: true, at: true } satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
 };
 
 // K7: a sub-dungeon (maps.json subDungeons); a hand-authored one carries its map.
@@ -97,7 +97,7 @@ const subDungeon = {
 type WebSubSpawn = Elem<Web.SubDungeonMapData['spawns']>;
 const subDungeonSpawn = {
   web: { col: true, row: true, monsterId: true, count: true } satisfies Exact<KeysOf<WebSubSpawn>>,
-  remake: { mix: true, leader: true, variants: true, dormant: true, guard: true } satisfies Exact<Remade<Elem<GD.SubDungeonMapData['spawns']>, WebSubSpawn>>,
+  remake: { mix: true, leader: true, variants: true, dormant: true, guard: true, at: true } satisfies Exact<Remade<Elem<GD.SubDungeonMapData['spawns']>, WebSubSpawn>>,
 };
 
 type Npc = Web.NPCDefinition;

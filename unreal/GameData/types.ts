@@ -458,6 +458,15 @@ export type MapSpawn = Web.MapData['spawns'][number] & {
    * per flag; never the story boss, nor on its entry.
    */
   variants?: RemakeSpawnVariant[];
+  /**
+   * [W3] Where the pack stands when that is not the entry's `col` / `row` (feature `map.spawnAt`; MapData.h
+   * MapSpawnDef::generatorAnchor). `col` / `row` are generator inputs (the clearing, the path to the nearest camp, the
+   * keep-clear circle), and the generator's draws follow them: moving one re-rolls the whole map (DECISIONS DR4). An
+   * entry with `at` keeps its generator tile and spawns, respawns and is guided to at `at` (an integer tile of the
+   * grid, outside every camp's safe radius; the exporter checks that the generated map is walkable there). Only on a
+   * spawn of a generated map. A dormant `line` starts at `at`.
+   */
+  at?: { col: number; row: number };
 };
 
 /** [W2] One K6 spawn variant (MapData.h MapSpawnVariantDef). */

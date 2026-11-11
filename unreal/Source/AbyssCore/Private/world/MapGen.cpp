@@ -296,7 +296,10 @@ std::vector<Decoration> ScatterDecorations(const MapDef& map, const MapThemeDef&
     block(noTall, e.pos.col, e.pos.row, 3);
   }
   for (const StoryDecorationDef& d : map.storyDecorations) block(noTall, d.pos.col, d.pos.row, 2);
-  for (const MapSpawnDef& s : map.spawns) block(noTall, s.pos.col, s.pos.row, 2);
+  for (const MapSpawnDef& s : map.spawns) {
+    const TilePos at = SpawnGeneratorAnchor(s);
+    block(noTall, at.col, at.row, 2);
+  }
 
   const bool dirtIsGround = config.primaryTile == kDirt;
   auto isPath = [&tiles](int32_t r, int32_t c) {
@@ -473,7 +476,10 @@ ZoneGrid GenerateMap(const MapGenDef& gen, const MapGenInput& in, MapGenTrace* t
   }
 
   // (x) clearings (skip camp tiles)
-  for (const MapSpawnDef& s : map.spawns) ClearArea(tiles, s.pos.col, s.pos.row, 2, primary, true);
+  for (const MapSpawnDef& s : map.spawns) {
+    const TilePos at = SpawnGeneratorAnchor(s);  // map.spawnAt: the generator keeps the authored tile
+    ClearArea(tiles, at.col, at.row, 2, primary, true);
+  }
   for (const MapExitDef& e : map.exits) ClearArea(tiles, e.pos.col, e.pos.row, 1, primary, true);
   ClearArea(tiles, map.playerStart.col, map.playerStart.row, 2, primary, true);
   for (const FieldNpcDef& n : map.fieldNpcs) ClearArea(tiles, n.pos.col, n.pos.row, 1, primary, true);
@@ -494,16 +500,17 @@ ZoneGrid GenerateMap(const MapGenDef& gen, const MapGenInput& in, MapGenTrace* t
   }
   for (const MapExitDef& e : map.exits) walk(map.playerStart, e.pos);
   for (const MapSpawnDef& s : map.spawns) {
+    const TilePos at = SpawnGeneratorAnchor(s);
     TilePos nearest = map.playerStart;
-    int32_t best = std::abs(s.pos.col - nearest.col) + std::abs(s.pos.row - nearest.row);
+    int32_t best = std::abs(at.col - nearest.col) + std::abs(at.row - nearest.row);
     for (const MapCampDef& c : map.camps) {
-      const int32_t d = std::abs(s.pos.col - c.pos.col) + std::abs(s.pos.row - c.pos.row);
+      const int32_t d = std::abs(at.col - c.pos.col) + std::abs(at.row - c.pos.row);
       if (d < best) {
         best = d;
         nearest = c.pos;
       }
     }
-    walk(s.pos, nearest);
+    walk(at, nearest);
   }
   if (trace != nullptr) checkpoint(trace->afterPaths, trace->drawsPaths);
 
@@ -516,7 +523,7 @@ ZoneGrid GenerateMap(const MapGenDef& gen, const MapGenInput& in, MapGenTrace* t
   };
   add(map.playerStart, 5);
   for (const MapCampDef& c : map.camps) add(c.pos, 9);
-  for (const MapSpawnDef& s : map.spawns) add(s.pos, 4);
+  for (const MapSpawnDef& s : map.spawns) add(SpawnGeneratorAnchor(s), 4);
   for (const MapExitDef& e : map.exits) add(e.pos, 4);
   for (const FieldNpcDef& n : map.fieldNpcs) add(n.pos, 3);
   for (const SubDungeonEntranceDef& e : map.subDungeonEntrances) add(e.pos, 3);
@@ -666,7 +673,10 @@ void CollectAnchors(const MapDef& map, const DataStore& data, std::vector<TilePo
     }
   }
   for (const FieldNpcDef& n : map.fieldNpcs) out.push_back(n.pos);
-  for (const MapSpawnDef& s : map.spawns) out.push_back(s.pos);
+  for (const MapSpawnDef& s : map.spawns) {
+    out.push_back(s.pos);
+    if (s.hasGeneratorAnchor) out.push_back(s.generatorAnchor);  // map.spawnAt: both tiles stay open
+  }
   for (const MapExitDef& e : map.exits) {
     const int32_t ic = e.pos.col == 0 ? 1 : e.pos.col == map.cols - 1 ? map.cols - 2 : e.pos.col;
     const int32_t ir = e.pos.row == 0 ? 1 : e.pos.row == map.rows - 1 ? map.rows - 2 : e.pos.row;

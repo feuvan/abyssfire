@@ -8,7 +8,8 @@ import type { MapData } from '../types';
  * Chapter 1 of the dark remake: 赤幡原 / The Red Field (Docs/dark-remake/chapter1.md §1, §17). The zone id stays
  * `emerald_plains` (DR3) and the generator theme stays `plains`.
  *
- * Generator inputs kept (zero churn, chapter1.md §17): the 10 spawn positions, both camps, playerStart, the exit, the
+ * Generator inputs kept (zero churn, chapter1.md §17): the 10 spawn positions (an entry's `col` / `row`; `at` moves the
+ * pack without them, stage H), both camps, playerStart, the exit, the
  * field-NPC tiles, the hidden area, the three story decorations (positions and spriteType), seed and theme. The one
  * golden re-baseline (DR4) adds the Pit entrance below (17,26); its other two changes are landmarks outside this file
  * (M5's defend target in ../quests/all_quests.ts, the three echo lore spots in ../loreCollectibles.ts).
@@ -37,8 +38,15 @@ export const EmeraldPlainsMap: MapData = {
   presentationTheme: 'march',
   spawns: [
     // Q1 — top-left quadrant
-    // Burial Trenches (M1); at dawn the dead lie down and the scavengers remain.
-    { col: 25, row: 20, monsterId: 'risen_footman', count: 8, variants: [{ whenFlag: 'rf_chapter_dawn', monsterId: 'gravegnawer', count: 8 }] },
+    // Burial Trenches (M1); at dawn the dead lie down and the scavengers remain. Stage H: the detail stands at (30,24),
+    // 15 tiles from where the hero wakes and 17 from Knellwatch's fire (at (25,20), 10 and 11 tiles away, its jitter 3
+    // and patrol 2 put a footman at the east palisade when the hero arrived). `col` / `row` stay the generator's inputs
+    // (the clearing and the path at (25,20)): the golden map does not move (DR4). (30,24) is S3's first clue, which
+    // already keeps that ground dry.
+    {
+      col: 25, row: 20, at: { col: 30, row: 24 }, monsterId: 'risen_footman', count: 8,
+      variants: [{ whenFlag: 'rf_chapter_dawn', monsterId: 'gravegnawer', count: 8 }],
+    },
     { col: 35, row: 40, monsterId: 'gravegnawer', count: 8 },         // the Gnawed Field (M2)
     { col: 20, row: 45, monsterId: 'breachclot', count: 7 },          // the Seep (S1)
     // Q2 — top-right quadrant

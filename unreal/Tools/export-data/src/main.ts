@@ -82,10 +82,15 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  *
  * 3B review: a sub-dungeon spawn's `guard` (LoadWorld.cpp -> MapSpawnDef::guard; MonsterSystem::
  * SpawnSubDungeonMiniBoss: the guardian joins that entry's pack). Checked by tables/maps.ts (checkSubDungeon).
+ *
+ * Stage H: a map spawn's `at` (LoadWorld.cpp -> MapSpawnDef::pos, with the entry's col / row kept as
+ * MapSpawnDef::generatorAnchor: MapGen reads the anchor, so a pack moves without the golden map). A generated map only,
+ * a walkable tile of the generated map outside every camp's safe radius; checked by tables/maps.ts.
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
   'map.sealedEntrances', 'map.presentationTheme', 'map.regions',
+  'map.spawnAt',
   'story.focusAnim',
   'story.triggerWhileQuest',
   'monster.abilities', 'monster.damageType', 'monster.hitCap',

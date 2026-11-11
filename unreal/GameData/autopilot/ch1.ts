@@ -52,7 +52,7 @@ export const CH1_ROUTE: AutoPilotRoute = {
     { kind: 'gather', quest: 'q_rf_barrowmoss', obj: 0, count: 5 },
     { kind: 'checkpoint', id: 'barrowmoss' },
     { kind: 'note', text: '== the trenches' },
-    { kind: 'hunt', monsters: ['risen_footman'], anchor: [25, 20], maxSec: 600,
+    { kind: 'hunt', monsters: ['risen_footman'], anchor: [30, 24], maxSec: 600,
       until: [{ kind: 'questDone', quest: 'q_rf_burial_detail' }] },
     { kind: 'checkpoint', id: 'trenches' },
     { kind: 'note', text: '== the Seep' },

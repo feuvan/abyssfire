@@ -169,6 +169,13 @@ export interface RemakeOverrides {
   /** terrain_styles.json `themes` (TerrainStyles TERRAIN_THEMES), by theme. */
   readonly terrainStyles?: EntryOverride<RemakeTerrainTheme>;
   /**
+   * terrain_styles.json `themeParents`, presentation theme -> its parent theme: the theme whose art, terrain style and
+   * camp kit a theme shows where it has none of its own (`<id>@pit`, then `<id>@march`, then `<id>`). The web has no
+   * such table (`add` only). The same relation as the art kit's `parent` (unreal/Art/blender/kit/theme.py THEMES); the
+   * exporter checks that both ends are terrain styles and that no chain loops.
+   */
+  readonly themeParents?: EntryOverride<string>;
+  /**
    * status_effects.json (K6), by status type: `add` only (the web's six keep their rules): the remake's statuses the core
    * knows (`ashnumb`). Feature `status.ashnumb` (checked by the exporter's combat.ts).
    */
@@ -523,6 +530,8 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
     definitions: { replace: affixDefinitions, add: { unburied: UNBURIED_AFFIX } },
   },
   terrainStyles: { add: { march: MARCH_TERRAIN, pit: PIT_TERRAIN } },
+  // The Pit is the march underground (implementation-plan 3C / 3D): what it does not have of its own it takes from `march`.
+  themeParents: { add: { pit: 'march' } },
   // monsters.md §4 (Wave 2, K6): 麻灰 Ashnumb, from breach-blood contact: each stack -10 % healing received, at most 5,
   // slowed 20 % at 5; one shared 6 s timer refreshed by every landed hit; the antidote cleanses it.
   statusEffects: {

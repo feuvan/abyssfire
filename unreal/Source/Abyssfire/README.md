@@ -705,7 +705,7 @@ particles alive on desktop (ceiling 525) and about 290 on a high-tier device (ce
    Knight's Strongbox; the rescue's 被缚的朝圣者 / The Bound Pilgrim) when those random events appear.
 4. The seeded husks of the march lie grey at once on the first entry.
 
-**P4. The Burial Trenches (25,20), M1.**
+**P4. The Burial Trenches (the detail stands at (30,24) since stage H), M1.**
 1. A Risen Footman kill: the Death clip at normal speed where it fell, a ~0.45 s hold, grey over ~0.4 s (the ink stays
    dark, no glowing eyes), a ~0.9 s crumble with ash dust (`death.unburied` on the kill); the blob shadow under the
    pelvis fading to a smudge; after ~20 s the husk blows away along +X. Its kettle helm stays on in life and turns to

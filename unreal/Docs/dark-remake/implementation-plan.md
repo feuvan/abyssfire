@@ -2749,6 +2749,87 @@ and nothing breaks without them).**
     room with three helm niches in the hero's light ((8,9) is 5 tiles from the arrival tile); the first fight is in
     the passage east of it.
 
+**Stage H outcomes (core / content handoff from the engine stage, 2026-11; pending review; DECISIONS DR17 *Stage H*,
+DR4, P10, DR16 items 19 / 44).**
+
+- **The trench detail off the camp (item 1).** `GameData/maps/emerald_plains.ts` spawn entry 0 keeps `col` / `row`
+  (25,20) and gains `at: {col: 30, row: 24}`: the eight footmen (and their dawn gnawers) stand, spawn and respawn at
+  (30,24), 15.1 tiles from playerStart and 17.5 from the camp centre. New remake field `map.spawnAt`
+  (`GameData/types.ts` `MapSpawn.at`; exporter `REMAKE_FIELDS`, `remakeKeys.ts`, `REMAKE_SCHEMA`, checks in
+  `tables/maps.ts`: a generated map only, on the grid, not the entry's own tile, walkable on the generated map; core
+  `MapSpawnDef::hasGeneratorAnchor` / `generatorAnchor`, `SpawnGeneratorAnchor`, read by `LoadWorld.cpp`, checked by
+  `DataStore::Finalize`, and `MapGen.cpp` reads the anchor in its four generator passes while the decoration-blocking
+  anchors keep both tiles). Why a field and not an edited tile: a spawn's tile starts a path walk and the generator's
+  later draws follow it; every one of seven candidates re-rolled the whole map and broke `setpieces_test.cpp`'s route
+  check (DR17 item 7). **The golden map did not move** (no fixture under `CoreTests/golden` changed; `SPEC_GOLDEN`
+  unchanged; RNG checkpoints, tile and decoration counts, the A* golden routes and the gather-spot hash keep their
+  pins). The AutoPilot hunt anchor of the trench step is (30,24). S1's `questArea` (25,20) is not moved (it is S1's
+  landmark, not the spawn's).
+- **Re-pinned, and why.** `content_ch1_test.cpp`: the trench entry's `pos` (30,24) with its anchor (25,20); the
+  "every spawn tile is dirt" fact now reads the generator anchor and asks the pack's tile to be walkable; new facts:
+  no monster of the zone's population within 12 tiles of playerStart or 13 of the camp centre. `world_state_test.cpp`
+  K6 replay digest `625d27542beac8fa` and `subdungeon_test.cpp` K7 replay digest `904783347280090348` (the zone's
+  placements move; GCC = Clang). New case in `subdungeon_test.cpp` (*map.spawnAt*): without `at` the same grid is
+  generated tile for tile and decoration for decoration, and the four data rules. `PresentationTests`
+  `smoothness_test.cpp`: the smoke run's fight count pin is >= 2 (was >= 3: the bot now clears the trench without a
+  2 s lull, one fight scene instead of several).
+- **DR9, before and after** (GCC, `ABYSS_PT_SWEEP=20`, bases 1000 and 7000, three classes, frame-perfect and
+  reaction-limited (`ABYSS_PT_REACTION_MS=400 ABYSS_PT_NO_DODGE=1`), with and without the Pit (`ABYSS_PT_NO_PIT=1`):
+  8 sweeps of 60 runs each time, all passing both times). With the Pit, frame-perfect: Lv 13 (61) / 14 (59) before,
+  13 (38) / 14 (82) after; 4535-5101 exp before, 4505-5129 after; kills 115-158 before, 109-171 after; Valdras
+  medians per sweep 39.7-42.3 / 48.8-58.5 / 133.7-140.6 s (warrior / mage / rogue) before, 37.5-38.8 / 41.0-49.2 /
+  128.5-149.6 s after. Reaction-limited with the Pit: Lv 13 (64) / 14 (56) before, 13 (36) / 14 (84) after; warrior
+  medians 36.3 / 41.3 s before, 31.1 / 40.5 s after (the floor is 30: base 1000 is the closest sweep, as before).
+  Without the Pit: Lv 13 in all 240 runs before and after; 3914-4539 exp before, 3906-4564 after; the rogue's median
+  178.2 / 182.0 s frame-perfect before, 168.9 / 152.9 s after (the ceiling is 210). Deaths: 5 in 480 runs before, 5
+  in 480 after, one to Valdras each time (a reaction-limited rogue without the Pit); none inside the Pit; the largest
+  hit 21.8 % before, 19.6 % after; the largest 1 s burst 27.2 % before, 31.0 % after (the cap is 50). The Corpseherd's
+  raise in every fight both times; Keen 15-20 of 20 per class and sweep before, 14-20 after (the floor is 60 %). The
+  Pitwarden: Dig and the sweep in every fight both times. Clang, bases 1000 and 7000 (frame-perfect, with the Pit):
+  final saves and stats lines identical to GCC's. More heroes end at Lv 14 (most kills in a run 171, was 169). The
+  cause was not traced; the likely one is that the detail now stands on S3's first clue (30,24), which the route
+  visits twice after M1, so the bot fights the respawned detail again. The band (12-14) and the exp ceiling (Lv 15 at
+  5670; the highest run 5169) hold. For a player it means S3's first clue is guarded by the Lv 2 detail (S3 is a Lv 4
+  quest).
+- **playerStart stays (15,22) (item 2).** (18,22) is a walkable dirt tile inside the safe radius (7.6 of 9), but
+  `playerStart` is a generator input: with it moved the map re-rolled (13263 walkable for 13169 with the trench at
+  (32,24)) and the bot's route legs crossed `sheepfold_wagons` (member 8) and `ashwheat_cottage_south`. The
+  condition "tests and routes stay green" fails; the belfry fade stays. Open alternative: a `heroStart` beside
+  `playerStart`, as `at` is to a spawn.
+- **The theme parent is data (item 3).** `terrain_styles.json` `themeParents` = `{"pit": "march"}` (JSON path
+  `themeParents.<theme>`; `GameData/world.ts` `REMAKE_OVERRIDES.themeParents`, type `EntryOverride<string>`; exporter
+  override path `themeParents` in `remake.ts`, written by `tables/ui.ts`, which checks that both ends are terrain
+  styles and that no chain loops; `index.json` counts `themeParents: 1`). `AbyssMinimapRules::ParentTheme(Styles,
+  Theme)` and `StyleChain(Styles, Theme)` read it; the hardcoded `pit` / `pit_cleansed` -> `march` is removed
+  (`pit_cleansed` is a mood theme and never reaches the minimap). `minimap_test.cpp`: 6 cases (was 5). Not done here:
+  `AbyssThemeRules::ExpandThemed` (the next stage reads the same field); `Art/blender/kit/theme.py` keeps its own
+  `parent` and nothing compares the two yet.
+- **Docs that follow the engine stage's numbers (item 4)**, each checked in the code first: P10 (one desktop cascade,
+  `AbyssQualityRules::DesktopCascades`; the 5 % fade is the sun component's `ShadowDistanceFadeoutFraction`, set in
+  `AAbyssZoneActor::ApplyQuality`, not a console variable), DR16 item 19 (`AbyssCorpseRules::HuskCap`: desktop 16 /
+  16 / 32, seeds on top; mobile 12 / 20 / 32), DR16 item 44 (`HuskCastsSunShadowNow`: a settled husk casts no sun
+  shadow on desktop either), `spec/ue58-platform.md` 6.1 and 6.2 (as-built notes: 1 cascade).
+- **Compile check (item 5).** The UE module compiled against Stage 3B's public core headers as it stood (full run
+  before any change: 4 x 103 translation units pass); nothing had to be fixed. Re-run after this stage's header
+  change (`MapData.h`) and the minimap rules: 4 x 103 pass again, link scan and lints clean, no new engine API and no
+  stub change.
+- **Stage H review (adversarial pass, 2026-11).** Re-run: data `--check`, core GCC and Clang, PresentationTests GCC and
+  Clang, Scripts unit tests, the compile check (4 x 103, PASS); the DR9 numbers above were recomputed from the kept
+  stats files and agree. Findings and fixes: (1) the "12 / 13 tiles" fact was pinned for seed 11 only; it is a bound
+  of the data (the placement box is 3 tiles around `at`, a respawn or a patrol step 2 around the member's own
+  placement), so `content_ch1_test.cpp` now checks the bounds for every spawn entry (placed: 12.0 from playerStart,
+  13.4 from the camp centre; respawned or on patrol: 10.0 and 10.8, the safe radius being 9) and the placements of 64
+  seeds. The "was 7 and 7.3" of the first write-up is 7 and 9.2: the safe radius already refused the nearer tiles.
+  (2) Two rules of `at` were missing: a tile inside a camp's safe radius (every placement try is refused there, so the
+  whole pack would stand on `at` inside the camp) is now refused by the exporter and by `DataStore::Finalize`, and
+  `Finalize` refuses `at` on a hand-built zone map as the exporter did (it only refused sub-dungeons). (3) The
+  exporter measured a dormant `line` from the entry's `col` / `row` while the core measures it from the pack's tile
+  (`DormantLineTile` reads `pos`); the exporter now starts the line at `at`. No shipped entry has both. (4)
+  chapter1.md 5 said the trench entry was 13 tiles from the Boneyard Gate; it is 19.2 (the pack now 21.5), and the
+  footmen (aggro range 4) were no part of the siege at either tile. Not changed: the warrior's reaction-limited
+  median at base 1000 with the Pit is 31.1 s against a floor of 30 (was 36.3): the band holds with 1.1 s to spare, so
+  the next change to the early route should re-run that sweep first.
+
 ### Phase 4 — later chapters
 
 One content + art + audio pass per chapter when it is built in 3D (story-bible.md §7, monsters.md §6), each starting

@@ -9,6 +9,7 @@
 // were cut from today's roster, and no other test file spells a Chapter 1 content id.
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -423,6 +424,12 @@ TEST_SUITE("monsters") {
       CHECK(std::abs(s.pos.col - m.spawnAnchor.col) <= 3);
       CHECK(std::abs(s.pos.row - m.spawnAnchor.row) <= 3);
       CHECK_FALSE(rig.zone.InSafeZone(m.pos));
+      // Stage H: nothing spawns at the camp on arrival. With the placement jitter (3) the nearest monster stands 12
+      // tiles or more from where the hero wakes and 13 or more from Knellwatch's fire, so a patrol (radius 2) leaves
+      // 10 and 10.8 (the trench detail at (25,20): 7 and 9.2, and a patrol step put a footman at the east palisade).
+      // Every seed and the bounds: the next case.
+      CHECK(Dist(m.pos, map.playerStart.Center()) >= 12.0);
+      CHECK(Dist(m.pos, map.camps[0].pos.Center()) >= 13.0);
       if (m.packLeader) ++leaders;
       if (m.def.id == "valdras") {
         CHECK(m.role == MonsterRole::StoryBoss);
@@ -473,6 +480,60 @@ TEST_SUITE("monsters") {
     nm.monsters.SpawnZonePopulation();
     for (const MonsterInstance& m : nm.monsters.All()) {
       if (m.def.id == "gravegnawer") CHECK(m.maxHp == 63);
+    }
+  }
+
+  // Stage H review: the fact above holds on every seed, not on seed 11 alone. A member is placed inside the box
+  // spawnJitter around its entry's tile (MapSpawnDef::pos: the trench detail's `at`), it respawns inside respawnJitter
+  // around its own placement (its spawnAnchor, which never drifts) and it patrols inside patrolRadius around that
+  // placement, so the entry tiles and the three radii bound where a map spawn's monster can ever stand unprovoked.
+  TEST_CASE("stage H: no map spawn puts a monster at the hero's start or at Knellwatch, on any seed") {
+    const MonsterAiDef& ai = MAi();
+    const MapDef* map = MD().World().FindMap(test::ch1::kZone);
+    REQUIRE(map != nullptr);
+    REQUIRE_FALSE(map->camps.empty());
+    const Vec2 start = map->playerStart.Center();
+    const Vec2 camp = map->camps[0].pos.Center();
+    // The nearest point of the box `reach` tiles around an entry's tile.
+    auto boxDist = [](Vec2 from, TilePos entry, int32_t reach) {
+      const double dc = (std::max)(0.0, std::fabs(from.x - entry.col) - reach);
+      const double dr = (std::max)(0.0, std::fabs(from.y - entry.row) - reach);
+      return std::sqrt(dc * dc + dr * dr);
+    };
+    CHECK(ai.spawnJitter == 3);
+    CHECK(ai.respawnJitter == 2);
+    CHECK(ai.patrolRadius == 2);
+    const int32_t roam = ai.spawnJitter + (std::max)(ai.respawnJitter, ai.patrolRadius);
+    double nearStart = 1e9, nearCamp = 1e9;
+    for (const MapSpawnDef& s : map->spawns) {
+      CAPTURE(s.monsterId);
+      // placed: 12 and 13 tiles or more; respawned or on patrol: 10 and 10.5 or more (the safe radius is 9)
+      CHECK(boxDist(start, s.pos, ai.spawnJitter) >= 12.0);
+      CHECK(boxDist(camp, s.pos, ai.spawnJitter) >= 13.0);
+      CHECK(boxDist(start, s.pos, roam) >= 10.0);
+      CHECK(boxDist(camp, s.pos, roam) >= 10.5);
+      nearStart = (std::min)(nearStart, boxDist(start, s.pos, ai.spawnJitter));
+      nearCamp = (std::min)(nearCamp, boxDist(camp, s.pos, ai.spawnJitter));
+    }
+    CHECK(nearStart == doctest::Approx(12.0));           // the trench detail's box, tile (27,22)
+    CHECK(nearCamp == doctest::Approx(13.416).epsilon(0.001));  // its tile (27,21)
+    // The placements themselves, 64 seeds: every member inside its entry's box, so inside the bounds above.
+    for (uint64_t seed = 1; seed <= 64; ++seed) {
+      CAPTURE(seed);
+      MonsterRig rig(seed);
+      REQUIRE(rig.ok);
+      rig.monsters.SpawnZonePopulation();
+      int32_t trench = 0;
+      for (const MonsterInstance& m : rig.monsters.All()) {
+        REQUIRE(m.spawnEntry >= 0);
+        const MapSpawnDef& s = map->spawns[static_cast<size_t>(m.spawnEntry)];
+        CHECK(std::abs(s.pos.col - m.spawnAnchor.col) <= ai.spawnJitter);
+        CHECK(std::abs(s.pos.row - m.spawnAnchor.row) <= ai.spawnJitter);
+        CHECK(Dist(m.pos, start) >= 12.0);
+        CHECK(Dist(m.pos, camp) >= 13.0);
+        if (m.spawnEntry == 0) ++trench;
+      }
+      CHECK(trench == 8);  // the whole detail found a tile around (30,24)
     }
   }
 
@@ -1425,8 +1486,16 @@ TEST_SUITE("monsters") {
     };
     using Mix = std::vector<std::pair<std::string, int32_t>>;
     // The trenches: footmen until dawn, then gnawers (rf_chapter_dawn, chapter1.md 8).
+    // Stage H (map.spawnAt): the detail stands at (30,24), off the camp's east palisade; the generator keeps (25,20).
     const MapSpawnDef& trench = map->spawns[0];
-    CHECK(trench.pos == TilePos{25, 20});
+    CHECK(trench.pos == TilePos{30, 24});
+    CHECK(trench.hasGeneratorAnchor);
+    CHECK(trench.generatorAnchor == TilePos{25, 20});
+    CHECK(SpawnGeneratorAnchor(trench) == TilePos{25, 20});
+    for (size_t i = 1; i < map->spawns.size(); ++i) {
+      CHECK_FALSE(map->spawns[i].hasGeneratorAnchor);
+      CHECK(SpawnGeneratorAnchor(map->spawns[i]) == map->spawns[i].pos);
+    }
     CHECK(trench.mix.empty());
     REQUIRE(trench.variants.size() == 1);
     CHECK(trench.variants[0].whenFlag == "rf_chapter_dawn");
@@ -3597,7 +3666,14 @@ TEST_SUITE("world") {
     CHECK(countDecor("boulder") == 2);
     // Anchor tiles after generation (3.3).
     CHECK(g.Tile(15, 22) == TileType::Dirt);
-    for (const MapSpawnDef& s : map->spawns) CHECK(g.Tile(s.pos.col, s.pos.row) == TileType::Dirt);
+    // A spawn's generator tile ends a path; a pack that stands elsewhere (map.spawnAt: the trench detail) stands on
+    // open ground, with every tile of its placement jitter walkable but for decorations.
+    for (const MapSpawnDef& s : map->spawns) {
+      const TilePos at = SpawnGeneratorAnchor(s);
+      CHECK(g.Tile(at.col, at.row) == TileType::Dirt);
+      CHECK(g.Walkable(s.pos.col, s.pos.row));
+    }
+    CHECK(g.Tile(30, 24) == TileType::Grass);
     CHECK(g.Tile(50, 30) == TileType::Grass);
     CHECK(g.Tile(70, 65) == TileType::Grass);
     CHECK(g.Tile(108, 108) == TileType::Grass);

@@ -1,8 +1,8 @@
 // The minimap's tile palette (Private/UI/Hud/AbyssMinimapRules.h, used by FAbyssMinimapTexture for the HUD minimap and the
 // world-map panel): a zone with a presentation theme is coloured from that theme's terrain style in the shipped
 // terrain_styles.json (the first Mac run drew the Red March in the plains' green), a zone without one keeps the web
-// colours, a theme without a style falls back along its parents (pit -> march), and blocked tiles stay darker than
-// any walkable ground.
+// colours, a theme without a style falls back along its parents (the data's themeParents: pit -> march), and blocked
+// tiles stay darker than any walkable ground.
 #include <algorithm>
 #include <string>
 #include <string_view>
@@ -148,15 +148,16 @@ TEST_SUITE("minimap")
 
 	TEST_CASE("the Pit: its own style when the data has one, else its parent's (march)")
 	{
-		CHECK(ParentTheme("pit") == "march");
-		CHECK(ParentTheme("pit_cleansed") == "march");
-		CHECK(ParentTheme("march").empty());
-		CHECK(ParentTheme("plains").empty());
-		CHECK(StyleChain("pit") == std::vector<std::string>{ "pit", "march" });
-		CHECK(StyleChain("march") == std::vector<std::string>{ "march" });
-		CHECK(StyleChain("").empty());
-
+		// the parent comes from the shipped data (terrain_styles.json themeParents, GameData/world.ts), not from code
 		REQUIRE(Styles() != nullptr);
+		CHECK(ParentTheme(Styles(), "pit") == "march");
+		CHECK(ParentTheme(Styles(), "march").empty());
+		CHECK(ParentTheme(Styles(), "plains").empty());
+		CHECK(ParentTheme(Styles(), "").empty());
+		CHECK(StyleChain(Styles(), "pit") == std::vector<std::string>{ "pit", "march" });
+		CHECK(StyleChain(Styles(), "march") == std::vector<std::string>{ "march" });
+		CHECK(StyleChain(Styles(), "").empty());
+
 		const bool bShipped = Styles()->Get("themes").Get("pit").Get("ground").IsObject();
 		const FPalette P = PaletteFor(Styles(), "pit");
 		CHECK(P.Style == (bShipped ? "pit" : "march"));
@@ -174,7 +175,7 @@ TEST_SUITE("minimap")
 		CHECK(Pit.Tile[TileCampWall] == Pit.Tile[TileWall]);   // no palisade in the style: the wall colour
 		const abyss::JsonValue OnlyMarch = Parse(R"({"themes": {
 			"march": {"ground": {"0": {"base": 4999488}, "2": {"base": 5591628}}, "palisade": {"wood": 3812900}},
-			"pit": {"outcrop": {"rock": 1}}}})");
+			"pit": {"outcrop": {"rock": 1}}}, "themeParents": {"pit": "march"}})");
 		const FPalette Fallback = PaletteFor(&OnlyMarch, "pit");
 		CHECK(Fallback.Style == "march");
 		CHECK(Fallback.Tile[TileGrass] == 4999488u);
@@ -184,6 +185,46 @@ TEST_SUITE("minimap")
 			"2": {"base": 16777216}}}}})");
 		CHECK(PaletteFor(&Bad, "march").Style.empty());
 		CHECK(PaletteFor(&Bad, "march").Tile == WebPalette().Tile);
+	}
+
+	TEST_CASE("theme parents are read from the style table, not from code")
+	{
+		// no table, no themeParents, a theme without a row: no parent
+		CHECK(ParentTheme(nullptr, "pit").empty());
+		CHECK(StyleChain(nullptr, "pit") == std::vector<std::string>{ "pit" });
+		const abyss::JsonValue NoParents = Parse(R"({"themes": {"march": {"ground": {"0": {"base": 4999488}}}}})");
+		CHECK(ParentTheme(&NoParents, "pit").empty());
+		// ... so a theme without a style and without a parent keeps the web palette
+		CHECK(PaletteFor(&NoParents, "pit").Style.empty());
+		CHECK(PaletteFor(&NoParents, "pit").Tile == WebPalette().Tile);
+
+		// any theme the data names, in any depth; malformed rows are no parent
+		const abyss::JsonValue Table = Parse(R"({"themes": {"march": {"ground": {"0": {"base": 4999488}}}},
+			"themeParents": {"vault": "pit", "pit": "march", "self": "self", "a": "b", "b": "a", "bad": 7, "none": ""}})");
+		CHECK(ParentTheme(&Table, "vault") == "pit");
+		CHECK(ParentTheme(&Table, "pit") == "march");
+		CHECK(ParentTheme(&Table, "march").empty());
+		CHECK(ParentTheme(&Table, "self").empty());
+		CHECK(ParentTheme(&Table, "bad").empty());
+		CHECK(ParentTheme(&Table, "none").empty());
+		CHECK(StyleChain(&Table, "vault") == std::vector<std::string>{ "vault", "pit", "march" });
+		CHECK(StyleChain(&Table, "a") == std::vector<std::string>{ "a", "b" });   // a loop ends the chain
+		CHECK(PaletteFor(&Table, "vault").Style == "march");
+		CHECK(PaletteFor(&Table, "a").Style.empty());
+
+		// the shipped table: every row names two terrain styles, and the Pit's is the art kit's (kit/theme.py: march)
+		REQUIRE(Styles() != nullptr);
+		const abyss::JsonValue& Parents = Styles()->Get("themeParents");
+		REQUIRE(Parents.IsObject());
+		int Rows = 0;
+		for (const abyss::JsonMember& Row : Parents.Members())
+		{
+			++Rows;
+			CAPTURE(std::string(Row.key));
+			CHECK(Styles()->Get("themes").Get(Row.key).IsObject());
+			CHECK(Styles()->Get("themes").Get(Row.value.AsString()).IsObject());
+		}
+		CHECK(Rows >= 1);
 	}
 
 	TEST_CASE("colour helpers")

@@ -4,7 +4,8 @@
 // ash field) was drawn in the plains' green: the first Mac run's screenshots show a green disc on a dark screen. A zone
 // with a presentation theme now takes its palette from that theme's terrain style (terrain_styles.json
 // themes.<theme>.ground.<tile>.base, the colours the 3D ground is painted with), so every themed zone, the Pit included
-// (theme `pit`; a theme without a style of its own falls back along its parents, pit -> march), gets its own. A zone
+// (theme `pit`; a theme without a style of its own falls back along its parents, the data's themeParents table:
+// pit -> march), gets its own. A zone
 // without a presentation theme (every web zone, the tower, labyrinth floors) keeps the web palette: that is the parity
 // the minimap spec asks for (save-ui-input 6.11).
 //
@@ -138,22 +139,34 @@ namespace AbyssMinimapRules
 	}
 
 	/** The parent of a presentation theme: the theme whose art and style it shows where it has none of its own
-	 *  (implementation-plan 3C: `pit` -> `march`). Empty for a theme without one. */
-	inline std::string_view ParentTheme(std::string_view Theme)
+	 *  (the data's terrain_styles.json themeParents.<theme>, written from GameData/world.ts: `pit` -> `march`). Empty
+	 *  for a theme without one, and without a style table. */
+	inline std::string_view ParentTheme(const abyss::JsonValue* Styles, std::string_view Theme)
 	{
-		if (Theme == "pit" || Theme == "pit_cleansed")
+		if (Styles == nullptr || Theme.empty())
 		{
-			return "march";
+			return {};
 		}
-		return {};
+		const std::string_view Parent = Styles->Get("themeParents").Get(Theme).AsString();
+		return Parent == Theme ? std::string_view() : Parent;
 	}
 
-	/** The styles to try for a presentation theme, nearest first: the theme, then its parents. */
-	inline std::vector<std::string> StyleChain(std::string_view PresentationTheme)
+	/** The styles to try for a presentation theme, nearest first: the theme, then its parents (at most 4 names, and a
+	 *  name never twice: a looping table ends the chain). */
+	inline std::vector<std::string> StyleChain(const abyss::JsonValue* Styles, std::string_view PresentationTheme)
 	{
 		std::vector<std::string> Out;
-		for (std::string_view Theme = PresentationTheme; !Theme.empty() && Out.size() < 4; Theme = ParentTheme(Theme))
+		for (std::string_view Theme = PresentationTheme; !Theme.empty() && Out.size() < 4; Theme = ParentTheme(Styles, Theme))
 		{
+			bool bSeen = false;
+			for (const std::string& Name : Out)
+			{
+				bSeen = bSeen || Name == Theme;
+			}
+			if (bSeen)
+			{
+				break;
+			}
 			Out.emplace_back(Theme);
 		}
 		return Out;
@@ -172,7 +185,7 @@ namespace AbyssMinimapRules
 		{
 			return P;
 		}
-		for (const std::string& Name : StyleChain(PresentationTheme))
+		for (const std::string& Name : StyleChain(Styles, PresentationTheme))
 		{
 			const abyss::JsonValue& Style = Styles->Get("themes").Get(Name);
 			const abyss::JsonValue& Ground = Style.Get("ground");

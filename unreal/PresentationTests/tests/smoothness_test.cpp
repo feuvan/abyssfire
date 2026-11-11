@@ -1166,7 +1166,9 @@ TEST_SUITE("smoothness")
 		REQUIRE(Find(At60, "travel") != nullptr);
 		REQUIRE(Find(At60, "fight_001") != nullptr);
 		CHECK(Find(At60, "panel_questCard") != nullptr);
-		CHECK(At60.Fights >= 3);                                  // the slime hunt is several fights
+		// the trench hunt and the Seep: two fights at least (stage H: with the burial detail at (30,24), spawn `at`, the
+		// bot clears the trench without a 2 s lull, so it is one fight; the pin was >= 3 with the detail at (25,20))
+		CHECK(At60.Fights >= 2);
 		CHECK(Find(At60, "prologue")->Play.Count == 0);           // story frames are never play
 		CHECK(Find(At60, "camp")->Play.Count > 60);
 		CHECK(Find(At60, "travel")->Play.Count > 60);

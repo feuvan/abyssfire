@@ -1000,8 +1000,9 @@
       "palisade": {"kind": "darkStakes", "wood": 2761244, "band": 4866616, "accent": 6164498}
     }
   },
+  "themeParents": {"pit": "march"},
   "remake": {
     "source": ["unreal/GameData/world.ts"],
-    "added": ["terrainStyles.march", "terrainStyles.pit"]
+    "added": ["terrainStyles.march", "terrainStyles.pit", "themeParents.pit"]
   }
 }

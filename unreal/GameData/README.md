@@ -139,7 +139,8 @@ web entry from `@web/...` to change one field). Tables: `achievements`, `randomE
 wandering merchant), `zoneMoods.{themeByZone, moods, palettes, weather, weatherByTheme, campThemes, fog, lightScale,
 moodWeather, windupTint}` (the last three are remake tables with no web entries: R18 light-scale overrides, the weather a
 mood brings and the monsters' wind-up body tint (DR5), per mood theme, written to `zone_moods.json` `port`),
-`eliteAffixes.{definitions, zoneAffixCounts}`, `terrainStyles`. A table name the exporter does not know, a `replace` /
+`eliteAffixes.{definitions, zoneAffixCounts}`, `terrainStyles`, `themeParents` (a remake table with no web entries,
+`add` only: presentation theme -> parent theme, written to `terrain_styles.json` `themeParents`; `pit` -> `march`). A table name the exporter does not know, a `replace` /
 `remove` key the web table lacks or an `add` key it already has fails the export. Each change is recorded in the written
 file's `remake` block (`"replaced": ["achievements.ach_kill_slime"]`).
 
@@ -200,7 +201,12 @@ guardian's guard: one pack with him; feature `subDungeon.spawnGuard`) and an obj
 objective whose `zone` is a sub-dungeon, written to `quests.json` as its `location`; it rides on
 `quest.objectiveZone`). **Use `spot`, never `location`, for a place inside a sub-dungeon:** the web map generator
 keeps every `location` of the quest's zone walkable in the parent's grid, so a `location` there moves the golden map.
-Still withheld: every other Wave 3 field.
+Stage H added a map spawn entry's `at` `{col, row}` (feature `map.spawnAt`): where the pack stands, spawns and
+respawns when that is not the entry's `col` / `row`. **Move a pack of a generated map with `at`, never by editing its
+`col` / `row`:** those are generator inputs (the clearing, the path to the nearest camp, the keep-clear circle), a
+spawn's tile seeds a path walk and every later draw of the generator follows it, so a moved tile re-rolls the whole
+map (DECISIONS DR4). The same holds for `playerStart`, the camps and the exits, which have no such field. The export
+checks that `at` is a walkable tile of the generated map outside every camp's safe radius. Still withheld: every other Wave 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

@@ -16,6 +16,7 @@
         {
           "col": 25,
           "row": 20,
+          "at": {"col": 30, "row": 24},
           "monsterId": "risen_footman",
           "count": 8,
           "variants": [
