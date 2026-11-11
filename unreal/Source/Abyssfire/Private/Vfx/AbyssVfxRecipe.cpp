@@ -649,6 +649,7 @@ void FAbyssVfxLibrary::Reset()
 	Recipes.Reset();
 	Palettes.Reset();
 	SpriteCells.Reset();
+	DarkContracts.Reset();
 }
 
 int32 FAbyssVfxLibrary::GetSpriteCells(FName Sprite) const
@@ -740,6 +741,12 @@ bool FAbyssVfxLibrary::MergeJson(std::string_view Json, const FString& SourceNam
 	{
 		UE_LOG(LogAbyss, Warning, TEXT("%s: schemaVersion %d is newer than this build (1); unknown fields are ignored"),
 			*SourceName, Version.AsInt(1));
+	}
+
+	// Wave 3: the `dark` contracts (the Pit's grade and cleanse) ride in the recipe document; the runtime rules parse them.
+	if (Root.Get("dark").IsObject())
+	{
+		DarkContracts = MakeShared<abyss::JsonValue>(Root.Get("dark"));
 	}
 
 	for (const abyss::JsonMember& Member : Root.Get("palettes").Members())
@@ -1037,6 +1044,12 @@ bool FAbyssVfxLibrary::ParseLayer(const abyss::JsonValue& Json, FAbyssVfxLayer& 
 const FAbyssVfxRecipe* FAbyssVfxLibrary::Find(FName Id) const
 {
 	return Recipes.Find(Id);
+}
+
+const abyss::JsonValue* FAbyssVfxLibrary::FindDarkContract(std::string_view Theme) const
+{
+	const abyss::JsonValue* Entry = DarkContracts.IsValid() && !Theme.empty() ? DarkContracts->Find(Theme) : nullptr;
+	return Entry != nullptr && Entry->IsObject() ? Entry : nullptr;
 }
 
 const FAbyssVfxRecipe* FAbyssVfxLibrary::FindFirst(TConstArrayView<FName> Ids) const

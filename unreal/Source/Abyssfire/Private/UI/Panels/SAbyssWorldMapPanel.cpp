@@ -17,6 +17,7 @@
 #include "UI/Hud/AbyssMinimapTexture.h"
 #include "UI/Hud/SAbyssMinimap.h"
 #include "UI/Widgets/AbyssUiWidgets.h"
+#include "World/AbyssSubDungeonRules.h"
 
 void SAbyssWorldMapPanel::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUiContext>& InContext,
 	const TSharedRef<FAbyssHudState>& InHudState, const TSharedRef<FAbyssMinimapTexture>& InMinimap)
@@ -68,7 +69,9 @@ void SAbyssWorldMapPanel::Refresh(const abyss::Snapshot& Snap)
 		const std::string& MapId = Order[static_cast<size_t>(Index)];
 		const abyss::MapDef* Map = Data->FindMap(MapId);
 		const bool bVisited = std::find(Visited.begin(), Visited.end(), MapId) != Visited.end();
-		const bool bCurrent = MapId == Snap.zone.mapId;
+		// U6 (3D note 14): inside a sub-dungeon the hero's pin stands on the parent zone's card (the Pit is no zone proper).
+		const bool bCurrent = MapId == AbyssSubDungeonRules::WorldZoneId(Snap.zone.subDungeon.inside,
+			Snap.zone.subDungeon.parentZone, Snap.zone.mapId);
 		FString Name = Ctx->ZoneName(MapId);
 		FString Sub = Map != nullptr ? FString::Printf(TEXT("Lv.%d-%d"), Map->levelMin, Map->levelMax) : FString();
 		if (!bVisited)

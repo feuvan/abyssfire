@@ -114,6 +114,133 @@ namespace AbyssThemeRules
 		return Out;
 	}
 
+	// ---- theme parents (dark remake Wave 3, DECISIONS DR17 (1) / (9)) --------------------------------------------------
+
+	/** A parent chain never runs longer than this (the data has one link, pit -> march; a loop ends the chain). A chain
+	 *  the cap cuts loses its root - the theme that owns the art and the floor style -, so ThemeChainCut reports it: the
+	 *  zone actor warns at the zone build, the shipped-data test fails. */
+	inline constexpr size_t MaxThemeChain = 8;
+
+	/**
+	 * The parent of a presentation theme: the theme whose art, recipes and styles it shows where it has none of its own
+	 * (terrain_styles.json `themeParents.<theme>`, exported from GameData/world.ts: `pit` -> `march`). `Styles` is the
+	 * raw terrain_styles.json table. Empty for a theme without one, a theme that names itself, and without a table.
+	 */
+	inline std::string_view ParentTheme(const abyss::JsonValue* Styles, std::string_view Theme)
+	{
+		if (Styles == nullptr || Theme.empty())
+		{
+			return {};
+		}
+		const std::string_view Parent = Styles->Get("themeParents").Get(Theme).AsString();
+		return Parent == Theme ? std::string_view() : Parent;
+	}
+
+	/** The themes to try for a presentation theme, nearest first: the theme, then its parents (at most MaxThemeChain
+	 *  names and a name never twice: a looping table ends the chain). Empty for an empty theme. */
+	inline std::vector<std::string> ThemeChain(const abyss::JsonValue* Styles, std::string_view Theme)
+	{
+		std::vector<std::string> Out;
+		for (std::string_view Name = Theme; !Name.empty() && Out.size() < MaxThemeChain; Name = ParentTheme(Styles, Name))
+		{
+			bool bSeen = false;
+			for (const std::string& Have : Out)
+			{
+				bSeen = bSeen || Have == Name;
+			}
+			if (bSeen)
+			{
+				break;
+			}
+			Out.emplace_back(Name);
+		}
+		return Out;
+	}
+
+	/** True when ThemeChain(Styles, Theme) stopped at MaxThemeChain with a parent still to follow (the chain lost its root). */
+	inline bool ThemeChainCut(const abyss::JsonValue* Styles, std::string_view Theme)
+	{
+		const std::vector<std::string> Chain = ThemeChain(Styles, Theme);
+		if (Chain.size() < MaxThemeChain)
+		{
+			return false;
+		}
+		const std::string_view Next = ParentTheme(Styles, Chain.back());
+		if (Next.empty())
+		{
+			return false;
+		}
+		for (const std::string& Have : Chain)
+		{
+			if (Have == Next)
+			{
+				return false;   // a loop: the chain is whole
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * The lookup order of a fallback chain under a theme chain (ThemeChain: {pit, march}): every id's variant of the
+	 * first theme (in id order), then every id's variant of its parent, ..., then the plain ids. `<id>@pit`, `<id>@march`,
+	 * `<id>`: the Pit re-points only its floor, wall tile and stair and keeps every march look. An empty chain: the ids.
+	 */
+	inline std::vector<std::string> ExpandThemed(const std::vector<std::string>& Ids, const std::vector<std::string>& Themes)
+	{
+		std::vector<std::string> Out;
+		Out.reserve(Ids.size() * (Themes.size() + 1));
+		for (const std::string& Theme : Themes)
+		{
+			if (Theme.empty())
+			{
+				continue;
+			}
+			for (const std::string& Id : Ids)
+			{
+				Out.push_back(ThemedId(Id, Theme));
+			}
+		}
+		for (const std::string& Id : Ids)
+		{
+			Out.push_back(Id);
+		}
+		return Out;
+	}
+
+	/** ExpandThemed under the theme's parent chain read from the data (`Styles` = terrain_styles.json). */
+	inline std::vector<std::string> ExpandThemed(const std::vector<std::string>& Ids, std::string_view Theme,
+		const abyss::JsonValue* Styles)
+	{
+		return ExpandThemed(Ids, ThemeChain(Styles, Theme));
+	}
+
+	/**
+	 * The recipe ids a looping zone recipe is looked up by under a theme chain: `<recipe>@<theme>` for every theme of the
+	 * chain, then the plain recipe unless it is a themed-only loop (ThemedOnlyRecipe). An id that names its theme
+	 * already (a set piece's `camp.torch@march`) is played as it is.
+	 */
+	inline std::vector<std::string> RecipeChain(std::string_view RecipeId, const std::vector<std::string>& Themes)
+	{
+		std::vector<std::string> Out;
+		if (RecipeId.find(ThemeSeparator) != std::string_view::npos)
+		{
+			Out.emplace_back(RecipeId);
+			return Out;
+		}
+		for (const std::string& Theme : Themes)
+		{
+			if (!Theme.empty())
+			{
+				Out.push_back(ThemedId(RecipeId, Theme));
+			}
+		}
+		if (Themes.empty() || !ThemedOnlyRecipe(RecipeId))
+		{
+			Out.emplace_back(RecipeId);
+		}
+		return Out;
+	}
+
 	/**
 	 * ExpandThemed's order without building strings: Themed(id) for every id (when bThemed), then Plain(id) for every id;
 	 * the first non-null result wins. ResultT is a pointer type (the UE glue passes manifest lookups on FNames).
@@ -139,6 +266,53 @@ namespace AbyssThemeRules
 			}
 		}
 		return ResultT{};
+	}
+
+	/**
+	 * ResolveThemedFirst under a theme chain: Themed(theme index, id) for every id of the first theme, then of its parent,
+	 * ..., then Plain(id) for every id; the first non-null result wins. ThemeCount 0 = the plain chain.
+	 */
+	template <class ResultT, class RangeT, class ThemedFnT, class PlainFnT>
+	ResultT ResolveChainFirst(const RangeT& Ids, size_t ThemeCount, ThemedFnT&& Themed, PlainFnT&& Plain)
+	{
+		for (size_t ThemeIndex = 0; ThemeIndex < ThemeCount; ++ThemeIndex)
+		{
+			for (const auto& Id : Ids)
+			{
+				if (ResultT Found = Themed(ThemeIndex, Id))
+				{
+					return Found;
+				}
+			}
+		}
+		for (const auto& Id : Ids)
+		{
+			if (ResultT Found = Plain(Id))
+			{
+				return Found;
+			}
+		}
+		return ResultT{};
+	}
+
+	/**
+	 * The first theme of the chain that has a terrain style (terrain_styles.json themes.<name>.ground), else Fallback
+	 * (the generator theme): the style AAbyssZoneActor paints and the `MI_AF_Terrain_<Name>` it looks for first.
+	 */
+	inline std::string StyleThemeName(const abyss::JsonValue* Styles, const std::vector<std::string>& Themes,
+		std::string_view Fallback)
+	{
+		if (Styles != nullptr)
+		{
+			for (const std::string& Theme : Themes)
+			{
+				if (Styles->Get("themes").Get(Theme).Get("ground").IsObject())
+				{
+					return Theme;
+				}
+			}
+		}
+		return std::string(Fallback);
 	}
 
 	/**
@@ -400,6 +574,9 @@ namespace AbyssThemeRules
 		/** Weather tint for the ambience recipe's colour (only on maps with a presentation theme). */
 		bool bHasTint = false;
 		uint32_t Tint = 0;
+		/** Wave 3: the cleansed mood blended in by BlendCleansed (0 = none; Cleansed is the mood it blends to). */
+		double CleanseAlpha = 0.0;
+		abyss::MapTheme Cleansed = abyss::MapTheme::Plains;
 	};
 
 	/**
@@ -464,6 +641,74 @@ namespace AbyssThemeRules
 		return Out;
 	}
 
+	/** Suffix of the mood a cleansed sub-dungeon is lit with (pit -> pit_cleansed; chapter1.md 9.2, DR17 (4)). */
+	inline constexpr std::string_view CleansedSuffix = "_cleansed";
+
+	/**
+	 * The cleansed mood of a base mood when it is a defined mood: the contract's own name (vfx_recipes.json
+	 * dark.<theme>.cleanse.grade.to.mood) when it gives one, else `<mood>_cleansed`; false otherwise. A string lookup:
+	 * the zone actor resolves it once per zone build (BeginSubDungeon), never per frame.
+	 */
+	inline bool FindCleansedMood(const abyss::ZoneMoodTables& Moods, abyss::MapTheme Base, abyss::MapTheme& Out,
+		std::string_view ContractMood = {})
+	{
+		std::string Name(ContractMood);
+		if (Name.empty())
+		{
+			Name = std::string(abyss::EnumName(Base));
+			Name += CleansedSuffix;
+		}
+		abyss::MapTheme Cleansed = abyss::MapTheme::Plains;
+		if (!abyss::ParseEnum(Name, Cleansed) || Cleansed == Base || !Moods.moods[static_cast<size_t>(Cleansed)].defined)
+		{
+			return false;
+		}
+		Out = Cleansed;
+		return true;
+	}
+
+	/**
+	 * Blends a cleansed mood (FindCleansedMood, resolved by the caller) into a zone's mood state by the cleanse's
+	 * progress (AbyssSubDungeonRules::StateAlpha: 0 dark, 1 lit, the grade's 6 s in between): every colour and number of
+	 * the look and the light scale by Alpha; the ambience and its tint are the cleansed mood's from the moment the
+	 * cleanse starts (the embers rise at once and stay for every later visit). Alpha <= 0 or an undefined mood: the
+	 * state unchanged.
+	 */
+	inline void BlendCleansed(FMoodState& State, const abyss::ZoneMoodTables& Moods, abyss::MapTheme Cleansed, double Alpha,
+		bool bPresentation)
+	{
+		const abyss::ZoneMoodDef& Def = Moods.moods[static_cast<size_t>(Cleansed)];
+		if (!(Alpha > 0.0) || !Def.defined)
+		{
+			return;
+		}
+		const double T = Alpha >= 1.0 ? 1.0 : Alpha;
+		const abyss::MapTheme BlendTheme = State.Mood.theme;
+		State.Mood = LerpMood(State.Mood, Def, T);
+		State.Mood.theme = T >= 0.5 ? Cleansed : BlendTheme;
+		State.LightScale = static_cast<float>(LerpD(State.LightScale, MoodLightScale(Def), T));
+		State.bLightScaleOverride = State.bLightScaleOverride || Def.lightScale > 0.0;
+		State.CleanseAlpha = T;
+		State.Cleansed = Cleansed;
+		State.Dominant = Cleansed;
+		if (Def.hasMoodWeather)
+		{
+			State.Ambience = Def.moodWeather.ambience;
+			State.bHasTint = bPresentation && Def.moodWeather.hasTint && !Def.moodWeather.ambience.empty();
+			State.Tint = State.bHasTint ? Def.moodWeather.tint : 0u;
+		}
+	}
+
+	/** BlendCleansed for the state's own base mood (`<mood>_cleansed`, looked up here: tests and one-off callers). */
+	inline void BlendCleansed(FMoodState& State, const abyss::ZoneMoodTables& Moods, double Alpha, bool bPresentation)
+	{
+		abyss::MapTheme Cleansed = abyss::MapTheme::Plains;
+		if (Alpha > 0.0 && FindCleansedMood(Moods, State.Base, Cleansed))
+		{
+			BlendCleansed(State, Moods, Cleansed, Alpha, bPresentation);
+		}
+	}
+
 	/** `ambient.<ambience>` (the VFX recipe), or empty without an ambience. */
 	inline std::string AmbienceRecipeId(const FMoodState& State)
 	{
@@ -480,6 +725,13 @@ namespace AbyssThemeRules
 		const double Delta = Now.RegionWeight - Applied.RegionWeight;
 		// The ends always land exactly (a fast walk out of a region would otherwise stop at weight .008).
 		const bool bEndReached = (Now.RegionWeight <= 0.0 || Now.RegionWeight >= 1.0) && Delta != 0.0;
+		// Wave 3: the cleanse's grade, by the same rule (the last step lands on 1 exactly).
+		const double CleanseDelta = Now.CleanseAlpha - Applied.CleanseAlpha;
+		const bool bCleanseEnd = (Now.CleanseAlpha <= 0.0 || Now.CleanseAlpha >= 1.0) && CleanseDelta != 0.0;
+		if (bCleanseEnd || CleanseDelta > MoodReapplyEpsilon || CleanseDelta < -MoodReapplyEpsilon)
+		{
+			return true;
+		}
 		return bEndReached || Delta > MoodReapplyEpsilon || Delta < -MoodReapplyEpsilon;
 	}
 

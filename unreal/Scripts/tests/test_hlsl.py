@@ -566,6 +566,9 @@ TOON_DEFAULTS = {
     "CastShadowStrength": "0.7f",
     **{f"L{i}": "float4(0.f, 0.f, 0.f, 0.f)" for i in range(8)},
     **{f"C{i}": "float4(0.f, 0.f, 0.f, 0.f)" for i in range(8)},
+    # dark remake Wave 3: the zone grade's neutral values (materials.GRADE_MPC_DEFAULTS)
+    "GradeAmb": "float4(1.f, 1.f, 1.f, 1.f)", "GradePosR": "float4(0.f, 0.f, 0.f, 0.f)",
+    "GradeCol": "float4(0.f, 0.f, 0.f, 0.f)",
 }
 
 
@@ -889,6 +892,91 @@ std::printf("%d %.9g %.9g %.9g %d\\n", diff, e.x, e.y, e.z, std::memcmp(&l1, &l0
         self.assertGreater(full[2], max(full[0], full[1]))
         self.assertLess(emit[2], emit[0])
 
+    def test_zone_grade_default_is_exact(self):
+        """Dark remake Wave 3 (DR17 (4)): with the collection's neutral values (ambient 1, ceiling 1, no pool) AF_Toon,
+        AF_ToonSplit and AF_ZoneGrade give bit-identical colours to the nodes without the grade - every zone but a
+        graded one draws exactly as before."""
+        sh = manifest_shading()
+        toon, split, ground = hlsl.toon_node(sh), hlsl.toon_split_node(sh), hlsl.zone_grade_node()
+        grade = hlsl._grade("pw")
+        self.assertEqual(toon.code.count(grade), 1)
+        self.assertEqual(split.code.count(grade), 1)
+        old_toon = dataclasses.replace(toon, key="AF_ToonOld", code=toon.code.replace(
+            grade + "\nlin = lin * lerp(gm, one, eAmt);", ""))
+        old_split = dataclasses.replace(split, key="AF_ToonSplitOld", code=split.code.replace(
+            grade + "\nfloat3 gk = lerp(gm, one, eAmt);\nEmit = Emit * gk;\nLit = Lit * gk;", ""))
+        self.assertNotIn("gm", old_toon.code.replace("gm =", ""))
+        self.assertNotIn("gk", old_split.code)
+        body = f"""
+const float3 bases[] = {{ {", ".join(self.base_lin(b) for b in self.BASES)} }};
+const float3 nrms[] = {{ {", ".join(f3(n) for n in self.NORMALS)} }};
+const float4 pals[] = {{ {", ".join(f4((*p, 1.0)) for p in self.PALETTE)} }};
+int diff = 0;
+for (const float3& base : bases) for (const float3& nrm : nrms) for (const float4& pal : pals) {{
+    float3 a = {cpp_call(toon, {"Base": "base", "N": "nrm", "P": "pal", "Pw": "float3(310.f, -40.f, 12.f)"}, TOON_DEFAULTS)};
+    float3 b = {cpp_call(old_toon, {"Base": "base", "N": "nrm", "P": "pal"}, TOON_DEFAULTS)};
+    diff += std::memcmp(&a, &b, sizeof(a)) != 0;
+    float3 la, lb;
+    float3 ea = {cpp_call(split, {"Base": "base", "N": "nrm", "P": "pal", "Pw": "float3(310.f, -40.f, 12.f)", "Lit": "la"}, TOON_DEFAULTS)};
+    float3 eb = {cpp_call(old_split, {"Base": "base", "N": "nrm", "P": "pal", "Lit": "lb"}, TOON_DEFAULTS)};
+    diff += std::memcmp(&ea, &eb, sizeof(ea)) != 0;
+    diff += std::memcmp(&la, &lb, sizeof(la)) != 0;
+    float3 g = AF_ZoneGrade(base, float3(310.f, -40.f, 12.f), 1.f, float4(1.f, 1.f, 1.f, 1.f), float4(0.f, 0.f, 0.f, 0.f),
+                            float4(0.f, 0.f, 0.f, 0.f));
+    diff += std::memcmp(&g, &base, sizeof(g)) != 0;
+}}
+std::printf("%d\\n", diff);"""
+        out = self.run_cpp([toon, old_toon, split, old_split, ground], body)
+        self.assertEqual(int(out[0]), 0)
+
+    def test_zone_grade_matches_the_reference(self):
+        """The Pit's numbers (vfx_recipes.json dark.pit.lightRadius): ambient .21 / .23 / .30, the hero's pool r 5.6
+        tiles, power 1.5, gain .95, ceiling 1.12. AF_ZoneGrade == zone_grade_reference over the ground distance (the
+        height does not count); the void rock is black; AF_ToonSplit darkens Emit and Lit alike, leaves an emissive
+        region alone and adds a torch slot's light after the grade."""
+        sh = manifest_shading()
+        split, ground = hlsl.toon_split_node(sh), hlsl.zone_grade_node()
+        amb, ceil, power, radius = (0.21, 0.23, 0.30), 1.12, 1.5, 560.0
+        hero = tuple(c * 0.95 for c in (1.0, 0.93, 0.8))
+        dists = [0.0, 100.0, 280.0, 559.0, 560.0, 900.0]
+        ga, gp, gc = f4((*amb, ceil)), f4((1000.0, 2000.0, 30.0, radius)), f4((*hero, power))
+        body = f"""
+const float ds[] = {{ {", ".join(f"{d!r}f" for d in dists)} }};
+for (float d : ds) {{
+    float3 g = AF_ZoneGrade(float3(1.f, 1.f, 1.f), float3(1000.f + d, 2000.f, 475.f), 1.f, {ga}, {gp}, {gc});
+    std::printf("%.9g %.9g %.9g\\n", g.x, g.y, g.z);
+}}
+float3 v = AF_ZoneGrade(float3(1.f, 1.f, 1.f), float3(1000.f, 2000.f, 0.f), 0.f, {ga}, {gp}, {gc});
+std::printf("%.9g\\n", v.x + v.y + v.z);
+float3 l0, l1, l2, l3;
+float3 e0 = {cpp_call(split, {"Lit": "l0"}, TOON_DEFAULTS)};
+float3 e1 = {cpp_call(split, {"Lit": "l1", "Pw": "float3(1900.f, 2000.f, 0.f)", "GradeAmb": ga, "GradePosR": gp, "GradeCol": gc}, TOON_DEFAULTS)};
+std::printf("%.9g %.9g %.9g %.9g\\n", e1.x / e0.x, e1.z / e0.z, l1.x / l0.x, l1.z / l0.z);
+float3 e2 = {cpp_call(split, {"Lit": "l2", "P": "float4(0.42f, 0.32f, 1.f, 1.f)"}, TOON_DEFAULTS)};
+float3 e3 = {cpp_call(split, {"Lit": "l3", "P": "float4(0.42f, 0.32f, 1.f, 1.f)", "Pw": "float3(1900.f, 2000.f, 0.f)",
+                              "GradeAmb": ga, "GradePosR": gp, "GradeCol": gc}, TOON_DEFAULTS)};
+std::printf("%d\\n", std::memcmp(&e2, &e3, sizeof(e2)) == 0);
+float3 la, lb;
+float3 ta = {cpp_call(split, {"Lit": "la", "Pw": "float3(1900.f, 2000.f, 0.f)", "GradeAmb": ga, "GradePosR": gp, "GradeCol": gc,
+                              "L0": "float4(1900.f, 2000.f, 50.f, 300.f)", "C0": "float4(1.f, 0.6f, 0.3f, 1.f)"}, TOON_DEFAULTS)};
+float3 tb = {cpp_call(split, {"Lit": "lb", "L0": "float4(0.f, 0.f, 50.f, 300.f)", "C0": "float4(1.f, 0.6f, 0.3f, 1.f)"}, TOON_DEFAULTS)};
+std::printf("%.9g %.9g\\n", ta.x - e1.x, tb.x - e0.x);"""
+        out = self.run_cpp([split, ground], body)
+        for line, d in zip(out[:len(dists)], dists):
+            want = hlsl.zone_grade_reference(amb, ceil, hero, power, radius, d)
+            for got, w in zip(line.split(), want):
+                self.assertAlmostEqual(float(got), w, delta=2e-6)
+        self.assertEqual(hlsl.zone_grade_reference(amb, ceil, hero, power, radius, 0.0)[0], ceil)   # under the hero
+        self.assertEqual(hlsl.zone_grade_reference(amb, ceil, hero, power, radius, 560.0), amb)     # at the radius
+        self.assertEqual(float(out[len(dists)]), 0.0)                                               # void rock
+        ratios = [float(x) for x in out[len(dists) + 1].split()]
+        for got, w in zip(ratios, (amb[0], amb[2], amb[0], amb[2])):    # 900 cm from the hero: the bare ambient
+            self.assertAlmostEqual(got, w, delta=1e-5)
+        self.assertEqual(int(out[len(dists) + 2]), 1)                   # an emissive region is not darkened
+        torch = [float(x) for x in out[len(dists) + 3].split()]
+        self.assertGreater(torch[0], 0.0)
+        self.assertAlmostEqual(torch[0], torch[1], delta=1e-6)          # a lamp's light is added after the grade
+
     def test_ink_scale(self):
         """R3 revised: InkScale 1.5 gives exactly 1.5 x the width; at 2125 cm, T.y = tan(17.5 deg) x 9 / 16, Px 3.5
         the dilation is 3.5 px at 720 rows (5.25 px at 1080)."""
@@ -1079,7 +1167,8 @@ class ArtPassLintTests(unittest.TestCase):
         self.assertEqual([o.name for o in split.additional_outputs], ["Lit"])
         self.assertEqual(split.input_names[:len(hlsl.TOON_INPUTS)], [i.name for i in hlsl.TOON_INPUTS])
         self.assertEqual(split.input_names[len(hlsl.TOON_INPUTS):],
-                         ["Pw", "CastShadowStrength"] + [f"L{i}" for i in range(8)] + [f"C{i}" for i in range(8)])
+                         ["Pw", "CastShadowStrength"] + [f"L{i}" for i in range(8)] + [f"C{i}" for i in range(8)]
+                         + [i.name for i in hlsl.ZONE_GRADE_PARAMS])
         self.assertTrue(split.code.rstrip().endswith("return Emit;"))
         self.assertEqual(split.code.count("if (C"), 8, "eight unrolled light slots")
         # the old inputs come first, so the existing material wiring and calls keep their order

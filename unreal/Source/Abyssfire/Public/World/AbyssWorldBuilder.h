@@ -72,6 +72,7 @@ class UAbyssAudioSystem;
 class UAbyssGameInstance;
 class UAbyssVfxSystem;
 class UMaterialInterface;
+class UMaterialParameterCollectionInstance;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 struct FAbyssArtAsset;
@@ -122,6 +123,10 @@ public:
 	// ---- queries ----
 	AAbyssCameraRig* GetCameraRig() const { return CameraRig; }
 	AAbyssZoneActor* GetZoneActor() const { return ZoneActor; }
+	/** U6: what the sub-dungeon layer showed since this world began (the in-game autotest's probe). */
+	const FAbyssSubDungeonProbe& GetSubDungeonProbe() const { return SubDungeonProbe; }
+	/** U6: the zone's cleanse sequence plays this frame (the autotest's scene label). */
+	bool IsCleanseSequencePlaying() const { return SubDungeonProbe.bCleansing; }
 	AAbyssCharacterActor* FindCharacter(abyss::EntityId Id) const;
 	AAbyssPropActor* FindProp(abyss::EntityId Id) const;
 	const FAbyssQualityProfile& GetQualityProfile() const { return Quality; }
@@ -262,6 +267,15 @@ private:
 	void HandleLoreCollected(const abyss::EvLoreCollected& Event);
 	/** 2G stage H: a turn-in / an accept expects the cutscenes its story triggers queue (their NPCs are held). */
 	void HandleQuestUpdate(const abyss::EvQuestUpdate& Event);
+	/** U6 (Wave 3): a sub-dungeon was cleansed - the embers rise and the zone actor's cleanse sequence starts. */
+	void HandleAreaCleansed(const abyss::EvAreaCleansed& Event);
+	/** U6: per frame - the cleanse sequence's recipes (lamps, niche, marks) and the dormant-monster tally. */
+	void UpdateSubDungeon(const abyss::Snapshot& Snap);
+	/** U6: per frame - the zone's light-radius grade (ambient, the hero's pool) to MPC_AF_Lighting; the neutral values
+	 *  once when no graded zone is up (Snap null: no hero, at the session's end). */
+	void UpdateGradeCollection(const abyss::Snapshot* Snap);
+	/** U6: hands the art manifest the presentation themes' parents once the data is there (before a themed lookup). */
+	void EnsureThemeParents() const;
 	void HandleSessionEnded();
 
 	// ---- NPCs a story beat still needs (2G stage H) ----
@@ -348,5 +362,38 @@ private:
 	/** MPC_AF_Lighting diagnostics: the first successful write and the first miss are logged once. */
 	bool bLightingWriteLogged = false;
 	bool bLightingMissLogged = false;
+	// ---- U6 (Wave 3): sub-dungeons ----
+	mutable bool bThemeParentsSet = false;
+	/** The grade was written last frame (a zone without one writes the neutral values once, then nothing). */
+	bool bGradeWritten = false;
+	bool bGradeMissLogged = false;
+	/** The collection instance and whether it has the three Grade* vectors, resolved once per zone build; the values
+	 *  last written (a write is skipped while nothing moved). */
+	TWeakObjectPtr<UMaterialParameterCollectionInstance> GradeInstance;
+	bool bGradeInstanceKnown = false;
+	bool bGradeParamsPresent = false;
+	bool bGradeValuesKnown = false;
+	FLinearColor GradeWrittenAmbient = FLinearColor::White;
+	FLinearColor GradeWrittenPosR = FLinearColor::Black;
+	FLinearColor GradeWrittenCol = FLinearColor::Black;
+	/** A dormant monster shown in its still pose: its pack and tile, and its rank along its line (the Rise ripple). */
+	struct FDormantShown
+	{
+		uint32 PackId = 0;
+		abyss::Vec2 Tile;
+		int32 Rank = 0;
+	};
+	/** The sub-dungeon probe (the in-game autotest): dormant monsters shown still, wakes seen, cleanses, the grade. */
+	TMap<uint32, FDormantShown> DormantShown;
+	bool bDormantRanksDirty = false;
+	int32 VisitDormantSeen = 0;
+	int32 VisitDormantWakes = 0;
+	/** A cleanse sequence played last frame (a zone build or the session's end under it counts it as cut). */
+	bool bCleanseWasPlaying = false;
+	FAbyssSubDungeonProbe SubDungeonProbe;
+	/** U6: ranks the dormant monsters shown along their lines (AbyssSubDungeonRules::LineRanks, per pack). */
+	void RankDormant();
+	/** U6: a zone build or the session's end - a sequence still playing is counted as cut; the visit's tallies restart. */
+	void EndSubDungeonVisit();
 	abyss::EntityId StoryFocusEntity = abyss::kNoEntity;
 };

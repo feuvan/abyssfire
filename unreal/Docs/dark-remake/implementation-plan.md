@@ -2147,6 +2147,8 @@ real; every one is fixed, three with a recorded remainder (below).
 | **3C Art W3** | A13 | `environment/crypt_pit.py`, `monsters/pitwarden.py` | 1D | kit, ship, coherence |
 | **3D UE W3** | U6 | `Private/World/**` | 3A, 3B | mac-content, mac-autotest (chapter route includes the Pit), mac-look |
 
+*3D status (2026-11): built and checked on Linux (rules tests, compile check, Scripts tests), the stage P review's findings repaired (*3D repair* below), pending the Mac run; see *3D outcomes* below.*
+
 **3A outcomes (K7 as built, 2026-11; pending review, the 3A review's fixes folded in - listed at the end of this
 block; DECISIONS DR8 *K7 as built*, DR7 note).**
 - **Scope.** The core travels into a hand-authored sub-dungeon and back, and a quest can cleanse one. No Pit content
@@ -2829,6 +2831,88 @@ DR4, P10, DR16 items 19 / 44).**
   footmen (aggro range 4) were no part of the siege at either tile. Not changed: the warrior's reaction-limited
   median at base 1000 with the Pit is 31.1 s against a floor of 30 (was 36.3): the band holds with 1.1 s to spare, so
   the next change to the early route should re-run that sweep first.
+
+**3D outcomes (U6 as built, 2026-11; pending review; DECISIONS DR17 *3D / U6* (10)-(17); `Source/Abyssfire/README.md`
+*Dark remake sub-dungeons*).**
+- **Scope.** The UE module shows the Pit: theme chain, walls, void rock, stair, entrance piece, dormant monsters, the
+  grade, the cleanse sequence, the Pitwarden's kit, quest / minimap / world map / prompt, audio fallbacks, the
+  autotest's probe and scene labels, the masters' grade parameters in the content build. No core, data or art file
+  changed; the engine was not run.
+- **Rules (UE-free, tested).** `Private/World/AbyssSubDungeonRules.h` (new): `WallYawDeg`, `WallTouchesOpen` /
+  `BuildsWallBlock`, `ExitFloorSide` / `FacingDeg` / `OverlayYawDeg`, `EntranceIdChain`, `ParseCleanseSpec` (reads
+  `vfx_recipes.json` `dark.<theme>`), `LampOrder`, `LampLitAtMs` / `LampsLitAt`, `GradeAlpha`, `MarkAtMs`,
+  `SequenceEndMs`, `GradeMultiplier`, the sequence state (`EnterState`, `StartCleanse`, `AdvanceCleanse`,
+  `StateAlpha`), `RiseDelayMs` / `RiseRank` / `StaggerStart`, `ShowsEliteMarker`, `WorldZoneId`, `ObjectiveInMap`,
+  `AudioZoneId`, `FProbe` / `ProbeVerdict`. `AbyssThemeRules.h`: `ParentTheme`, `ThemeChain`, `ExpandThemed` over a
+  chain, `RecipeChain`, `ResolveChainFirst`, `StyleThemeName`, `FindCleansedMood`, `BlendCleansed`, `LookChanged` on
+  the cleanse's progress (`AbyssMinimapRules` now delegates its parent / chain to it). `AbyssAnimActionRules.h`:
+  `IdleVariantFor`, `IdleVariantWaitMs`, `IdleVariantDue`. `AbyssAmbienceRules.h`: `BedThemeNames`.
+  `AbyssSmoothnessRules.h`: `FSceneInput::SubDungeon` / `bCleansing`. Tests: `PresentationTests/tests/
+  subdungeon_test.cpp` (14 cases on the shipped data: the chain and the art it resolves, 240 of 1020 wall blocks, the
+  stair toward -row, all 78 overlays' yaw, 14 lamps and their order, the sequence at five frame rates, the mood blend,
+  the Pitwarden's beats against the manifest, the probe).
+- **Glue.** `AAbyssZoneActor` (chain, walls, stair, skirt, mood blend, `BeginSubDungeon` / `ApplyLampStates` /
+  `StartCleanse` / `TickSubDungeon` / `GetGrade` / `GetSubDungeonStatus`; state in `Private/World/
+  AbyssSubDungeonState.h`), `AbyssSetPieces.cpp` (entrance twin, lamp twins, niche sockets, lit-at-entry loops),
+  `FAbyssTerrainField` (`bVoidRock`), `FAbyssArtManifest` / `UAbyssAssetLibrary` (theme parents, `YawStepDeg`),
+  `FAbyssVfxLibrary::FindDarkContract`, `UAbyssWorldBuilder` (`HandleAreaCleansed`, `UpdateSubDungeon`,
+  `UpdateGradeCollection`, dormant frame, spent marker, the probe), `AAbyssCharacterActor` (dormant pose, staggered
+  Rise, idle variant), HUD / world map / prompt / touch button, `UAbyssAudioSystem` (bed chain, music table of the
+  parent), the autotest (probe, verdict, scene inputs, two pictures).
+- **Content build.** `Scripts/abyss_content/hlsl.py` `_ZONE_GRADE_CORE` in `AF_Toon` / `AF_ToonSplit`, new
+  `AF_ZoneGrade` on both terrain masters; `materials.py` MPC `GradeAmbient` / `GradeLightPosR` / `GradeLightCol`.
+  `MI_AF_Toon_Props_March_Crypt`, `MI_AF_Terrain_Pit` and the crypt meshes were already planned by 3C: no import rule
+  was missing (`--plan --strict` rc 0 before and after). Scripts tests 147 (was 145: the grade's exactness and its
+  reference).
+- **3D notes, one by one.** Done: 1, 2, 3, 4 (the core's values, pinned), 5, 6 (materials route; lamps through R18
+  slots), 7, 9 (WorldContract 3.3), 13 (prompt label without the name), 14, 15, 16, 17 (already generic), 18 (no
+  "N left"), 22, 23, 24, 25, 26, 27, 28, 29 (generic story path), 30 (data-driven, pinned), 31, 32 / 41 (report
+  fields), 33, 34 (generic corpse layer), 35, 37 (no marker), 38 / 40 (nothing to do), 39, 42. Not done: 36's stagger
+  (the bodies fall in one frame), 21's extra autotest probe (die in the Pit, deactivate the window), 20's load-screen
+  name (the core already writes the parent zone into the save; not looked at in the UI). 8, 10, 11, 12, 19 were
+  already delivered by the other lanes.
+- **For the Mac (mac-content, mac-autotest, mac-look).** Rebuild the content first (the masters gained inputs and the
+  collection three vectors: without it the Pit is flat and one Warning says so). The checklist is README *What to
+  check by eye in the Pit* (11 items); the autotest's Chapter 1 run must report `subDungeon.visits >= 1`,
+  `themeResolved`, `lamps 14`, `peakLampsLit 14`, `cleanseSequenceFinished`, `dormantWakes 8`, `graded` and an empty
+  `verdict`, with scenes `dungeon_sub_rf_pit` and `dungeon_sub_rf_pit_cleanse`.
+- **Unverified (no engine here).** Everything visual: the grade's look against the vignettes, the void rock's edge,
+  block yaws and overlay facings in the frame, the stair's facing, the lamp swap, pool positions, the Rise ripple,
+  the idle variant on four monster types, the cost of 240 wall instances and 28 lamp instances on mobile, shader
+  compile of the changed masters on Metal / mobile.
+
+**3D repair (stage P review, 2026-11; DECISIONS DR17 (18)-(26)).** Thirty findings from three reviews (spec fidelity,
+engine risk, rules under adversarial input); each was checked against the code and the contract.
+- **Fixed in the rules (tested).** The lamp count is settled against `LampLitAtMs` and the end of the sequence lights
+  whatever is left (a step that is not a whole number of ms no longer ends with a lamp dark); `SequenceEndMs` counts
+  the niche; the niche's glow and marks are held until the niche is within 7 tiles (`NicheInView`, `NichePending`,
+  `AdvanceCleanse(..., bNicheInView)`); `MarkNumber` 1-99 and `MarkOrder` (no holes); `WallYawDeg` (360 = never turn,
+  below 1 degree = no step); `CutFromRock` (the hand-authored sub-dungeon only); `LineRanks` (the Rise rank is the
+  place along the line; `RiseRank`, `CollapseDelayMs`, `FStepRank` removed); `ReadCleanseMs` (numeric fields first,
+  then the step that opens with the words; `bLampFirstRead` / `bNicheAtRead`); the light power clamp;
+  `FindCleansedMood` with the contract's `grade.to.mood`, `BlendCleansed` on a resolved mood; `MaxThemeChain` 8 and
+  `ThemeChainCut`; `QuestInMap`; `EnterPrompt`; `FProbe` with expectations (`LampsExpected`, `bGradeExpected`) and
+  sequence counts (started / finished / cut); the scene tracker builds a sub-dungeon's label once.
+- **Fixed in the glue.** Lamp pools at socket `light` (`FAbyssVfxContext` light spot, radius, colour); the niche tick
+  after the sequence; `PlaceResolvedArt` (a wall tile resolves its art once); the cleansed mood resolved once per
+  zone build; the grade's collection instance cached per zone build and written only on change; hidden twins at
+  scale 0 in place; dormant ranks from the world builder (`FAbyssCharacterFrame::DormantRank`); the idle variant
+  reads stun / hold and resets its wait on re-init; the tracker's rank inside the Pit; the prompt with the place's
+  name; the autotest's entry picture after the entry beat, no per-frame copies, the probe's new fields.
+- **Reviewer tests.** `subdungeon_adversarial_test.cpp` (17 cases) is kept; its 8 failing cases pass by the fixes
+  above. Three were adjusted and say so in a comment: the two probe cases state the expectation the probe now carries
+  (`LampsExpected`, `bGradeExpected`: a cave without a contract must not fail the run), the stagger case passes a rank
+  instead of the removed `RiseRank(id)`. One shipped pin changed with the rule (a yaw step of 360 gives 0).
+- **Not fixed, open.** The lamp pool's strength and falloff (R18, about .10, against the contract's gain .85: DR17
+  (18), the art owner decides at mac-look); `M_AF_Water` ungraded (DR17 (19), decided at mac-look); 3D note 36's
+  collapse stagger; 3D note 21's death / background probe in the autotest; the "N left" line (content string);
+  numeric `lampFirstMs` / `nicheAtMs` / `markStepMs` in `vfx_recipes.json` (art lane; the reader takes them already);
+  the toon masters' precision for the grade on mobile (`API_UNCERTAIN.md`); the exporter does not check the theme
+  chain's depth (the module reports a cut chain at the zone build); `kit/theme.py` `parent` against `themeParents`.
+- **For the Mac run, changed expectations.** `report.json` `subDungeon`: `wallBlocks 237` (not 240), `lampsExpected
+  14`, `lamps 14`, `peakLampsLit 14`, `cleanseSequencesStarted 1`, `cleanseSequencesFinished 1` (or `...Cut 1` when
+  the bot left inside 6.06 s), `gradeExpected` and `graded` true, `dormantSeen 8`, `dormantWakes 8`, empty `verdict`.
+  The by-eye list is README *What to check by eye in the Pit*, now 15 items.
 
 ### Phase 4 — later chapters
 

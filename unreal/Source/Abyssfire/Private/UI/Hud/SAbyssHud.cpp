@@ -27,6 +27,7 @@
 #include "UI/Hud/SAbyssHudWidgets.h"
 #include "UI/Hud/SAbyssMinimap.h"
 #include "UI/Hud/SAbyssNotices.h"
+#include "World/AbyssSubDungeonRules.h"
 
 void SAbyssHud::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUiContext>& InContext, const TSharedRef<FAbyssMinimapTexture>& InMinimap)
 {
@@ -292,6 +293,37 @@ void SAbyssHud::SyncHero(const abyss::Snapshot& Snap, double Now, float DeltaSec
 	S.bPortaling = Hero.portaling;
 	S.PortalProgress = Hero.portalProgress;
 	S.PromptKind = Snap.prompt.kind;
+	if (Snap.prompt.kind != abyss::InteractKind::SubDungeon)
+	{
+		S.bPromptNameKnown = false;
+	}
+	else if (!S.bPromptNameKnown || S.PromptNamePos.x != Snap.prompt.pos.x || S.PromptNamePos.y != Snap.prompt.pos.y)
+	{
+		// U6 (3D note 13): "enter <name>" - the entrance marker the prompt stands on names its sub-dungeon
+		// (data.subDungeon.<target>.name); looked up once per prompt, not per frame.
+		S.bPromptNameKnown = true;
+		S.PromptNamePos = Snap.prompt.pos;
+		S.PromptName.Reset();
+		const abyss::WorldMarkerView* Entrance = nullptr;
+		double BestSq = 9.0;   // within three tiles of the prompt
+		for (const abyss::WorldMarkerView& Marker : Snap.markers)
+		{
+			const double Dx = Marker.pos.x - Snap.prompt.pos.x;
+			const double Dy = Marker.pos.y - Snap.prompt.pos.y;
+			if (Marker.kind == abyss::MarkerKind::SubDungeonEntrance && Dx * Dx + Dy * Dy <= BestSq)
+			{
+				BestSq = Dx * Dx + Dy * Dy;
+				Entrance = &Marker;
+			}
+		}
+		const abyss::DataStore* PromptData = Ctx->GetData();
+		const abyss::SubDungeonDef* Target = Entrance != nullptr && PromptData != nullptr
+			? PromptData->World().FindSubDungeon(Entrance->target) : nullptr;
+		const FString Place = Target != nullptr && !Target->nameKey.empty() ? Ctx->LocOrStr(Target->nameKey, TEXT("")) : FString();
+		// The labyrinth's verb and the place's own name (AbyssSubDungeonRules::EnterPrompt: the data has no format string).
+		S.PromptName = AbyssText::ToFString(AbyssSubDungeonRules::EnterPrompt(
+			AbyssText::ToStd(Ctx->LocOrStr("ui.abyss.enter", TEXT("Enter"))), AbyssText::ToStd(Place)));
+	}
 	S.StatusMask = Hero.statusMask;
 	S.AshnumbStacks = Hero.ashnumbStacks;
 	S.Buffs.Reset();
@@ -472,11 +504,13 @@ void SAbyssHud::SyncMinimapMarkers(const abyss::Snapshot& Snap, double Now)
 		{
 			const abyss::QuestDef* Def = Open.first;
 			const abyss::QuestProgress* Progress = Open.second;
-			if (Def == nullptr || Progress == nullptr || Def->zone != Snap.zone.mapId || Progress->status != abyss::QuestStatus::Active)
+			if (Def == nullptr || Progress == nullptr || Progress->status != abyss::QuestStatus::Active)
 			{
 				continue;
 			}
-			if (Def->hasQuestArea)
+			// U6 (K7 objective `zone`): a quest of the surface can send the hero into a sub-dungeon - its area circle is
+			// the quest zone's, each explore point the map of its own objective (S7's niche inside the Pit).
+			if (Def->hasQuestArea && Def->zone == Snap.zone.mapId)
 			{
 				FAbyssMinimapMarkers::FArea Area;
 				Area.Pos = Def->questArea.Center();
@@ -488,7 +522,8 @@ void SAbyssHud::SyncMinimapMarkers(const abyss::Snapshot& Snap, double Now)
 			{
 				const abyss::QuestObjectiveDef& Objective = Def->objectives[Index];
 				const int32 Current = Index < Progress->objectives.size() ? Progress->objectives[Index] : 0;
-				if (Objective.type == abyss::ObjectiveType::Explore && Objective.hasLocation && Current < Objective.required)
+				if (Objective.type == abyss::ObjectiveType::Explore && Objective.hasLocation && Current < Objective.required
+					&& AbyssSubDungeonRules::ObjectiveInMap(Def->zone, Objective.zone, Snap.zone.mapId))
 				{
 					M.ExplorePoints.Add(Objective.location.Center());
 				}

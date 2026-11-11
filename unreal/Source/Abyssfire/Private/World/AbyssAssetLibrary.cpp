@@ -25,7 +25,11 @@
 
 #include <string_view>
 
+#include "abyss/base/Json.h"
+
 #include "Framework/AbyssPerfProbe.h"
+#include "Framework/AbyssText.h"
+#include "World/AbyssThemeRules.h"
 
 #if WITH_EDITOR
 // Uncooked runs compile shaders on first use. Until a material's shader map is ready UE draws its primitives with the
@@ -217,6 +221,25 @@ void UAbyssAssetLibrary::Initialize(FSubsystemCollectionBase& Collection)
 		// Not fatal: the world still builds (terrain, VFX from content), characters without art are skipped and logged.
 		UE_LOG(LogAbyss, Error, TEXT("Art manifest not loaded: %s"), *Error);
 	}
+}
+
+void UAbyssAssetLibrary::SetThemeParents(const abyss::JsonValue* TerrainStyles)
+{
+	TMap<FName, FName> Parents;
+	if (TerrainStyles != nullptr)
+	{
+		for (const abyss::JsonMember& Member : TerrainStyles->Get("themeParents").Members())
+		{
+			// AbyssThemeRules::ParentTheme: a theme that names itself (or nothing) has no parent.
+			const std::string_view Parent = AbyssThemeRules::ParentTheme(TerrainStyles, Member.key);
+			if (!Parent.empty())
+			{
+				Parents.Add(FName(*AbyssText::ToFString(Member.key)), FName(*AbyssText::ToFString(Parent)));
+			}
+		}
+	}
+	Manifest.SetThemeParents(Parents);
+	UE_LOG(LogAbyss, Log, TEXT("Art manifest: %d presentation theme parent(s) from terrain_styles.json"), Parents.Num());
 }
 
 void UAbyssAssetLibrary::Deinitialize()

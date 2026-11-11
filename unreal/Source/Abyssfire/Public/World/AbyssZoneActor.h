@@ -44,6 +44,19 @@
 //   only: no collision, no walkability. Their sockets give zone loops (smoulder, smoke), audio emitter spots (the
 //   knocking doors), cue spots (the bells ripple when the audio system plays a bell cue) and echo anchors; a yielding
 //   piece (the Boneyard Gate) is hidden while a defend target of the same art stands on it.
+// * Sub-dungeons (dark remake U6, Wave 3: the Pit of the Faithful; rules Private/World/AbyssSubDungeonRules.h and the
+//   theme parent chain of AbyssThemeRules.h): a presentation theme with a parent (pit -> march) resolves every themed
+//   id, recipe and style as `<id>@pit`, `<id>@march`, `<id>`; a wall block whose art says `placement.yawStepDeg` turns in
+//   those steps and, inside a hand-authored sub-dungeon (AbyssSubDungeonRules::CutFromRock; the generated caves keep
+//   the surface's rules), stands only on wall tiles that touch an open tile (the rest is void: black terrain, no
+//   skirt); the stair (exit_portal@pit) faces the floor and plays its recipe at its `fx_vortex` socket; the
+//   lamps are placed as two meshes at one transform (unlit shown, lit hidden) and swapped by the cleanse sequence
+//   (StartCleanse / TickSubDungeon: nearest first, 420 ms apart; the mood and the materials' ambient go to the cleansed
+//   values over 6 s; a lit lamp's flame loop burns at its `flame` socket with its light pool under the `light` socket;
+//   the niche's glow and marks wait until the niche is in view), or all lit at once when the zone is entered cleansed;
+//   the surface's entrance piece shows its
+//   `_sealed` twin while the entrance is sealed. The light-radius grade (vfx_recipes.json dark.<theme>.lightRadius) is
+//   handed to the world builder (GetGrade), which writes it to MPC_AF_Lighting.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -72,6 +85,8 @@ class UStaticMesh;
 class UTexture2D;
 struct FAbyssArtAsset;
 struct FAbyssSetPieceState;
+struct FAbyssSubDungeonLamp;
+struct FAbyssSubDungeonState;
 
 namespace abyss
 {
@@ -84,13 +99,67 @@ namespace abyss
 struct FAbyssZoneEffectSpot
 {
 	FName RecipeId;
-	/** `<RecipeId>@<theme>` in a zone with a presentation theme (played instead when the recipe exists), else NAME_None. */
-	FName ThemedRecipeId;
-	/** Only ThemedRecipeId may play (AbyssThemeRules::ThemedOnlyRecipe): no fall back to RecipeId when it is missing. */
+	/**
+	 * `<RecipeId>@<theme>` for every theme of the zone's presentation theme chain, nearest first (pit: `exit.portal@pit`,
+	 * `exit.portal@march`); the first that exists plays instead of RecipeId. Empty without a presentation theme.
+	 */
+	TArray<FName, TInlineAllocator<2>> ThemedRecipeIds;
+	/** Only a themed id may play (AbyssThemeRules::ThemedOnlyRecipe): no fall back to RecipeId when none exists. */
 	bool bThemedOnly = false;
 	FVector Location = FVector::ZeroVector;
 	FLinearColor Color = FLinearColor::White;
 	bool bHasColor = false;
+	/**
+	 * U6: the recipe's light at its own spot instead of Location (a lit lamp: the flame at socket `flame`, the pool on
+	 * the ground under socket `light`; LightHeightCm = the socket over that ground point), and - when set - with its own
+	 * radius and colour (FAbyssVfxContext's light fields).
+	 */
+	bool bHasLightSpot = false;
+	FVector LightSpot = FVector::ZeroVector;
+	float LightHeightCm = 0.f;
+	float LightRadiusCm = 0.f;
+	bool bHasLightColor = false;
+	FLinearColor LightColor = FLinearColor::White;
+
+	/** The ids to try, in order (UAbyssVfxSystem::PlayFirst): the themed ones, then RecipeId unless bThemedOnly. */
+	void GetRecipes(TArray<FName, TInlineAllocator<4>>& Out) const
+	{
+		Out.Reset();
+		Out.Append(ThemedRecipeIds);
+		if (!bThemedOnly)
+		{
+			Out.Add(RecipeId);
+		}
+	}
+};
+
+/** The light-radius grade of a zone (vfx_recipes.json dark.<theme>.lightRadius) as MPC_AF_Lighting takes it. */
+struct FAbyssZoneGrade
+{
+	/** rgb = the ambient the graded materials multiply by, a = the ceiling of ambient + pools. */
+	FLinearColor AmbientCeil = FLinearColor(1.f, 1.f, 1.f, 1.f);
+	/** rgb = the hero pool's colour x gain, a = its falloff power (0 = no pool). */
+	FLinearColor HeroColorPower = FLinearColor(0.f, 0.f, 0.f, 0.f);
+	float HeroRadiusCm = 0.f;
+};
+
+/** What the sub-dungeon layer showed (the in-game autotest's probe, report.json `subDungeon`). */
+struct FAbyssSubDungeonStatus
+{
+	bool bInside = false;
+	/** A hand-authored sub-dungeon (AbyssSubDungeonRules::CutFromRock): the place the autotest's probe counts as a visit. */
+	bool bCutFromRock = false;
+	/** Set pieces of the contract's unlit lamp the map placed (Lamps: those with a lit twin). */
+	int32 LampsExpected = 0;
+	bool bGraded = false;
+	bool bThemeResolved = false;
+	int32 WallTiles = 0;
+	int32 WallBlocks = 0;
+	int32 Lamps = 0;
+	int32 LampsLit = 0;
+	bool bCleansing = false;
+	bool bSequenceFinished = false;
+	float CleanseAlpha = 0.f;
 };
 
 UCLASS(NotBlueprintable)
@@ -143,6 +212,19 @@ public:
 	void UpdateMood(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	/** Brightness setting (settings.json video.brightness) as an exposure bias added to abyss.ExposureBias (EV). */
 	void SetUserExposureEv(float Ev);
+
+	// ---- sub-dungeons (U6) ----
+	/** EvAreaCleansed: the cleanse sequence starts from Pos (the hero's tile) at the sim clock SimNowMs. */
+	void StartCleanse(const abyss::Vec2& Pos, double SimNowMs);
+	/**
+	 * Per frame (world builder, before UpdateMood): advances the cleanse sequence on the sim clock. Lamps whose time
+	 * has come swap to their lit mesh; OutBursts gets the one-shot recipes to play now (the lamp catching, the niche's
+	 * glow, its marks) and OutLoops the loops to start (each lit lamp's flame).
+	 */
+	void TickSubDungeon(const abyss::Snapshot& Snap, TArray<FAbyssZoneEffectSpot>& OutBursts, TArray<FAbyssZoneEffectSpot>& OutLoops);
+	/** The grade of this frame (the ambient at the cleanse's progress, the hero's pool); false in an ungraded zone. */
+	bool GetGrade(FAbyssZoneGrade& Out) const;
+	FAbyssSubDungeonStatus GetSubDungeonStatus() const;
 
 	const FAbyssTerrainField& GetTerrain() const { return Terrain; }
 	double GetGroundHeight(double WorldX, double WorldY) const;
@@ -244,23 +326,39 @@ private:
 	bool PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
 		bool bOccluder, float FadeTarget, FName StoryId = NAME_None, const FAbyssArtAsset** OutArt = nullptr,
 		FTransform* OutTransform = nullptr);
+	/** PlaceArt for an asset the caller resolved already (ResolveArt(GameIds, Hash): the walls read its yaw step first);
+	 *  GameIds only names the miss when Art is null. */
+	bool PlaceResolvedArt(const FAbyssArtAsset* Art, TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location,
+		float YawDeg, float Scale, bool bOccluder, float FadeTarget, FName StoryId = NAME_None,
+		const FAbyssArtAsset** OutArt = nullptr, FTransform* OutTransform = nullptr);
 
 	void BuildTerrain(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	void ApplyTerrainStyle(const abyss::DataStore& Data);
 	void BuildWalls(const abyss::Snapshot& Snap);
 	/** U4 set pieces (AbyssSetPieces.cpp): placements, art, spots; before BuildDecorations (it reads the covered tiles). */
 	void BuildSetPieces(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
-	/** Hides (scale 0, its occluder suppressed) or restores a yielding set piece's instance. */
-	void SetSetPieceHidden(FName Key, bool bHidden);
+	/**
+	 * Hides (scale 0 where it stands, its occluder suppressed) or restores a keyed set-piece instance: a yielding
+	 * piece, a lamp's unlit or lit twin (U6). Why, when given, is logged with the change.
+	 */
+	void SetSetPieceHidden(FName Key, bool bHidden, const TCHAR* Why = nullptr);
 	void BuildDecorations(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	void BuildCamps(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	void BuildMarkers(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	void BuildSkirt(const abyss::DataStore& Data);
+	/** U6: the sub-dungeon state of the build (the theme's dark contract, the entry's cleanse state); before BuildLighting. */
+	void BeginSubDungeon(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
+	/** U6: a lit lamp's flame loop - at its `flame` socket, its light pool at the `light` socket (the contract's lamp light). */
+	FAbyssZoneEffectSpot MakeLampFlameSpot(const FAbyssSubDungeonLamp& Lamp) const;
+	/** U6: after FlushInstances - hides the twin of every lamp that is not its state's (unlit shown, or lit when cleansed). */
+	void ApplyLampStates();
 	void BuildLighting(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	/** The mood's look: grade (FAbyssMoodLook), sun colour, fog. bLive also re-applies the post-process now. */
 	void ApplyMoodDef(const abyss::ZoneMoodDef& MoodDef, bool bLive);
-	/** A looping zone recipe at a spot; in a zone with a presentation theme also its `<recipe>@<theme>` variant id. */
+	/** A looping zone recipe at a spot; in a zone with a presentation theme also its `<recipe>@<theme>` variant ids. */
 	void AddEffectSpot(FName RecipeId, const FVector& Location);
+	/** A spot of RecipeId at Location with the themed ids of the zone's chain (AbyssThemeRules::RecipeChain). */
+	FAbyssZoneEffectSpot MakeEffectSpot(FName RecipeId, const FVector& Location) const;
 	void ApplyPostProcess();
 	/** Sun CSM distance and fog start for ViewDistanceCm (P10 / P14). */
 	void ApplyViewDistance();
@@ -331,6 +429,10 @@ private:
 	TArray<FIntPoint> ExitTiles;
 	/** U4: the zone's set-piece spots and yield state (Private/World/AbyssSetPieces.h); null before a build. */
 	TSharedPtr<FAbyssSetPieceState> SetPieceState;
+	/** U6: the sub-dungeon layer's state (Private/World/AbyssSubDungeonState.h); null before a build. */
+	TSharedPtr<FAbyssSubDungeonState> SubDungeonState;
+	/** The presentation theme's chain, nearest first (AbyssThemeRules::ThemeChain: pit, march); empty without a theme. */
+	TArray<FName, TInlineAllocator<4>> ThemeChainNames;
 	/**
 	 * Shader gate: DecorInstanceComponents indices hidden until their materials compile; when the wait began (wall
 	 * clock, for the log), the last gate tick, and the waited frame time that abyss.DecorShaderGateMaxSec is measured in
@@ -375,6 +477,8 @@ private:
 	abyss::MapTheme AppliedMoodRegion = abyss::MapTheme::Plains;
 	bool bAppliedMoodHasRegion = false;
 	double AppliedMoodRegionWeight = 0.0;
+	/** U6: the cleanse's progress the look was last applied with (AbyssThemeRules::FMoodState::CleanseAlpha). */
+	double AppliedCleanseAlpha = 0.0;
 	bool bMoodRegionDominant = false;
 	float MoodLightScaleOverride = -1.f;
 	FLinearColor WindupTintNormal = FLinearColor::White;

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <string_view>
 
 #include "abyss/base/Json.h"
@@ -311,5 +312,60 @@ namespace AbyssAnimActionRules
 			return ELayer::Stun;
 		}
 		return In.bMoving ? ELayer::Move : ELayer::Idle;
+	}
+	// =================================================================================================================
+	// Idle variant (dark remake Wave 3: the Unburied "keep their last order" - the Pitwarden digs a pit that is full)
+	// =================================================================================================================
+
+	/** The one-shot idle variant clip of an asset that ships one (manifest clip `Idle_Order`, READY back to READY). */
+	inline constexpr std::string_view IdleVariantClip = "Idle_Order";
+	/**
+	 * The idle variant an asset's body plays, from its clip names: `Idle_Order` when it is the asset's only clip of that
+	 * family. An asset with several (`Idle_Order`, `Idle_Order_Dig`: the Risen Footman, whose variant depends on the
+	 * weapon look the instance drew - sword or shovel) plays none: the look-to-clip table is the manifest's
+	 * `looks.weapon[].idleOrder`, which the actor does not carry yet, and the wrong clip would dig with a sword.
+	 */
+	template <class ClipNamesT>
+	std::string_view IdleVariantFor(const ClipNamesT& ClipNames)
+	{
+		bool bHasVariant = false;
+		for (const auto& Name : ClipNames)
+		{
+			const std::string_view Clip(Name);
+			if (Clip == IdleVariantClip)
+			{
+				bHasVariant = true;
+			}
+			else if (Clip.size() > IdleVariantClip.size() && Clip.substr(0, IdleVariantClip.size()) == IdleVariantClip)
+			{
+				return {};
+			}
+		}
+		return bHasVariant ? IdleVariantClip : std::string_view();
+	}
+
+	/** A monster that stands idle plays the variant after this long, plus a hashed share of the spread. */
+	inline constexpr double IdleVariantMinWaitMs = 4000.0;
+	inline constexpr double IdleVariantSpreadMs = 5000.0;
+
+	/** The idle time before the Round-th variant of an entity (deterministic per entity and round: no two of a pack
+	 *  dig in step). */
+	inline double IdleVariantWaitMs(uint32_t EntitySeed, int Round)
+	{
+		uint32_t H = EntitySeed * 2654435761u + static_cast<uint32_t>(Round) * 40503u + 0x9E3779B9u;
+		H ^= H >> 15;
+		H *= 2246822519u;
+		H ^= H >> 13;
+		return IdleVariantMinWaitMs + IdleVariantSpreadMs * (static_cast<double>(H & 0xFFFFu) / 65536.0);
+	}
+
+	/**
+	 * Whether the idle variant starts now: the body has shown plain Idle for WaitMs, and it is neither dormant (a
+	 * dormant monster holds a still pose), nor after the hero (aggro: it would dig with its back to a fight), nor held
+	 * or stunned by the core.
+	 */
+	inline bool IdleVariantDue(double IdleMs, double WaitMs, bool bDormant, bool bAggro, bool bHeldOrStunned)
+	{
+		return !bDormant && !bAggro && !bHeldOrStunned && IdleMs >= WaitMs;
 	}
 }

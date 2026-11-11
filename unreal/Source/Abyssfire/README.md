@@ -580,6 +580,124 @@ What the three stages share, from the cross-stage review (DECISIONS DR16 (43)-(4
   the zone fade, not at the first kill's grey or the first Ashnumb stack.
 * **Autotest probe** (`Private/Framework/AbyssPresenceRules.h`, `presence_test.cpp`): see *In-game autotest*.
 
+## Dark remake sub-dungeons: the Pit of the Faithful (3D U6, Wave 3)
+
+`sub_rf_pit` is the first hand-authored sub-dungeon the module shows (chapter1.md 9.2; DECISIONS DR17; implementation
+plan *3D outcomes*). Rules: `Private/World/AbyssSubDungeonRules.h` (walls, the stair, the entrance piece, the grade and
+the cleanse sequence, the Rise stagger, the probe), the theme parent chain and the cleansed mood in
+`AbyssThemeRules.h`, the idle variant in `AbyssAnimActionRules.h`; tests `PresentationTests/tests/subdungeon_test.cpp`
+(suite `subdungeon`, the shipped data) and `subdungeon_adversarial_test.cpp` (suite `subdungeon_adv`, inputs the data
+does not have).
+
+* **Theme chain.** A presentation theme can have a parent (`terrain_styles.json` `themeParents`: `pit` -> `march`).
+  Every themed lookup tries `<id>@pit`, `<id>@march`, `<id>`: art (`FAbyssArtManifest::ResolveFirst` /
+  `FindThemedGameId` / `HasTheme`; the world builder hands the parents over once, `UAbyssAssetLibrary::SetThemeParents`),
+  zone-loop and cue recipes (`FAbyssZoneEffectSpot::ThemedRecipeIds`: `exit.portal@pit`, then `exit.portal@march`,
+  then `exit.portal`), the terrain style and `MI_AF_Terrain_<Theme>` (the first theme of the chain with a style), the
+  minimap palette, the ambience bed (`AbyssAmbienceRules::BedThemeNames`), monster and NPC looks, the elite crown,
+  loot props, portraits. The Pit re-points its floor, wall tile and stair and keeps every march look.
+* **The zone.** Inside a **hand-authored** sub-dungeon (`AbyssSubDungeonRules::CutFromRock`: `subDungeon.inside` and
+  `SubDungeonDef::hasMap`; today only `sub_rf_pit`): a wall tile gets a block only where it touches an open tile (240
+  of the Pit's 1020; 237 are placed, the three behind the stair stay bare, so `report.json` says `wallBlocks 237`),
+  the rest is void (terrain vertex colour A = 0: black; no hills, no grove ring). The two generated caves
+  (`sub_dwarf_mine`, `sub_demon_altar`) keep the surface's rules: every outcrop, hills, the grove ring, the exit facing
+  the map centre. Everywhere, a block whose art says `placement.yawStepDeg` turns in those steps
+  (`(Hash >> 8) % 4 * 90`; a step of 360 or more never turns; every other wall keeps `(Hash >> 8) % 360`). A parent
+  chain longer than eight names is cut and logged as a Warning at the zone build. Wall overlays (`onWall` set pieces) are placed with the core's position and yaw
+  (`abyss::ExpandSetPieces`), unchanged. The stair (`exit_portal@pit`) faces the floor (the walkable neighbour with the
+  wall behind it) and plays its loop at its `fx_vortex` socket.
+* **Travel.** The core's zone change does the rest (fade, rebuild, banner, `cs_rf_pit` 900 ms after the first entry,
+  death back to Knellwatch, a save inside loading at the pit mouth). On the surface the entrance piece shows
+  `setpiece_pit_mouth_open`, or its `_sealed` twin while the entrance marker is sealed. Music keeps the parent zone's
+  override table (the march's drones); the interact prompt reads "Enter The Pit of the Faithful" (`ui.abyss.enter` and
+  the target's `data.subDungeon.<id>.name`, joined by `AbyssSubDungeonRules::EnterPrompt`; the touch button keeps the
+  bare verb).
+* **Dormant monsters.** `MonsterView::dormant`: Idle's first frame at play rate 0, facing the heading, no idle variant.
+  A dormant monster's `EvPlayAnim{Rise}` starts `rank x 50 ms` late and plays the faster, so it ends with the core's
+  root. The rank is the monster's place along its line (`AbyssSubDungeonRules::LineRanks` over the dormant members of
+  one pack, by position along the line's longer axis from its low end; the world builder ranks them while they stand,
+  the actor keeps the last rank), so the Helm Wall ripples from one end whatever the entity ids are; the guards wake
+  without a Rise. A spent guardian wears no elite
+  marker. The Pitwarden's kit is data (clips, beats, telegraphs, notifies, the spade, `fx_elite`, the portrait: the
+  test pins the manifest against `monsters.json`); a monster whose art ships exactly one `Idle_Order` clip plays it
+  after 4-9 s of idle (`abyss.IdleVariant 0` turns it off; the Risen Footman, with two, plays none).
+* **The grade.** `vfx_recipes.json` `dark.pit.lightRadius`: the toon and terrain masters multiply their colour by
+  `min(GradeAmbient.rgb + the hero's pool, GradeAmbient.a)`, emissive regions exempt (`Scripts/abyss_content/hlsl.py`
+  `_ZONE_GRADE_CORE`; MPC `GradeAmbient`, `GradeLightPosR`, `GradeLightCol`, written by
+  `UAbyssWorldBuilder::UpdateGradeCollection` when the pool or the ambient moved, neutral outside a graded zone; the
+  collection instance is resolved once per zone build). Content built before Wave 3 has no such parameters: the Pit
+  then draws evenly lit, one Warning says so and the autotest's verdict fails ("the light-radius grade was not
+  written": the grade is a hard acceptance item).
+* **The cleanse.** On `EvAreaCleansed`: `prop.pit_cleanse.embers` round the hero, the mood and the ambient to
+  `pit_cleansed` over 6 s (the ambience `ambient.pit_embers` from the first moment), from 600 ms the lamps nearest
+  first 420 ms apart (the unlit twin hidden - scale 0 where it stands -, the lit one shown, `prop.pit_lamp.light` once
+  and `prop.pit_lamp.flame` looping at its `flame` socket, **its light pool on the ground under the `light` socket**
+  with the contract's lamp colour and radius: `FAbyssVfxContext::bHasLightSpot`). The niche's glow and its five marks
+  180 ms apart need the niche within 7 tiles of the hero; a cleanse further away (the Pitwarden's Cut is 14 tiles from
+  it) **holds them** - through the sequence's end - until the hero first comes that near, then the glow plays and the
+  marks follow 180 ms apart. The two moments (lamps from 600 ms, niche at 600 ms) are read from `cleanse.lampFirstMs`
+  / `cleanse.nicheAtMs` when the contract has them, else from the sequence step whose sentence opens with "the lamps
+  light" / "if the Flame Niche"; with neither, the defaults stay and the zone build logs a Warning. The mood blended
+  to is the contract's `grade.to.mood`, resolved once per zone build.
+  The clock is the sim's (a pause holds it). Entering a cleansed Pit shows the end state at once (no niche beat). The survivors'
+  fall is the core's `EvPlayAnim{Death}` in the cleanse's step: all at once (no stagger: see *Not done*).
+* **HUD.** The quest card's `clear_area` row (type label, the Pit's name, 0 / 1), the explore row and its minimap
+  point inside the Pit (an objective's own `zone`), the guide arrow's `entrance` / `exit` targets, the minimap in the
+  Pit's palette, the world map's pin on the parent zone. Inside the Pit S7 ranks as a quest of this place in the
+  tracker (`AbyssSubDungeonRules::QuestInMap`: the parent zone's quest, or one with an objective here).
+
+**What to check by eye in the Pit** (Mac, desktop high, a warrior with S7 accepted; `Previews/env_vignette_pit/*.png`
+are the references):
+
+1. The pit mouth at (17,26) is the open one; walking to it shows "Enter The Pit of the Faithful"; the fade goes down
+   and the banner names the Pit.
+2. The landing is dark: far corners near black, the hero's pool the brightest floor, eyes / the seep / VFX undimmed;
+   beyond the walls is black, no trees, no hills. (An evenly lit grey room = the content build is older than the
+   module: rebuild.)
+3. Walls are whole blocks abutting face to face (no gaps, no rotated blocks); niches, lamps, tag strands and curtains
+   sit on the wall faces looking into the rooms; the stair climbs into the south wall of its alcove with ash sifting
+   down it, no teal vortex.
+4. `cs_rf_pit` plays to an empty stair; three helm niches stand inside the hero's light.
+5. The Helm Wall: six footmen stand still in a rank, facing the room; stepping within 3 tiles all six rise, a ripple
+   from column 20 to column 25 of the line (50 ms a man); none slides before its Rise ends.
+6. The Cut: the two shieldbearers stand still facing the door and start without a Rise; the Pitwarden digs now and
+   then while waiting (`Idle_Order`), carries the spade canted off his right side, wears the sigil over his bare head;
+   Dig shows a line decal and the spade plants at about a third of the windup, the sweep a cone; boss bar and target
+   frame show his portrait.
+7. The kill, then the cleanse: embers rise, the room warms over six seconds, the lamps catch one by one from the
+   nearest, each with a warm pool **on the floor about 0.75 m in front of its wall** (not in the air at the flame, not
+   under the wall block); whoever still stood falls; nothing rises afterwards. Judge the pools against
+   `flame_niche_cleansed.png`: they are R18 lights (additive, about .10 on the floor), not the contract's grade pools
+   (gain .85 inside the ceiling) - DR17 (18) needs the art owner's yes or no here. While walking through the lit Pit,
+   watch for lamp pools on characters and walls fading in and out: only the 8 lights nearest the camera (4 on
+   mobile) reach the toon masters, and the floor pools are capped by the tier's `MaxDynamicLights`.
+8. The arrow leads through the south door; when the hero comes within 7 tiles of the Flame Niche it glows and its
+   five marks light clockwise, 180 ms apart (held since the cleanse; once per visit, never on a later one).
+9. Leaving by the stair returns to the pit mouth; going down again: lit at once, embers in the air, no monsters,
+   the seven bodies still lying.
+10. Kill the Pitwarden, leave without the quest, come back: he stands again without a sigil.
+11. On the surface: the arbalests, shieldbearers and standard bearers of the march now play their idle order too
+    (never while stunned or held).
+12. The seep (tile 3, water art) in the Ash Steps' corner: `M_AF_Water` is **not** graded. If it reads as a lit pool
+    of ordinary water in the dark room, grade its non-emissive part (the contract's implementation line lists
+    `M_AF_Water`; its acceptance line wants "the seep undimmed" - DR17 (19), decided here).
+13. On a phone: the hero's pool on characters and props while walking - no banding, no stepping edge against the
+    smooth floor (the toon masters are not full precision: `API_UNCERTAIN.md`).
+14. The two older caves (the mine in the Anvil Mountains, the altar in the Abyss Rift) look as before this stage:
+    outcrops everywhere, hills and trees beyond the border, no black ground.
+15. Hidden lamp twins: before the cleanse no lit lamp shows, after it no unlit one; no log line about degenerate
+    instance transforms (the hidden twin is scale 0 in place).
+
+**Not done / deviations (recorded in DR17).** The lamp's light pool lies at the `light` socket with the contract's
+colour and radius, but its strength and falloff are the flame recipe's R18 light (alpha .34 x the cleansed mood's
+light scale .30 = about .10, additive, added after the grade and outside its ceiling; the contract's lamp light is
+gain .85, power 1.4, inside `min(ambient + pools, ceil)`); it needs the art owner's agreement at mac-look. No "N left"
+line on the quest card (no string for it: a content-string request). The bodies at the cleanse fall in one frame (3D
+note 36's stagger is open: a staggered Death would hide the actor for the delay, because the actor hides a dead
+monster that has not started its death; no rule or helper for it exists). The autotest has no probe for dying in the
+Pit or for backgrounding the app there (3D note 21). The pit mouth has no lit variant after the cleanse (no
+such art). The ash twin's and the Ashnumb band's own colours are not graded.
+
 ## First engine run (UE 5.8.3, macOS arm64, Metal)
 
 The module's first real build and run, at commit `83228c4`:

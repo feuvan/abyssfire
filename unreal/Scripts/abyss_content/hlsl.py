@@ -135,6 +135,64 @@ def _hash12(dst: str, x: str, y: str) -> str:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Zone grade (dark remake Wave 3, DECISIONS DR17 (4); Art/Export/VFX/vfx_recipes.json dark.pit.lightRadius): the Pit's
+# darkness. The toon masters are unlit and the floor ships at the march's values, so a zone is darkened in the
+# materials: colour x min(GradeAmbient.rgb + pool, GradeAmbient.a), the pool being the hero's light radius - colour x
+# gain x saturate(1 - d / r)^power on the ground (XY) distance d from MPC GradeLightPosR.xy (w = r, cm), GradeLightCol
+# rgb = colour x gain, a = power (0 = no pool). Emissive regions are exempt (lerp to 1 by the palette's emissive
+# amount); the outline, VFX, telegraph and water masters do not read it. The collection's defaults - ambient (1, 1, 1),
+# ceiling 1, no pool - multiply by exactly 1, so every other zone is bit-identical (test_zone_grade_default_is_exact).
+# The lamps' pools come through the DECISIONS R18 light slots (their recipes' own lights), added after the grade.
+# Runtime reference: Source/Abyssfire/Private/World/AbyssSubDungeonRules.h GradeMultiplier.
+# ---------------------------------------------------------------------------------------------------------------------
+ZONE_GRADE_PARAMS = (
+    NodeInput("GradeAmb", "float4", "float4(1.f, 1.f, 1.f, 1.f)"),    # MPC GradeAmbient: rgb ambient, a ceiling
+    NodeInput("GradePosR", "float4", "float4(0.f, 0.f, 0.f, 0.f)"),   # MPC GradeLightPosR: xyz world cm, w radius cm
+    NodeInput("GradeCol", "float4", "float4(0.f, 0.f, 0.f, 0.f)"),    # MPC GradeLightCol: rgb colour x gain, a power
+)
+
+# Declares `float3 gm` (the multiplier) from the world position expression @PW@ (a float3 variable).
+_ZONE_GRADE_CORE = """
+float3 gm = float3(GradeAmb.r, GradeAmb.g, GradeAmb.b);
+if (GradeCol.a > 0.0) {
+float2 gd = float2(GradePosR.r - @PW@.x, GradePosR.g - @PW@.y);
+float gt = saturate(1.0 - sqrt(dot(gd, gd)) / max(GradePosR.a, 1.0));
+gm = gm + float3(GradeCol.r, GradeCol.g, GradeCol.b) * pow(gt, GradeCol.a);
+}
+gm = min(gm, float3(GradeAmb.a, GradeAmb.a, GradeAmb.a));
+"""
+
+
+def _grade(pw: str) -> str:
+    return _fill(_ZONE_GRADE_CORE, {"PW": pw}).strip()
+
+
+def zone_grade_reference(ambient, ceil: float, hero_rgb_gain, power: float, radius_cm: float, distance_cm: float
+                         ) -> tuple[float, float, float]:
+    """Python reference of _ZONE_GRADE_CORE: the multiplier at a ground distance from the pool's centre."""
+    pool = 0.0
+    if power > 0.0:
+        t = min(max(1.0 - distance_cm / max(radius_cm, 1.0), 0.0), 1.0)
+        pool = t ** power
+    return tuple(min(a + c * pool, ceil) for a, c in zip(ambient, hero_rgb_gain))  # type: ignore[return-value]
+
+
+ZONE_GRADE_INPUTS = (NodeInput("Col", "float3"), NodeInput("Pw", "float3"), NodeInput("Void", "float")) + ZONE_GRADE_PARAMS
+_ZONE_GRADE = """
+float3 pw = float3(Pw.r, Pw.g, Pw.b);
+@GRADE@
+return Col * gm * saturate(Void);
+"""
+
+
+def zone_grade_node() -> CustomNode:
+    """AF_ZoneGrade: the ground's albedo under the zone grade (M_AF_Terrain / M_AF_Terrain_Painted). Void is the
+    terrain's vertex colour A: 1 on lit ground, 0 on the void rock of a sub-dungeon (FAbyssTerrainSettings::bVoidRock)."""
+    return CustomNode("AF_ZoneGrade", "zone grade: ambient + the hero's light radius (MPC Grade*), void rock",
+                      "float3", ZONE_GRADE_INPUTS, _fill(_ZONE_GRADE, {"GRADE": _grade("pw")}))
+
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Toon (M_AF_Toon family): README 2 formula + gameplay feedback (art-inventory-ch1.md 1.8, WorldContract 3.3)
 # ---------------------------------------------------------------------------------------------------------------------
 TOON_INPUTS = (
@@ -172,6 +230,10 @@ TOON_INPUTS = (
     # enemy magic there (MI_AF_Toon_Props_March_Crypt ships SHADE_COOL_CRYPT; every other instance keeps 1).
     NodeInput("ShadeCool", "float", "1.f"),
 )
+
+# AF_Toon (the unlit toon of the slime and the fade ghosts): the shared inputs, then the world position and the zone
+# grade (dark remake Wave 3; emulation defaults = no grade, so older calls compile and give the old colour).
+TOON_UNLIT_INPUTS = TOON_INPUTS + (NodeInput("Pw", "float3", "float3(0.f, 0.f, 0.f)"),) + ZONE_GRADE_PARAMS
 
 LUMA_WEIGHTS = (0.299, 0.587, 0.114)    # web tone() / ColorGradePipeline luma (display-space saturation)
 
@@ -217,6 +279,9 @@ col = lerp(col, c, eAmt);
 float3 one = float3(1.0, 1.0, 1.0);
 float3 sunC = float3(SunCol.r, SunCol.g, SunCol.b);
 lin = lin * lerp(one, sunC, saturate(SunTint) * (1.0 - eAmt)) * (1.0 + @EM_BOOST@ * eAmt);
+float3 pw = float3(Pw.r, Pw.g, Pw.b);
+@GRADE@
+lin = lin * lerp(gm, one, eAmt);
 lin = lin * lerp(one, float3(PainTint.r, PainTint.g, PainTint.b), saturate(PainAmt));
 lin = lin * lerp(one, float3(Telegraph.r, Telegraph.g, Telegraph.b), saturate(TelegraphAmt));
 float3 tintC = float3(StatusTint.r, StatusTint.g, StatusTint.b);
@@ -247,6 +312,7 @@ def _toon_constants(sh: Shading) -> dict[str, str]:
         "RB0": lit(sh.rim_band[0]), "RB1": lit(sh.rim_band[1]),
         "RIM_EDGE": lit(sh.rim_mask_edge),
         "EM_BOOST": lit(sh.emissive_boost),
+        "GRADE": _grade("pw"),
     }
 
 
@@ -254,7 +320,7 @@ def toon_node(sh: Shading) -> CustomNode:
     """AF_Toon: today's unlit toon colour (M_AF_Toon_Slime, the fade ghosts M_AF_Toon_Fade / _Foliage_Fade)."""
     code = _fill(_TOON, {**_toon_constants(sh), "DECODE_LIN": _decode("lin", "col")})
     return CustomNode("AF_Toon", "Abyssfire toon: 3-band half-Lambert in sRGB space + rim + grounding + feedback",
-                      "float3", TOON_INPUTS, code)
+                      "float3", TOON_UNLIT_INPUTS, code)
 
 
 # Shadow-catcher lit toon (M_AF_Toon / M_AF_Toon_Foliage, DECISIONS P11 revised): DefaultLit with
@@ -272,7 +338,8 @@ TOON_SPLIT_INPUTS = TOON_INPUTS + (
     NodeInput("Pw", "float3"),                  # absolute WorldPosition (cm)
     NodeInput("CastShadowStrength", "float"),   # MI scalar k
 ) + tuple(NodeInput(f"L{i}", "float4") for i in range(TOON_LIGHT_SLOTS)) \
-  + tuple(NodeInput(f"C{i}", "float4") for i in range(TOON_LIGHT_SLOTS))
+  + tuple(NodeInput(f"C{i}", "float4") for i in range(TOON_LIGHT_SLOTS)) \
+  + ZONE_GRADE_PARAMS                               # dark remake Wave 3: the zone grade (appended: the old order stands)
 TOON_SPLIT_OUTPUTS = (NodeInput("Lit", "float3"),)
 TORCH_WRAP = (0.35, 0.40, 0.50)     # back-facing floor, smoothstep edges on dot(n, l) * .5 + .5
 
@@ -316,6 +383,10 @@ float3 Emit = (mS + (1.0 - kCast) * (linL - mS)) * tnt;
 Lit = kCast * (linL - mS) * tnt / max(sunC, float3(0.05, 0.05, 0.05));
 @DECODE_BASE@
 float3 pw = float3(Pw.r, Pw.g, Pw.b);
+@GRADE@
+float3 gk = lerp(gm, one, eAmt);
+Emit = Emit * gk;
+Lit = Lit * gk;
 float3 torch = float3(0.0, 0.0, 0.0);
 @TORCH@
 Emit = Emit + linBase * (1.0 - eAmt) * torch;
@@ -1576,7 +1647,7 @@ def all_nodes(sh: Shading) -> list[CustomNode]:
              ink_node(sh), outline_wpo_node(sh), view_push_node(), select_rim_mask_node(), wind_node(), fx_mesh_node(sh),
              fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(), ao_composite_node(),
              terrain_node(True), terrain_node(False), terrain_painted_node(True), terrain_painted_node(False),
-             terrain_emissive_node(), telegraph_node()]
+             terrain_emissive_node(), zone_grade_node(), telegraph_node()]
     ash_mask, ash_grey = ash_mask_node(), ash_grey_node()
     nodes += [ash_mask, ash_mask.twin("Edge"), ash_grey, ash_grey.twin("AshLit")]
     band = ashnumb_band_node(sh)

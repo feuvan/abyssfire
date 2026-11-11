@@ -67,6 +67,7 @@
 #include "Platform/AbyssPlatform.h"
 #include "Vfx/AbyssTelegraphs.h"
 #include "World/AbyssAssetLibrary.h"
+#include "World/AbyssSubDungeonRules.h"
 #include "World/AbyssThemeRules.h"
 #include "World/AbyssWorldBuilder.h"
 #include "World/AbyssWorldStateRules.h"
@@ -1059,6 +1060,32 @@ public:
 			return;
 		}
 		Pilot->EndFrame(Snap, Frame.StepsThisFrame);
+		// Wave 3 (U6): two pictures of the Pit for the eye - on the first entry (the dark grade, the hero's light) and
+		// when the cleanse sequence has finished (the lamps lit, the warm grade). No hold: the bot plays on. The entry
+		// beat (cs_rf_pit, 900 ms after the first entry) letterboxes the frame, so the entry picture waits for the first
+		// frame without a story beat once the hero has been inside for PitEntryShotAfterSec (past the beat's trigger).
+		if (Phase != EAbyssAutoTestPhase::Playing || FrameSubDungeon.empty())
+		{
+			PitInsideSinceSec = -1.0;
+		}
+		else
+		{
+			if (PitInsideSinceSec < 0.0)
+			{
+				PitInsideSinceSec = RunSeconds();
+			}
+			if (!bPitEntryShot && !bFrameStory && RunSeconds() - PitInsideSinceSec >= PitEntryShotAfterSec)
+			{
+				bPitEntryShot = true;
+				QueueShot(TEXT("pit_entry"), TEXT("the sub-dungeon on entry: dark grade, the hero's light radius"), RunSeconds() + 0.3, false);
+			}
+			if (!bPitCleansedShot && FrameSequencesFinished > 0)
+			{
+				bPitCleansedShot = true;
+				QueueShot(TEXT("pit_cleansed"), TEXT("the sub-dungeon after its cleanse sequence: lamps lit, warm grade"),
+					RunSeconds() + 0.3, false);
+			}
+		}
 		if (Phase == EAbyssAutoTestPhase::Playing)
 		{
 			const double Now = RunSeconds();
@@ -1510,6 +1537,46 @@ private:
 		EnterPhase(EAbyssAutoTestPhase::Ending, Now);
 	}
 
+	/** Wave 3 (U6): the sub-dungeon probe of the world builder, as the rules read it. */
+	AbyssSubDungeonRules::FProbe SubDungeonProbe() const
+	{
+		AbyssSubDungeonRules::FProbe Out;
+		const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
+		const UAbyssWorldBuilder* Builder = UAbyssWorldBuilder::Get(GameInstance != nullptr ? GameInstance->GetWorld() : nullptr);
+		if (Builder == nullptr)
+		{
+			return Out;
+		}
+		const FAbyssSubDungeonProbe& Probe = Builder->GetSubDungeonProbe();
+		Out.Visits = Probe.Visits;
+		Out.bThemeResolved = Probe.bThemeResolved;
+		Out.WallBlocks = Probe.WallBlocks;
+		Out.LampsExpected = Probe.LampsExpected;
+		Out.Lamps = Probe.Lamps;
+		Out.PeakLampsLit = Probe.PeakLampsLit;
+		Out.DormantSeen = Probe.DormantSeen;
+		Out.DormantWakes = Probe.DormantWakes;
+		Out.Cleanses = Probe.Cleanses;
+		Out.SequencesStarted = Probe.SequencesStarted;
+		Out.SequencesFinished = Probe.SequencesFinished;
+		Out.SequencesCut = Probe.SequencesCut;
+		Out.bGradeExpected = Probe.bGradeExpected;
+		Out.bGraded = Probe.bGraded;
+		return Out;
+	}
+
+	/** At the scenario's end: the Pit was visited but its presentation did not run (theme, lamps, sequence, wakes). */
+	void CheckSubDungeon()
+	{
+		const std::string Missing = AbyssSubDungeonRules::ProbeVerdict(SubDungeonProbe());
+		if (Missing.empty() || !PresenceFailure.IsEmpty())
+		{
+			return;
+		}
+		PresenceFailure = FString::Printf(TEXT("presentation (sub-dungeon): %s"), *AbyssText::ToFString(Missing));
+		UE_LOG(LogAbyssAutoTest, Warning, TEXT("AutoTest %s"), *PresenceFailure);
+	}
+
 	bool ScenarioCompleted() const
 	{
 		return Pilot.IsValid() && Pilot->Ok() && Pilot->Finished() && Pilot->Reached(abyss::AutoPilotMilestone::ScenarioDone);
@@ -1525,6 +1592,7 @@ private:
 			LogCapture->Read(Counts, Ignored1, Ignored2);
 		}
 		CheckPresence(TEXT("the scenario's end"));
+		CheckSubDungeon();
 		if (!ScenarioCompleted())
 		{
 			Finish(EAbyssAutoTestResult::Failed, FailureReason.IsEmpty() ? FString(TEXT("the scenario did not complete")) : FailureReason);
@@ -1663,6 +1731,28 @@ private:
 		{
 			FramePanel = std::string(abyss::EnumName(Snap.modals.front()));
 		}
+		// Wave 3 (U6): the sub-dungeon is its own place, its cleanse sequence its own scene.
+		// Nothing is copied or looked up on a frame outside one (the measurement must not weigh on what it measures):
+		// the id is copied when it changes, the builder is asked only inside, and it answers from two stored values.
+		bFrameCleansing = false;
+		FrameSequencesFinished = 0;
+		if (!Snap.zone.subDungeon.inside)
+		{
+			FrameSubDungeon.clear();
+		}
+		else
+		{
+			if (FrameSubDungeon != Snap.zone.subDungeon.id)
+			{
+				FrameSubDungeon = Snap.zone.subDungeon.id;
+			}
+			const UAbyssGameInstance* FrameInstance = GetAbyssGameInstance();
+			if (const UAbyssWorldBuilder* Builder = UAbyssWorldBuilder::Get(FrameInstance != nullptr ? FrameInstance->GetWorld() : nullptr))
+			{
+				bFrameCleansing = Builder->IsCleanseSequencePlaying();
+				FrameSequencesFinished = Builder->GetSubDungeonProbe().SequencesFinished;
+			}
+		}
 		bFrameBoss = Snap.bossBar.show;
 		FrameBossPhase = Snap.bossBar.phase;
 		if (bFrameBoss && Snap.bossBar.monster != FrameBossEntity)
@@ -1791,6 +1881,8 @@ private:
 		SceneInput.bBoss = bFrameBoss;
 		SceneInput.BossId = FrameBossId;
 		SceneInput.BossPhase = FrameBossPhase;
+		SceneInput.SubDungeon = FrameSubDungeon;
+		SceneInput.bCleansing = bFrameCleansing;
 		Sample.Scene = SceneTracker.Update(SceneInput);
 
 		// -- gauges (session frames)
@@ -2394,6 +2486,36 @@ private:
 			Int("escortFailures", Stats.escortFailures);
 			Int("saveRequests", Stats.saveRequests);
 			Int("storyBeats", static_cast<int64>(Stats.beatsEnded.size()));
+			// Wave 3: the bot's own count of the Pit (the core's side of the `subDungeon` probe below).
+			Int("dungeonVisits", static_cast<int64>(Stats.dungeonVisits.size()));
+			Int("areasCleansed", Stats.areasCleansed);
+			Int("dormantWakes", Stats.dormantWakes);
+			W.EndObject();
+		}
+		// Wave 3 (U6): what the sub-dungeon layer showed (AbyssSubDungeonRules::FProbe; the bot's counts are in `stats`).
+		{
+			const AbyssSubDungeonRules::FProbe Probe = SubDungeonProbe();
+			const UAbyssGameInstance* ProbeInstance = GetAbyssGameInstance();
+			const UAbyssWorldBuilder* ProbeBuilder = UAbyssWorldBuilder::Get(ProbeInstance != nullptr ? ProbeInstance->GetWorld() : nullptr);
+			W.Key("subDungeon");
+			W.StartObject();
+			Int("visits", Probe.Visits);
+			Flag("themeResolved", Probe.bThemeResolved);
+			Int("wallTiles", ProbeBuilder != nullptr ? ProbeBuilder->GetSubDungeonProbe().WallTiles : 0);
+			Int("wallBlocks", Probe.WallBlocks);
+			Int("lampsExpected", Probe.LampsExpected);
+			Int("lamps", Probe.Lamps);
+			Int("peakLampsLit", Probe.PeakLampsLit);
+			Int("dormantSeen", Probe.DormantSeen);
+			Int("dormantWakes", Probe.DormantWakes);
+			Int("cleanses", Probe.Cleanses);
+			Int("cleanseSequencesStarted", Probe.SequencesStarted);
+			Int("cleanseSequencesFinished", Probe.SequencesFinished);
+			Int("cleanseSequencesCut", Probe.SequencesCut);
+			Flag("cleanseSequenceFinished", Probe.SequencesFinished > 0);
+			Flag("gradeExpected", Probe.bGradeExpected);
+			Flag("graded", Probe.bGraded);
+			Str("verdict", AbyssText::ToFString(AbyssSubDungeonRules::ProbeVerdict(Probe)));
 			W.EndObject();
 		}
 		// 2G review X6: what the core announced and what the presentation drew (AbyssPresenceRules).
@@ -2687,6 +2809,15 @@ private:
 	std::string FrameBossId;
 	std::string FramePanel;
 	std::string OpenTourPanel;
+	/** Wave 3 (U6): the sub-dungeon the frame was in ("" = none) and whether its cleanse sequence played. */
+	std::string FrameSubDungeon;
+	bool bFrameCleansing = false;
+	int32 FrameSequencesFinished = 0;
+	/** RunSeconds of the first frame of the current stay inside (< 0: outside); the entry picture waits this long. */
+	double PitInsideSinceSec = -1.0;
+	static constexpr double PitEntryShotAfterSec = 2.0;
+	bool bPitEntryShot = false;
+	bool bPitCleansedShot = false;
 
 	/** 2G review X6: the presentation probe's tally and its first failure ("" = none). */
 	AbyssPresenceRules::FTally Presence;

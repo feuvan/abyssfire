@@ -81,9 +81,26 @@ def mpc_parameters(sh: Shading) -> tuple[dict[str, tuple[float, float, float, fl
     for i in range(hlsl.TOON_LIGHT_SLOTS):
         vectors[light_slot_pos(i)] = (0.0, 0.0, 0.0, 0.0)     # xyz absolute world cm, w radius cm
         vectors[light_slot_color(i)] = (0.0, 0.0, 0.0, 0.0)   # rgb premultiplied intensity, a > 0 = slot on
+    # Dark remake Wave 3 (hlsl._ZONE_GRADE_CORE; writer UAbyssWorldBuilder::UpdateGradeCollection): the zone grade. The defaults
+    # are neutral - every zone but a graded one (the Pit) multiplies by exactly 1.
+    vectors.update(GRADE_MPC_DEFAULTS)
     tan_y = math.tan(math.radians(sh.camera_fov_h) / 2.0) * 9.0 / 16.0
     scalars = {"CameraTanHalfFovY": tan_y, "TimeSec": 0.0, "SunScale": SUN_SCALE_DEFAULT, "InkScale": INK_SCALE_DEFAULT}
     return vectors, scalars
+
+
+# MPC parameter -> hlsl.ZONE_GRADE_PARAMS name, with the neutral default.
+GRADE_MPC = {"GradeAmb": "GradeAmbient", "GradePosR": "GradeLightPosR", "GradeCol": "GradeLightCol"}
+GRADE_MPC_DEFAULTS = {
+    "GradeAmbient": (1.0, 1.0, 1.0, 1.0),      # rgb ambient, a ceiling of ambient + pool
+    "GradeLightPosR": (0.0, 0.0, 0.0, 0.0),    # the hero pool: xyz absolute world cm, w radius cm
+    "GradeLightCol": (0.0, 0.0, 0.0, 0.0),     # rgb colour x gain, a falloff power (0 = no pool)
+}
+
+
+def _grade_wires(g: "Graph", ctx: "Ctx") -> dict[str, Any]:
+    """The zone grade's MPC parameters as hlsl.ZONE_GRADE_PARAMS wires."""
+    return {name: g.mpc(ctx.mpc, param) for name, param in GRADE_MPC.items()}
 
 
 def light_slot_pos(i: int) -> str:
@@ -339,6 +356,9 @@ def build_toon(g: Graph, ctx: Ctx, variant: str, ash: bool = False, band: bool =
         # dark remake 3C: the share of the cool shade tint (1 = as designed; the crypt instance lowers it)
         "ShadeCool": g.scalar("ShadeCool", 1.0, group="Look"),
     }
+    # dark remake Wave 3: the zone grade (the Pit's ambient and light radius), on the world position
+    wires["Pw"] = g.node("MaterialExpressionWorldPosition")     # absolute world position (cm), like the slot positions
+    wires.update(_grade_wires(g, ctx))
     if blended:
         toon = g.custom(hlsl.toon_node(sh), wires)
         # SLIME_SETTINGS / FADE_SETTINGS: blended opacity (BodyOpacity faded by Fade / the instance fade) instead of the
@@ -352,7 +372,6 @@ def build_toon(g: Graph, ctx: Ctx, variant: str, ash: bool = False, band: bool =
         return
     # Shadow-catcher lit toon: Emissive = Emit, BaseColor = Lit (the AF_ToonSplit additional output), Normal = the key
     # light, no specular: the sun (pi lux x SunColor along -KeyLightDir) adds Lit x SunColor x its shadow term.
-    wires["Pw"] = g.node("MaterialExpressionWorldPosition")     # absolute world position (cm), like the slot positions
     wires["CastShadowStrength"] = g.scalar("CastShadowStrength", 1.0, group="Look")
     for i in range(hlsl.TOON_LIGHT_SLOTS):
         wires[f"L{i}"] = g.mpc(ctx.mpc, light_slot_pos(i))
@@ -512,6 +531,11 @@ def _terrain_outputs(g: Graph, ctx: Ctx, albedo: Any) -> None:
     """Lit ground: BaseColor = albedo x MPC SunScale under the pi-lux sun (DECISIONS P11 revised: the sun is no longer
     scaled, so the toon's shadow-catcher sees SunColor exactly; the ground keeps abyss.SunScale through the MPC),
     plus the ambient fill (MPC Ambient) as emissive."""
+    # dark remake Wave 3: the zone grade on the albedo (sun term and ambient fill both follow), and the void rock of a
+    # sub-dungeon (vertex colour A; 1 everywhere else).
+    albedo = g.custom(hlsl.zone_grade_node(), {
+        "Col": albedo, "Pw": g.node("MaterialExpressionWorldPosition"), "Void": g.vertex_color()["A"],
+        **_grade_wires(g, ctx)})
     ambient = g.custom(hlsl.terrain_emissive_node(), {"Albedo": albedo, "Amb": g.mpc(ctx.mpc, "Ambient")})
     g.output(g.mul(albedo, g.mpc(ctx.mpc, "SunScale")), "MP_BASE_COLOR")
     g.output(ambient, "MP_EMISSIVE_COLOR")

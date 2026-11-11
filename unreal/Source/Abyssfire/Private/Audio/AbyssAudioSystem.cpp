@@ -46,6 +46,7 @@
 #include "Framework/AbyssUnits.h"
 #include "Platform/AbyssPlatform.h"
 #include "Platform/AbyssSettings.h"
+#include "World/AbyssSubDungeonRules.h"
 #include "World/AbyssWorldStateRules.h"
 
 namespace AbyssAudioSystemPrivate
@@ -735,7 +736,12 @@ void UAbyssAudioSystem::HandleMusic(const abyss::EvMusic& Event)
 		const UAbyssGameInstance* GI = GetAbyssGameInstance();
 		if (const abyss::Snapshot* Snap = GI ? GI->GetSnapshot() : nullptr)
 		{
-			TrackKey = Manifest.ApplyZoneOverride(AbyssAudioSystemPrivate::ToName(Snap->zone.mapId), TrackKey);
+			// U6: a sub-dungeon without an override table of its own keeps its parent zone's (the Pit plays the march's
+			// drones, not the web score the core's theme key names; AbyssSubDungeonRules::AudioZoneId).
+			const FName OwnZone = AbyssAudioSystemPrivate::ToName(Snap->zone.mapId);
+			const std::string_view AudioZone = AbyssSubDungeonRules::AudioZoneId(Snap->zone.subDungeon.inside,
+				Snap->zone.subDungeon.parentZone, Snap->zone.mapId, Manifest.ZoneOverrides.Contains(OwnZone));
+			TrackKey = Manifest.ApplyZoneOverride(AbyssAudioSystemPrivate::ToName(AudioZone), TrackKey);
 		}
 	}
 	if (!Remake.IsValid())
@@ -1454,13 +1460,17 @@ void UAbyssAudioSystem::HandleZone(const abyss::EvZone& Event)
 		}
 		else if (const abyss::Snapshot* Snap = GI ? GI->GetSnapshot() : nullptr)
 		{
-			// U7: the map's presentation theme (the dark remake's `march`) keys the bed, else its theme (as before).
+			// U7: the map's presentation theme (the dark remake's `march`) keys the bed, else its theme (as before). U6: a
+			// theme without a bed of its own keeps its parent's (the Pit: the march's; AbyssAmbienceRules::BedThemeNames).
 			const abyss::DataStore* Data = GI->GetData();
-			const std::string_view Theme = AbyssAmbienceRules::BedThemeName(Data ? Data->FindMap(Event.mapId) : nullptr,
-				abyss::EnumName(Snap->zone.theme));
-			if (const FName* ByTheme = Manifest.Ambience.ByTheme.Find(AbyssAudioSystemPrivate::ToName(Theme)))
+			for (const std::string& Theme : AbyssAmbienceRules::BedThemeNames(Data ? Data->FindMap(Event.mapId) : nullptr,
+					 abyss::EnumName(Snap->zone.theme), Data ? Data->RawTable("terrain_styles.json") : nullptr))
 			{
-				Asset = *ByTheme;
+				if (const FName* ByTheme = Manifest.Ambience.ByTheme.Find(AbyssAudioSystemPrivate::ToName(Theme)))
+				{
+					Asset = *ByTheme;
+					break;
+				}
 			}
 		}
 		if (Remake.IsValid())

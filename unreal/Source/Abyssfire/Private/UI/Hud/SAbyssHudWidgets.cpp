@@ -18,6 +18,7 @@
 
 #include "Framework/AbyssPerfProbe.h"
 #include "Framework/AbyssText.h"
+#include "World/AbyssSubDungeonRules.h"
 #include "UI/AbyssUiStyle.h"
 #include "UI/Core/AbyssUiDraw.h"
 #include "UI/Widgets/AbyssUiWidgets.h"
@@ -340,7 +341,16 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 		FRanked Entry;
 		Entry.Def = Open.first;
 		Entry.Progress = Open.second;
-		Entry.Rank = Open.first->id == Guided ? 0 : (Open.first->zone == Zone ? 1 : 2);
+		// "This zone" (AbyssSubDungeonRules::QuestInMap): the quest's zone is the map, or the parent zone while inside a
+		// sub-dungeon, or one of its objectives is done here (S7 is the surface's quest; its kill and explore are the Pit's).
+		bool bObjectiveHere = false;
+		for (const abyss::QuestObjectiveDef& Objective : Open.first->objectives)
+		{
+			bObjectiveHere = bObjectiveHere || (!Objective.zone.empty() && Objective.zone == Zone);
+		}
+		const bool bHere = AbyssSubDungeonRules::QuestInMap(Open.first->zone, Zone, Snap.zone.subDungeon.inside,
+			Snap.zone.subDungeon.parentZone, bObjectiveHere);
+		Entry.Rank = Open.first->id == Guided ? 0 : (bHere ? 1 : 2);
 		Ranked.Add(Entry);
 	}
 	Algo::StableSortBy(Ranked, [](const FRanked& Entry) { return Entry.Rank; });

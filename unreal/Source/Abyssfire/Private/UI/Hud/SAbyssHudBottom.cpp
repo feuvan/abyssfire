@@ -639,6 +639,11 @@ void SAbyssHudBottom::PaintPrompt(FAbyssPainter& P) const
 	case abyss::InteractKind::Loot: Label = Ctx->LocOrStr("sys.mobile.interact.pickup", TEXT("Pick up")); break;
 	case abyss::InteractKind::HiddenReward:
 	case abyss::InteractKind::EventPuzzle: Label = Ctx->LocOrStr("sys.mobile.interact.open", TEXT("Open")); break;
+	// U6 (3D note 13): the pit mouth - "Enter The Pit of the Faithful" (SAbyssHud builds the label when the prompt
+	// appears: AbyssSubDungeonRules::EnterPrompt).
+	case abyss::InteractKind::SubDungeon:
+		Label = S.PromptName.IsEmpty() ? Ctx->LocOrStr("ui.abyss.enter", TEXT("Enter")) : S.PromptName;
+		break;
 	default: Label = Ctx->LocOrStr("sys.mobile.interact.use", TEXT("Use")); break;
 	}
 	const FString Key = Ctx->KeyHint(EAbyssInputAction::Interact);

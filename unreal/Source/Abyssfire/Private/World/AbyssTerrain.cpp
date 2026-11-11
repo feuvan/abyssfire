@@ -3,6 +3,7 @@
 #include "abyss/world/Grid.h"
 
 #include "Framework/AbyssUnits.h"
+#include "World/AbyssSubDungeonRules.h"
 #include "World/AbyssWorldTypes.h"
 
 namespace AbyssTerrainPrivate
@@ -97,6 +98,31 @@ void FAbyssTerrainField::Build(const abyss::ZoneGrid& Grid, const FAbyssTerrainS
 	NumChunksX = FMath::DivideAndRoundUp(ExtTilesX, Settings.ChunkTiles);
 	NumChunksY = FMath::DivideAndRoundUp(ExtTilesY, Settings.ChunkTiles);
 
+	// Wave 3: which tiles are lit ground (AbyssSubDungeonRules::WallTouchesOpen: open tiles and the wall tiles that touch
+	// one); the rest of a sub-dungeon is void rock.
+	TArray<uint8> LitTiles;
+	if (Settings.bVoidRock)
+	{
+		auto IsWallTile = [this](int32 C, int32 R)
+		{
+			const uint8 T = Tiles[R * Cols + C];
+			return T == AbyssTerrainPrivate::TileWall || T == AbyssTerrainPrivate::TileCampWall;
+		};
+		LitTiles.SetNumZeroed(Cols * Rows);
+		for (int32 Row = 0; Row < Rows; ++Row)
+		{
+			for (int32 Col = 0; Col < Cols; ++Col)
+			{
+				LitTiles[Row * Cols + Col] =
+					!IsWallTile(Col, Row) || AbyssSubDungeonRules::WallTouchesOpen(Cols, Rows, Col, Row, IsWallTile) ? 1 : 0;
+			}
+		}
+	}
+	auto LitAt = [this, &LitTiles](int32 C, int32 R)
+	{
+		return C >= 0 && R >= 0 && C < Cols && R < Rows && LitTiles[R * Cols + C] != 0 ? 1.f : 0.f;
+	};
+
 	Heights.SetNumUninitialized(VertsX * VertsY);
 	VertexColors.SetNumUninitialized(VertsX * VertsY);
 	MinHeight = TNumericLimits<float>::Max();
@@ -111,7 +137,17 @@ void FAbyssTerrainField::Build(const abyss::ZoneGrid& Grid, const FAbyssTerrainS
 			float Skirt = 0.f;
 			const float H = ComputeHeight(P.X, P.Y, Water, Wall, Skirt);
 			Heights[VertexIndex(I, J)] = H;
-			VertexColors[VertexIndex(I, J)] = FLinearColor(Water, Wall, Skirt, 1.f);
+			float Lit = 1.f;
+			if (Settings.bVoidRock)
+			{
+				const int32 C0 = FMath::FloorToInt32(P.X);
+				const int32 R0 = FMath::FloorToInt32(P.Y);
+				const float Fx = static_cast<float>(P.X - C0);
+				const float Fy = static_cast<float>(P.Y - R0);
+				Lit = FMath::Lerp(FMath::Lerp(LitAt(C0, R0), LitAt(C0 + 1, R0), Fx),
+					FMath::Lerp(LitAt(C0, R0 + 1), LitAt(C0 + 1, R0 + 1), Fx), Fy);
+			}
+			VertexColors[VertexIndex(I, J)] = FLinearColor(Water, Wall, Skirt, Lit);
 			MinHeight = FMath::Min(MinHeight, H);
 			MaxHeight = FMath::Max(MaxHeight, H);
 		}

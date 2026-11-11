@@ -98,6 +98,30 @@ struct FAbyssQualityProfile
 	bool bMobile = false;
 };
 
+/**
+ * What the sub-dungeon layer showed since the session began (dark remake U6; UAbyssWorldBuilder::GetSubDungeonProbe, the
+ * in-game autotest's report.json `subDungeon`; the verdict is AbyssSubDungeonRules::ProbeVerdict).
+ */
+struct FAbyssSubDungeonProbe
+{
+	int32 Visits = 0;               // zone builds inside a hand-authored sub-dungeon (the generated caves are not counted)
+	bool bThemeResolved = false;    // the last visit's wall blocks and floor style came through the theme chain
+	int32 WallTiles = 0;            // the last visit's wall tiles / the blocks placed on them (the tiles at the exit get none)
+	int32 WallBlocks = 0;
+	int32 LampsExpected = 0;        // the last visit's set pieces of the contract's unlit lamp
+	int32 Lamps = 0;                // of those, with their lit twin placed
+	int32 PeakLampsLit = 0;
+	int32 DormantSeen = 0;          // the most distinct dormant monsters one visit showed in their still pose
+	int32 DormantWakes = 0;         // the most of them one visit saw waking
+	int32 Cleanses = 0;             // EvAreaCleansed received
+	int32 SequencesStarted = 0;     // of those, with a built sub-dungeon whose sequence started
+	int32 SequencesFinished = 0;    // sequences that ran to their end
+	int32 SequencesCut = 0;         // sequences the zone was rebuilt or left under (the next build enters lit)
+	bool bGradeExpected = false;    // the last visit's theme chain has a dark contract
+	bool bGraded = false;           // the grade reached MPC_AF_Lighting (the content build has the Grade* parameters)
+	bool bCleansing = false;        // a cleanse sequence plays this frame (the autotest's scene label)
+};
+
 namespace AbyssWorldUtil
 {
 	/** 0xRRGGBB (sRGB, data tables / events) -> linear colour. */

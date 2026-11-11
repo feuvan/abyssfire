@@ -42,6 +42,12 @@ public:
 	virtual void Deinitialize() override;
 
 	const FAbyssArtManifest& GetManifest() const { return Manifest; }
+	/**
+	 * Wave 3: hands the manifest the presentation themes' parents from the data (terrain_styles.json `themeParents`,
+	 * AbyssThemeRules::ParentTheme), once per run and before the first themed lookup (the world builder calls it when it
+	 * first sees the data). TerrainStyles may be null (no table: no parents).
+	 */
+	void SetThemeParents(const abyss::JsonValue* TerrainStyles);
 	bool HasManifest() const { return Manifest.IsLoaded(); }
 
 	// ---- typed loads (nullptr when the asset does not exist; logged once per path) ----

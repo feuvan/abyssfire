@@ -800,7 +800,10 @@ int32 UAbyssVfxSystem::PlayRecipe(const FAbyssVfxRecipe& RecipeRef, const FAbyss
 
 	if (Recipe->LightRadiusCm > 0.f && Recipe->LightAlpha > 0.f)
 	{
-		const int32 LightAnchor = AddAnchor(OriginActor, EAbyssVfxHeight::Ground, 0.f, Context.Origin);
+		// A context with its own light spot (U6: a lamp's pool under socket `light`) anchors the light there, not on Origin.
+		const int32 LightAnchor = Context.bHasLightSpot
+			? AddAnchor(nullptr, EAbyssVfxHeight::Ground, 0.f, Context.LightSpot)
+			: AddAnchor(OriginActor, EAbyssVfxHeight::Ground, 0.f, Context.Origin);
 		StartLight(Handle, *Recipe, LightAnchor, Palette, Context);
 	}
 	if (Recipe->ShakeMs > 0.f && Recipe->ShakeIntensity > 0.f)
@@ -948,6 +951,18 @@ void UAbyssVfxSystem::StartLight(int32 Handle, const FAbyssVfxRecipe& Recipe, in
 	Light.Seed = Random.FRandRange(0.f, 1000.f);
 	Light.Color = Context.bHasColor ? Context.Color : Palette.Mid;
 	Light.HeightCm = Recipe.LightHeightCm;
+	if (Context.bHasLightSpot)
+	{
+		Light.HeightCm = FMath::Max(0.f, Context.LightHeightCm);
+	}
+	if (Context.LightRadiusCm > 0.f)
+	{
+		Light.RadiusCm = Context.LightRadiusCm;
+	}
+	if (Context.bHasLightColor)
+	{
+		Light.Color = Context.LightColor;
+	}
 }
 
 void UAbyssVfxSystem::RequestShake(float DurationMs, float Intensity)

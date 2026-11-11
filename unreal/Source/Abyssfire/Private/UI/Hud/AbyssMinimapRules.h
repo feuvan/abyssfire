@@ -31,6 +31,8 @@
 
 #include "abyss/base/Json.h"
 
+#include "World/AbyssThemeRules.h"
+
 namespace AbyssMinimapRules
 {
 	/** Tile types the minimap colours (abyss::TileType: 0 grass, 1 dirt, 2 stone, 3 water, 4 wall, 5 camp, 6 camp wall). */
@@ -138,38 +140,17 @@ namespace AbyssMinimapRules
 		return true;
 	}
 
-	/** The parent of a presentation theme: the theme whose art and style it shows where it has none of its own
-	 *  (the data's terrain_styles.json themeParents.<theme>, written from GameData/world.ts: `pit` -> `march`). Empty
-	 *  for a theme without one, and without a style table. */
+	/** The parent of a presentation theme (AbyssThemeRules::ParentTheme: terrain_styles.json themeParents.<theme>). */
 	inline std::string_view ParentTheme(const abyss::JsonValue* Styles, std::string_view Theme)
 	{
-		if (Styles == nullptr || Theme.empty())
-		{
-			return {};
-		}
-		const std::string_view Parent = Styles->Get("themeParents").Get(Theme).AsString();
-		return Parent == Theme ? std::string_view() : Parent;
+		return AbyssThemeRules::ParentTheme(Styles, Theme);
 	}
 
-	/** The styles to try for a presentation theme, nearest first: the theme, then its parents (at most 4 names, and a
-	 *  name never twice: a looping table ends the chain). */
+	/** The styles to try for a presentation theme, nearest first (AbyssThemeRules::ThemeChain: the one chain every themed
+	 *  lookup of the module uses). */
 	inline std::vector<std::string> StyleChain(const abyss::JsonValue* Styles, std::string_view PresentationTheme)
 	{
-		std::vector<std::string> Out;
-		for (std::string_view Theme = PresentationTheme; !Theme.empty() && Out.size() < 4; Theme = ParentTheme(Styles, Theme))
-		{
-			bool bSeen = false;
-			for (const std::string& Name : Out)
-			{
-				bSeen = bSeen || Name == Theme;
-			}
-			if (bSeen)
-			{
-				break;
-			}
-			Out.emplace_back(Theme);
-		}
-		return Out;
+		return AbyssThemeRules::ThemeChain(Styles, PresentationTheme);
 	}
 
 	/**

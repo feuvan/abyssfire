@@ -77,6 +77,18 @@ struct FAbyssVfxContext
 	abyss::DamageType Element = abyss::DamageType::Physical;
 	/** Multiplies burst counts (gold burst: 6 coins on a kill, 8 on a pickup). */
 	float CountScale = 1.f;
+	/**
+	 * The recipe's light (its floor pool and toon slot) away from Origin: the pool lies at LightSpot (a ground point),
+	 * the toon slot LightHeightCm over it (dark remake U6: a lit lamp's flame burns at socket `flame`, its pool lies
+	 * under socket `light`). LightRadiusCm > 0 and bHasLightColor replace the recipe's radius and the palette's colour
+	 * (the contract's lamp light); the strength stays the recipe's alpha x the zone's light scale (DECISIONS R18).
+	 */
+	bool bHasLightSpot = false;
+	FVector LightSpot = FVector::ZeroVector;
+	float LightHeightCm = 0.f;
+	float LightRadiusCm = 0.f;
+	bool bHasLightColor = false;
+	FLinearColor LightColor = FLinearColor::White;
 };
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAbyssVfxShake, float /*DurationMs*/, float /*Intensity*/);

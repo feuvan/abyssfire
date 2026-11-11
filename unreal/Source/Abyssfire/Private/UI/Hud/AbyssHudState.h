@@ -122,6 +122,10 @@ struct FAbyssHudState
 	bool bPortaling = false;
 	double PortalProgress = 0.0;
 	abyss::InteractKind PromptKind = abyss::InteractKind::None;
+	/** U6: a SubDungeon prompt's whole label ("Enter The Pit of the Faithful"); built when the prompt appears or moves. */
+	FString PromptName;
+	abyss::Vec2 PromptNamePos;
+	bool bPromptNameKnown = false;
 
 	// statuses / buffs (2G stage H: K6 Ashnumb's stacks for its cell's count)
 	uint32 StatusMask = 0;

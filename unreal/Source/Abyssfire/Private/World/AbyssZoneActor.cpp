@@ -40,7 +40,10 @@
 #include "World/AbyssAssetLibrary.h"
 #include "World/AbyssSetPieces.h"
 #include "World/AbyssQualityRules.h"
+#include "Vfx/AbyssVfxSystem.h"
 #include "World/AbyssSetPieceRules.h"
+#include "World/AbyssSubDungeonRules.h"
+#include "World/AbyssSubDungeonState.h"
 #include "World/AbyssThemeRules.h"
 #include "World/AbyssWorldStateRules.h"
 
@@ -433,6 +436,8 @@ void AAbyssZoneActor::ClearZone()
 	EffectSpots.Reset();
 	ExitTiles.Reset();
 	SetPieceState.Reset();
+	SubDungeonState.Reset();
+	ThemeChainNames.Reset();
 	MissingArtIds.Reset();
 	PlacedArtCount = 0;
 	UnresolvedArtCount = 0;
@@ -482,8 +487,22 @@ void AAbyssZoneActor::BuildZone(const abyss::Snapshot& Snap, const abyss::DataSt
 	const abyss::MapDef* PresentationMap = Data.FindMap(Snap.zone.mapId);
 	const std::string_view PresentationThemeName = AbyssThemeRules::ThemeOf(PresentationMap);
 	PresentationTheme = PresentationThemeName.empty() ? NAME_None : FName(*AbyssZonePrivate::ToF(PresentationThemeName));
-	TerrainThemeName = std::string(AbyssThemeRules::TerrainThemeName(PresentationMap, ThemeName));
+	// U6: the theme's parent chain (terrain_styles.json themeParents: pit -> march). Art ids resolve through the manifest
+	// (it holds the same parents: UAbyssAssetLibrary::SetThemeParents); recipes and the terrain style through this list.
+	const abyss::JsonValue* TerrainStyles = Data.RawTable("terrain_styles.json");
+	const std::vector<std::string> ThemeChain = AbyssThemeRules::ThemeChain(TerrainStyles, PresentationThemeName);
+	ThemeChainNames.Reset();
+	for (const std::string& Name : ThemeChain)
+	{
+		ThemeChainNames.Add(FName(*AbyssZonePrivate::ToF(Name)));
+	}
+	// The style the floor paints: the first theme of the chain with a terrain style (pit), else the generator theme.
+	TerrainThemeName = AbyssThemeRules::StyleThemeName(TerrainStyles, ThemeChain, ThemeName);
 	bMoodApplied = false;
+	UE_CLOG(AbyssThemeRules::ThemeChainCut(TerrainStyles, PresentationThemeName), LogAbyss, Warning,
+		TEXT("Zone %s: the parent chain of theme %s is longer than %d names and was cut - its root's art and floor style are not reached (terrain_styles.json themeParents)"),
+		*AbyssText::ToFString(Snap.zone.mapId), *PresentationTheme.ToString(), static_cast<int32>(AbyssThemeRules::MaxThemeChain));
+	BeginSubDungeon(Snap, Data);
 
 	BuildLighting(Snap, Data);
 	BuildTerrain(Snap, Data);
@@ -494,10 +513,21 @@ void AAbyssZoneActor::BuildZone(const abyss::Snapshot& Snap, const abyss::DataSt
 	BuildMarkers(Snap, Data);
 	BuildSkirt(Data);
 	FlushInstances();
+	ApplyLampStates();
 	ApplyQuality(Quality);
 	UE_LOG(LogAbyss, Log, TEXT("Zone %s built: %d instanced meshes (%d art placed, %d unresolved, %d not loaded), %d occluders, %d effect spots, presentation theme %s"),
 		*AbyssText::ToFString(Snap.zone.mapId), DecorInstanceComponents.Num(), PlacedArtCount, UnresolvedArtCount, UnloadedArtCount,
 		Occluders.Num(), EffectSpots.Num(), PresentationTheme.IsNone() ? TEXT("none") : *PresentationTheme.ToString());
+	if (SubDungeonState.IsValid() && (SubDungeonState->bInside || SubDungeonState->Spec.bValid))
+	{
+		const FAbyssSubDungeonState& Sub = *SubDungeonState;
+		UE_LOG(LogAbyss, Log, TEXT("Zone %s sub-dungeon layer: theme chain %d, %d of %d wall tiles carry a block (themed %d), ")
+			TEXT("floor style %s (themed %d), graded %d, %d lamps (%d lit), niche %d with %d marks, entered %s"),
+			*AbyssText::ToFString(Snap.zone.mapId), ThemeChainNames.Num(), Sub.WallBlocks, Sub.WallTiles, Sub.bThemedWall ? 1 : 0,
+			*AbyssZonePrivate::ToF(TerrainThemeName), Sub.bThemedFloor ? 1 : 0, Sub.Spec.bValid ? 1 : 0, Sub.Lamps.Num(),
+			Sub.Cleanse.LampsLit, Sub.bHasNiche ? 1 : 0, Sub.Marks.Num(),
+			Sub.Cleanse.Phase == AbyssSubDungeonRules::ECleansePhase::Lit ? TEXT("cleansed") : TEXT("dark"));
+	}
 	if (MissingArtIds.Num() > 0)
 	{
 		// A stale Data/assets.json (UAbyssAssetLibrary warns) or an id the art pipeline has not shipped yet.
@@ -544,6 +574,14 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 	FAbyssTerrainSettings Settings;
 	if (QualityProfile.bMobile && QualityProfile.Tier == 0)
 	{
+		Settings.SkirtTiles = 14;
+	}
+	if (SubDungeonState.IsValid() && SubDungeonState->bCutFromRock)
+	{
+		// U6 (3D notes 23 / 24): a hand-authored sub-dungeon - the rock the rooms are cut from and everything beyond the map is void
+		// (vertex alpha 0: black), flat (no hills to light) and only as wide as the camera can see past the border.
+		Settings.bVoidRock = true;
+		Settings.SkirtHillCm = 0.f;
 		Settings.SkirtTiles = 14;
 	}
 	Terrain.Build(*Grid, Settings);
@@ -601,6 +639,11 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 	{
 		TerrainMaterial = UMaterialInstanceDynamic::Create(TerrainBase, this);
 		TerrainMaterialName = TerrainBase->GetName();
+	}
+	if (SubDungeonState.IsValid())
+	{
+		// The probe: the floor paints a style of the theme chain (not the generator theme's).
+		SubDungeonState->bThemedFloor = !PresentationTheme.IsNone() && TerrainThemeName != ThemeName;
 	}
 	if (UMaterialInterface* Base = Assets != nullptr ? Assets->LoadMaterial(TEXT("M_AF_Water")) : nullptr)
 	{
@@ -769,7 +812,13 @@ const FAbyssArtAsset* AAbyssZoneActor::ResolveArt(TConstArrayView<FName> GameIds
 bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
 	bool bOccluder, float FadeTarget, FName StoryId, const FAbyssArtAsset** OutArt, FTransform* OutTransform)
 {
-	const FAbyssArtAsset* Art = ResolveArt(GameIds, Hash);
+	return PlaceResolvedArt(ResolveArt(GameIds, Hash), GameIds, Hash, Location, YawDeg, Scale, bOccluder, FadeTarget, StoryId, OutArt,
+		OutTransform);
+}
+
+bool AAbyssZoneActor::PlaceResolvedArt(const FAbyssArtAsset* Art, TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location,
+	float YawDeg, float Scale, bool bOccluder, float FadeTarget, FName StoryId, const FAbyssArtAsset** OutArt, FTransform* OutTransform)
+{
 	UAbyssAssetLibrary* Assets = AssetLibrary.Get();
 	if (Art == nullptr || Assets == nullptr)
 	{
@@ -1055,6 +1104,16 @@ void AAbyssZoneActor::BuildWalls(const abyss::Snapshot& Snap)
 	{
 		return Grid->InBounds(Col, Row) && Grid->Tile(Col, Row) == abyss::TileType::CampWall;
 	};
+	// U6 (AbyssSubDungeonRules): inside a hand-authored sub-dungeon (CutFromRock) only a wall tile that touches an open
+	// tile carries a block (the rooms are cut out of solid rock; the rest is void terrain), and a block whose art says
+	// placement.yawStepDeg (the crypt blocks abut face to face) turns in those steps. The surface and the generated
+	// caves keep every outcrop and its hashed yaw.
+	const bool bInsideSubDungeon = SubDungeonState.IsValid() && SubDungeonState->bCutFromRock;
+	auto IsWallTile = [Grid](int32 Col, int32 Row)
+	{
+		const abyss::TileType Tile = Grid->Tile(Col, Row);
+		return Tile == abyss::TileType::Wall || Tile == abyss::TileType::CampWall;
+	};
 
 	for (int32 Row = 0; Row < Grid->Rows(); ++Row)
 	{
@@ -1063,14 +1122,32 @@ void AAbyssZoneActor::BuildWalls(const abyss::Snapshot& Snap)
 			const abyss::TileType Type = Grid->Tile(Col, Row);
 			if (Type == abyss::TileType::Wall)
 			{
+				if (SubDungeonState.IsValid())
+				{
+					++SubDungeonState->WallTiles;
+				}
 				if (NearExit(Col, Row))
 				{
 					continue;   // the exit gate / portal stands there (world-map-nav.md 15.2)
 				}
-				// Variant v = tileHash(c, r, 3) % variants (the manifest sorts the variants by name: V0..V5).
+				if (!AbyssSubDungeonRules::BuildsWallBlock(bInsideSubDungeon,
+						bInsideSubDungeon && AbyssSubDungeonRules::WallTouchesOpen(Grid->Cols(), Grid->Rows(), Col, Row, IsWallTile)))
+				{
+					continue;   // deep rock: no block, void terrain
+				}
+				// Variant v = tileHash(c, r, 3) % variants (the manifest sorts the variants by name: V0..V5). The art is
+				// resolved once per tile (its yaw step decides the yaw) and handed to the placement.
 				const uint32 Hash = AbyssWorldUtil::TileHash(Col, Row, 3);
-				const float Yaw = static_cast<float>((Hash >> 8) % 360u);
-				PlaceArt(OutcropIds, Hash, GroundPoint(Col, Row), Yaw, 1.f, /*bOccluder*/ true, WallFadeTarget);
+				const FAbyssArtAsset* WallArt = ResolveArt(OutcropIds, Hash);
+				const float Yaw = AbyssSubDungeonRules::WallYawDeg(Hash, WallArt != nullptr ? WallArt->YawStepDeg : 0.f);
+				if (PlaceResolvedArt(WallArt, OutcropIds, Hash, GroundPoint(Col, Row), Yaw, 1.f, /*bOccluder*/ true, WallFadeTarget)
+					&& SubDungeonState.IsValid())
+				{
+					++SubDungeonState->WallBlocks;
+					// The probe: the block is art of the theme chain (`outcrop_<theme>@pit`), not the plain outcrop's.
+					SubDungeonState->bThemedWall = SubDungeonState->bThemedWall
+						|| (!PresentationTheme.IsNone() && WallArt != nullptr && !WallArt->GameIds.Contains(OutcropIds[0]));
+				}
 			}
 			else if (Type == abyss::TileType::CampWall)
 			{
@@ -1211,18 +1288,47 @@ void AAbyssZoneActor::BuildMarkers(const abyss::Snapshot& Snap, const abyss::Dat
 		if (Marker.kind == abyss::MarkerKind::Exit)
 		{
 			const FVector2D Inward = (MapCentre - FVector2D(Marker.pos.x, Marker.pos.y)).GetSafeNormal();
-			const float FacingYaw = FMath::RadiansToDegrees(FMath::Atan2(Inward.Y, Inward.X));
+			float FacingYaw = FMath::RadiansToDegrees(FMath::Atan2(Inward.Y, Inward.X));
+			const bool bStair = SubDungeonState.IsValid() && SubDungeonState->bCutFromRock && Snap.zone.grid != nullptr;
+			if (bStair)
+			{
+				// U6 (3D notes 3 / 25): a hand-authored sub-dungeon's exit is a stair in a wall; it faces the floor - the walkable
+				// neighbour with the wall behind it (AbyssSubDungeonRules::ExitFloorSide) -, not the map centre.
+				const abyss::ZoneGrid* Grid = Snap.zone.grid;
+				const AbyssSubDungeonRules::FFloorSide Side = AbyssSubDungeonRules::ExitFloorSide(
+					FMath::RoundToInt32(Marker.pos.x), FMath::RoundToInt32(Marker.pos.y),
+					[Grid](int32 Col, int32 Row) { return Grid->Walkable(Col, Row); });
+				if (Side.bFound)
+				{
+					FacingYaw = static_cast<float>(AbyssSubDungeonRules::FacingDeg(Side.Dc, Side.Dr));
+				}
+			}
 			const FName SealedIds[] = { FName(TEXT("exit_gate_sealed")), FName(TEXT("exit_sealed")), FName(TEXT("exit_portal")) };
 			const FName OpenIds[] = { FName(TEXT("exit_portal")) };
+			const FAbyssArtAsset* ExitArt = nullptr;
+			FTransform ExitTransform = FTransform::Identity;
 			if (Marker.sealed)
 			{
-				PlaceArt(SealedIds, 0, Location, FacingYaw + MeshYawOffsetDeg, 1.f, true, DecorFadeTarget);
+				PlaceArt(SealedIds, 0, Location, FacingYaw + MeshYawOffsetDeg, 1.f, true, DecorFadeTarget, NAME_None, &ExitArt, &ExitTransform);
 			}
 			else
 			{
-				PlaceArt(OpenIds, 0, Location, FacingYaw + MeshYawOffsetDeg, 1.f, true, DecorFadeTarget);
+				PlaceArt(OpenIds, 0, Location, FacingYaw + MeshYawOffsetDeg, 1.f, true, DecorFadeTarget, NAME_None, &ExitArt, &ExitTransform);
 			}
-			AddEffectSpot(Marker.sealed ? FName(TEXT("exit.sealed")) : FName(TEXT("exit.portal")), Location);
+			// The loop plays on the exit tile; a stair plays it at its `fx_vortex` socket (in the stair's passage, 3D note 3).
+			FVector RecipeLocation = Location;
+			if (bStair && ExitArt != nullptr)
+			{
+				const FName FxSocket(*ToF(AbyssSubDungeonRules::ExitFxSocket));
+				for (const FAbyssArtSocket& Socket : ExitArt->Sockets)
+				{
+					if (Socket.Name == FxSocket)
+					{
+						RecipeLocation = ExitTransform.TransformPosition(Socket.LocCm);
+					}
+				}
+			}
+			AddEffectSpot(Marker.sealed ? FName(TEXT("exit.sealed")) : FName(TEXT("exit.portal")), RecipeLocation);
 		}
 		else if (Marker.kind == abyss::MarkerKind::StoryDecoration)
 		{
@@ -1251,6 +1357,10 @@ void AAbyssZoneActor::BuildSkirt(const abyss::DataStore& Data)
 	if (!Terrain.IsValid())
 	{
 		return;
+	}
+	if (SubDungeonState.IsValid() && SubDungeonState->bCutFromRock)
+	{
+		return;   // U6 (3D note 24): cut from rock - no grove ring, beyond the walls is void
 	}
 	// Rolling skirt dressing so the camera never shows bare hills (art-inventory-ch1.md 6.10): the theme's grove pool.
 	const abyss::MapThemeDef& ThemeDef = Data.World().mapGen.Theme(Theme);
@@ -1331,13 +1441,26 @@ void AAbyssZoneActor::UpdateMood(const abyss::Snapshot& Snap, const abyss::DataS
 	In.HeroCol = Snap.hero.pos.x;
 	In.HeroRow = Snap.hero.pos.y;
 	In.bRegionWasDominant = bMoodApplied && bMoodRegionDominant;
-	const AbyssThemeRules::FMoodState State = AbyssThemeRules::EffectiveMood(In);
+	AbyssThemeRules::FMoodState State = AbyssThemeRules::EffectiveMood(In);
+	// U6: a cleansed sub-dungeon's mood (pit -> pit_cleansed) blended in by the cleanse's progress - 1 at once when the
+	// zone was entered cleansed, the grade's 6 s after EvAreaCleansed (AbyssSubDungeonRules::StateAlpha).
+	// The cleansed mood was resolved at the zone build (BeginSubDungeon): no name lookup and no blend while dark.
+	if (SubDungeonState.IsValid())
+	{
+		SubDungeonState->Alpha = AbyssSubDungeonRules::StateAlpha(SubDungeonState->Spec, SubDungeonState->Cleanse, Snap.simNowMs);
+		if (SubDungeonState->bHasCleansedMood && SubDungeonState->Alpha > 0.0)
+		{
+			AbyssThemeRules::BlendCleansed(State, *In.Moods, SubDungeonState->CleansedMood, SubDungeonState->Alpha,
+				!AbyssThemeRules::ThemeOf(In.Map).empty());
+		}
+	}
 
 	AbyssThemeRules::FMoodState Applied;
 	Applied.Base = AppliedMoodBase;
 	Applied.Region = AppliedMoodRegion;
 	Applied.bHasRegion = bAppliedMoodHasRegion;
 	Applied.RegionWeight = AppliedMoodRegionWeight;
+	Applied.CleanseAlpha = AppliedCleanseAlpha;
 	if (!bMoodApplied || AbyssThemeRules::LookChanged(Applied, State))
 	{
 		// Live changes (dawn, walking into the Breach Rim) re-apply the fog and post-process now; the zone build applies
@@ -1347,6 +1470,7 @@ void AAbyssZoneActor::UpdateMood(const abyss::Snapshot& Snap, const abyss::DataS
 		AppliedMoodRegion = State.Region;
 		bAppliedMoodHasRegion = State.bHasRegion;
 		AppliedMoodRegionWeight = State.RegionWeight;
+		AppliedCleanseAlpha = State.CleanseAlpha;
 		if (bMoodApplied)
 		{
 			UE_LOG(LogAbyss, Verbose, TEXT("Zone mood %s -> %s weight %.2f"), *ToF(abyss::EnumName(State.Base)),
@@ -1443,15 +1567,232 @@ void AAbyssZoneActor::SetUserExposureEv(float Ev)
 
 void AAbyssZoneActor::AddEffectSpot(FName RecipeId, const FVector& Location)
 {
-	FAbyssZoneEffectSpot& Spot = EffectSpots.AddDefaulted_GetRef();
+	EffectSpots.Add(MakeEffectSpot(RecipeId, Location));
+}
+
+FAbyssZoneEffectSpot AAbyssZoneActor::MakeEffectSpot(FName RecipeId, const FVector& Location) const
+{
+	FAbyssZoneEffectSpot Spot;
 	Spot.RecipeId = RecipeId;
 	Spot.Location = Location;
-	// An id that names its theme already (a set piece's camp.torch@march) is played as it is.
-	if (!PresentationTheme.IsNone() && !RecipeId.ToString().Contains(TEXT("@")))
+	// AbyssThemeRules::RecipeChain: `<recipe>@<theme>` for every theme of the chain (pit, march), then the plain recipe
+	// unless it is a themed-only loop; an id that names its theme already (a set piece's camp.torch@march) is played as
+	// it is.
+	const std::string Id = AbyssText::ToStd(RecipeId.ToString());
+	if (ThemeChainNames.Num() > 0 && Id.find(AbyssThemeRules::ThemeSeparator) == std::string::npos)
 	{
-		Spot.ThemedRecipeId = FName(*(RecipeId.ToString() + TEXT("@") + PresentationTheme.ToString()));
-		Spot.bThemedOnly = AbyssThemeRules::ThemedOnlyRecipe(AbyssText::ToStd(RecipeId.ToString()));
+		for (const FName ChainTheme : ThemeChainNames)
+		{
+			Spot.ThemedRecipeIds.Add(FName(*(RecipeId.ToString() + TEXT("@") + ChainTheme.ToString())));
+		}
+		Spot.bThemedOnly = AbyssThemeRules::ThemedOnlyRecipe(Id);
 	}
+	return Spot;
+}
+
+// =====================================================================================================================
+// Sub-dungeons (U6): the grade, the lamps, the cleanse
+// =====================================================================================================================
+
+void AAbyssZoneActor::BeginSubDungeon(const abyss::Snapshot& Snap, const abyss::DataStore& Data)
+{
+	SubDungeonState = MakeShared<FAbyssSubDungeonState>();
+	FAbyssSubDungeonState& Sub = *SubDungeonState;
+	Sub.bInside = Snap.zone.subDungeon.inside;
+	// Only a hand-authored sub-dungeon is cut from rock; the generated caves keep the surface's zone rules.
+	const abyss::SubDungeonDef* Def = Sub.bInside ? Data.World().FindSubDungeon(Snap.zone.mapId) : nullptr;
+	Sub.bCutFromRock = AbyssSubDungeonRules::CutFromRock(Sub.bInside, Def != nullptr && Def->hasMap);
+	// The theme's dark contract (vfx_recipes.json dark.<theme>: the first theme of the chain that has one).
+	if (const UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
+	{
+		for (const FName ChainTheme : ThemeChainNames)
+		{
+			const abyss::JsonValue* Contract = Vfx->GetLibrary().FindDarkContract(AbyssText::ToStd(ChainTheme.ToString()));
+			if (Contract != nullptr)
+			{
+				Sub.Spec = AbyssSubDungeonRules::ParseCleanseSpec(*Contract);
+				break;
+			}
+		}
+	}
+	UE_CLOG(Sub.Spec.bHasCleanse && !(Sub.Spec.bLampFirstRead && Sub.Spec.bNicheAtRead), LogAbyss, Warning,
+		TEXT("Zone %s: the cleanse contract names no moment for the lamps (%d) / the niche (%d) - cleanse.lampFirstMs / nicheAtMs or a sequence step that opens with the words; the defaults %.0f / %.0f ms are used"),
+		*AbyssText::ToFString(Snap.zone.mapId), Sub.Spec.bLampFirstRead ? 1 : 0, Sub.Spec.bNicheAtRead ? 1 : 0,
+		Sub.Spec.LampFirstMs, Sub.Spec.NicheAtMs);
+	// The mood the cleanse blends to: the contract's own (grade.to.mood), else `<mood>_cleansed` of the zone's mood;
+	// resolved here once, UpdateMood blends by the enum.
+	if (Sub.bInside)
+	{
+		AbyssThemeRules::FMoodInputs MoodIn;
+		MoodIn.Moods = &Data.World().moods;
+		MoodIn.Map = Data.FindMap(Snap.zone.mapId);
+		MoodIn.ZoneId = Snap.zone.mapId;
+		MoodIn.GeneratorTheme = Theme;
+		const abyss::MapTheme BaseMood = AbyssThemeRules::EffectiveMood(MoodIn).Base;
+		Sub.bHasCleansedMood = AbyssThemeRules::FindCleansedMood(Data.World().moods, BaseMood, Sub.CleansedMood, Sub.Spec.MoodTo)
+			|| AbyssThemeRules::FindCleansedMood(Data.World().moods, BaseMood, Sub.CleansedMood);
+	}
+	// Entered cleansed: everything lit at once, no sequence (the lamp count follows in BuildSetPieces).
+	Sub.Cleanse = AbyssSubDungeonRules::EnterState(Sub.bInside && Snap.zone.subDungeon.cleansed, 0);
+	AppliedCleanseAlpha = 0.0;
+}
+
+void AAbyssZoneActor::ApplyLampStates()
+{
+	if (!SubDungeonState.IsValid())
+	{
+		return;
+	}
+	FAbyssSubDungeonState& Sub = *SubDungeonState;
+	const bool bLit = Sub.Cleanse.Phase == AbyssSubDungeonRules::ECleansePhase::Lit;
+	for (FAbyssSubDungeonLamp& Lamp : Sub.Lamps)
+	{
+		Lamp.bLit = bLit;
+		SetSetPieceHidden(bLit ? Lamp.UnlitKey : Lamp.LitKey, true);
+	}
+	if (bLit)
+	{
+		Sub.Cleanse.LampsLit = Sub.Lamps.Num();
+	}
+}
+
+void AAbyssZoneActor::StartCleanse(const abyss::Vec2& Pos, double SimNowMs)
+{
+	if (!SubDungeonState.IsValid() || !SubDungeonState->bInside)
+	{
+		return;
+	}
+	FAbyssSubDungeonState& Sub = *SubDungeonState;
+	std::vector<abyss::Vec2> LampTiles;
+	LampTiles.reserve(static_cast<size_t>(Sub.Lamps.Num()));
+	for (const FAbyssSubDungeonLamp& Lamp : Sub.Lamps)
+	{
+		LampTiles.push_back(Lamp.Tile);
+	}
+	AbyssSubDungeonRules::StartCleanse(Sub.Cleanse, LampTiles, Pos, SimNowMs);
+	UE_LOG(LogAbyss, Log, TEXT("Cleanse sequence started at (%.1f, %.1f): %d lamps, %.0f ms apart from %.0f ms, the grade over %.0f ms"),
+		Pos.x, Pos.y, Sub.Lamps.Num(), Sub.Spec.LampStepMs, Sub.Spec.LampFirstMs, Sub.Spec.GradeMs);
+}
+
+void AAbyssZoneActor::TickSubDungeon(const abyss::Snapshot& Snap, TArray<FAbyssZoneEffectSpot>& OutBursts,
+	TArray<FAbyssZoneEffectSpot>& OutLoops)
+{
+	using namespace AbyssZonePrivate;
+	if (!SubDungeonState.IsValid())
+	{
+		return;
+	}
+	FAbyssSubDungeonState& Sub = *SubDungeonState;
+	// Ticked while the sequence plays and, after it, while the niche's glow or a mark is still owed: the glow needs the
+	// niche in view ("if the Flame Niche is on screen"), and a cleanse in the Pitwarden's Cut is 14 tiles from it, so
+	// the rules hold the beat until the hero first comes near (AbyssSubDungeonRules::AdvanceCleanse).
+	const int32 MarkCount = Sub.bHasNiche ? Sub.Marks.Num() : 0;
+	if (Sub.Cleanse.Phase != AbyssSubDungeonRules::ECleansePhase::Playing
+		&& !(Sub.bHasNiche && AbyssSubDungeonRules::NichePending(Sub.Cleanse, MarkCount)))
+	{
+		return;
+	}
+	const bool bNicheInView = Sub.bHasNiche && AbyssSubDungeonRules::NicheInView(Sub.NicheTile, Snap.hero.pos);
+	const AbyssSubDungeonRules::FCleanseStep Step =
+		AbyssSubDungeonRules::AdvanceCleanse(Sub.Spec, Sub.Cleanse, MarkCount, Snap.simNowMs, bNicheInView);
+	for (const int LampIndex : Step.LightLamps)
+	{
+		if (!Sub.Lamps.IsValidIndex(LampIndex))
+		{
+			continue;
+		}
+		FAbyssSubDungeonLamp& Lamp = Sub.Lamps[LampIndex];
+		Lamp.bLit = true;
+		SetSetPieceHidden(Lamp.UnlitKey, true);
+		SetSetPieceHidden(Lamp.LitKey, false);
+		OutBursts.Add(MakeEffectSpot(FName(*ToF(AbyssSubDungeonRules::LampLightRecipe)), Lamp.Flame));
+		OutLoops.Add(MakeLampFlameSpot(Lamp));
+	}
+	if (Step.bPlayNiche)
+	{
+		OutBursts.Add(MakeEffectSpot(FName(*ToF(AbyssSubDungeonRules::NicheRecipe)), Sub.Niche));
+		UE_LOG(LogAbyss, Log, TEXT("Cleanse: the niche's glow plays %.0f ms after the cleanse (%s)"),
+			Snap.simNowMs - Sub.Cleanse.StartMs, Sub.Cleanse.bNicheHeld ? TEXT("held until the niche came into view") : TEXT("on time"));
+	}
+	for (const int Mark : Step.PlayMarks)
+	{
+		if (Sub.Marks.IsValidIndex(Mark - 1))
+		{
+			OutBursts.Add(MakeEffectSpot(FName(*ToF(AbyssSubDungeonRules::MarkRecipe)), Sub.Marks[Mark - 1]));
+		}
+	}
+	if (Step.bJustFinished)
+	{
+		UE_LOG(LogAbyss, Log, TEXT("Cleanse sequence finished: %d of %d lamps lit"), Sub.Cleanse.LampsLit, Sub.Lamps.Num());
+	}
+}
+
+FAbyssZoneEffectSpot AAbyssZoneActor::MakeLampFlameSpot(const FAbyssSubDungeonLamp& Lamp) const
+{
+	// The flame loop burns at the lit mesh's `flame` socket; its light pool lies at the `light` socket (0.75 m in front
+	// of the wall), with the colour and radius of the contract's lamp light (dark.<theme>.cleanse.grade.lamp). The
+	// strength stays the recipe's own (DECISIONS R18 light: alpha x the mood's light scale) - see DR17 (12).
+	FAbyssZoneEffectSpot Spot = MakeEffectSpot(FName(*AbyssZonePrivate::ToF(AbyssSubDungeonRules::LampFlameRecipe)), Lamp.Flame);
+	Spot.bHasLightSpot = true;
+	Spot.LightSpot = Lamp.Light;
+	Spot.LightHeightCm = Lamp.LightHeightCm;
+	if (SubDungeonState.IsValid() && SubDungeonState->Spec.Lamp.RadiusTiles > 0.0)
+	{
+		const AbyssSubDungeonRules::FGradeLight& Light = SubDungeonState->Spec.Lamp;
+		Spot.LightRadiusCm = static_cast<float>(Light.RadiusTiles * AbyssUnits::TileUU);
+		Spot.bHasLightColor = true;
+		Spot.LightColor = FLinearColor(static_cast<float>(Light.Color[0]), static_cast<float>(Light.Color[1]),
+			static_cast<float>(Light.Color[2]), 1.f);
+	}
+	return Spot;
+}
+
+bool AAbyssZoneActor::GetGrade(FAbyssZoneGrade& Out) const
+{
+	Out = FAbyssZoneGrade();
+	if (!SubDungeonState.IsValid() || !SubDungeonState->Spec.bValid)
+	{
+		return false;
+	}
+	const FAbyssSubDungeonState& Sub = *SubDungeonState;
+	double Ambient[3];
+	AbyssSubDungeonRules::AmbientAt(Sub.Spec, Sub.Alpha, Ambient);
+	Out.AmbientCeil = FLinearColor(static_cast<float>(Ambient[0]), static_cast<float>(Ambient[1]), static_cast<float>(Ambient[2]),
+		static_cast<float>(Sub.Spec.Ceil));
+	const AbyssSubDungeonRules::FGradeLight& Hero = Sub.Spec.Hero;
+	if (Hero.IsOn())
+	{
+		Out.HeroColorPower = FLinearColor(static_cast<float>(Hero.Color[0] * Hero.Gain), static_cast<float>(Hero.Color[1] * Hero.Gain),
+			static_cast<float>(Hero.Color[2] * Hero.Gain), static_cast<float>(Hero.Power));   // clamped where it is read (ReadLight)
+		Out.HeroRadiusCm = static_cast<float>(Hero.RadiusTiles * AbyssUnits::TileUU);
+	}
+	return true;
+}
+
+FAbyssSubDungeonStatus AAbyssZoneActor::GetSubDungeonStatus() const
+{
+	FAbyssSubDungeonStatus Out;
+	if (!SubDungeonState.IsValid())
+	{
+		return Out;
+	}
+	const FAbyssSubDungeonState& Sub = *SubDungeonState;
+	Out.bInside = Sub.bInside;
+	Out.bCutFromRock = Sub.bCutFromRock;
+	Out.bGraded = Sub.Spec.bValid;
+	Out.LampsExpected = Sub.LampsExpected;
+	Out.bThemeResolved = Sub.bThemedWall && Sub.bThemedFloor;
+	Out.WallTiles = Sub.WallTiles;
+	Out.WallBlocks = Sub.WallBlocks;
+	Out.Lamps = Sub.Lamps.Num();
+	for (const FAbyssSubDungeonLamp& Lamp : Sub.Lamps)
+	{
+		Out.LampsLit += Lamp.bLit ? 1 : 0;
+	}
+	Out.bCleansing = Sub.Cleanse.Phase == AbyssSubDungeonRules::ECleansePhase::Playing;
+	Out.bSequenceFinished = Sub.Cleanse.bFinished;
+	Out.CleanseAlpha = static_cast<float>(Sub.Alpha);
+	return Out;
 }
 
 float AAbyssZoneActor::GetSunScale()

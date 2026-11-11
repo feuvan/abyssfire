@@ -358,6 +358,10 @@ namespace AbyssSmoothnessRules
 		bool bBoss = false;           // the boss bar shows
 		std::string_view BossId;      // the boss's monster definition id
 		int BossPhase = 0;
+		/** Wave 3: the sub-dungeon the hero is in (ZoneView::subDungeon.id; "" on the surface). */
+		std::string_view SubDungeon;
+		/** Wave 3: its cleanse sequence plays (the lamps, the grade: AbyssSubDungeonRules::ECleansePhase::Playing). */
+		bool bCleansing = false;
 	};
 
 	struct FScene
@@ -370,7 +374,7 @@ namespace AbyssSmoothnessRules
 	 * Gives every frame a scene. One label per place of the run ("menu", "camp", "travel", "panel_inventory"), one per
 	 * fight ("fight_001", ...: a fight ends when the hero has been out of combat for FightGapSec; past MaxFights they
 	 * share "fight_more") and one per boss phase ("boss_<id>_p<phase>"). Order of precedence: the run's phase, a story
-	 * beat, a panel, the boss, a fight, the camp, travel.
+	 * beat, a panel, the boss, a fight, a sub-dungeon ("dungeon_<id>", "dungeon_<id>_cleanse"), the camp, travel.
 	 */
 	class FSceneTracker
 	{
@@ -420,6 +424,21 @@ namespace AbyssSmoothnessRules
 				std::snprintf(Label, sizeof(Label), "fight_%03d", FightNumber);
 				return Find(Label, ESceneKind::Fight);
 			}
+			if (!In.SubDungeon.empty())
+			{
+				// Wave 3: a sub-dungeon is its own place ("dungeon_sub_rf_pit"), its cleanse sequence its own scene (the six
+				// seconds the lamps, the grade and the embers run in); kind Travel, so the summaries group it as before.
+				// The label ("dungeon_sub_rf_pit" is past the small-string buffer) is built when the place or the flag
+				// changes, not every frame: the measurement must not allocate in the scene it measures.
+				if (!bSubSceneKnown || bSubSceneCleansing != In.bCleansing || SubSceneId != In.SubDungeon)
+				{
+					SubSceneId.assign(In.SubDungeon);
+					bSubSceneCleansing = In.bCleansing;
+					SubSceneIndex = Find("dungeon_" + SubSceneId + (In.bCleansing ? "_cleanse" : ""), ESceneKind::Travel);
+					bSubSceneKnown = true;
+				}
+				return SubSceneIndex;
+			}
 			return In.bInSafeZone ? Find("camp", ESceneKind::Camp) : Find("travel", ESceneKind::Travel);
 		}
 
@@ -456,6 +475,11 @@ namespace AbyssSmoothnessRules
 		}
 
 		std::vector<FScene> List;
+		/** The last sub-dungeon scene resolved (its label is built once per place / cleanse flag). */
+		std::string SubSceneId;
+		bool bSubSceneCleansing = false;
+		bool bSubSceneKnown = false;
+		std::uint16_t SubSceneIndex = 0;
 		int FightNumber = 0;
 		double LastCombatSec = -1.0e9;
 	};

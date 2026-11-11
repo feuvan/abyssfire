@@ -139,6 +139,13 @@ struct FAbyssCharacterFrame
 	bool bHasWindupTint = false;
 	FLinearColor WindupTint = FLinearColor::White;
 	FLinearColor WindupTintElite = FLinearColor::White;
+	/** Monsters (K7): it stands dormant (MonsterView::dormant): a still pose - Idle's first frame - until it wakes. */
+	bool bDormant = false;
+	/** Its rank along its dormant line (0 = the line's first man; UAbyssWorldBuilder::RankDormant): the Rise of rank k
+	 *  starts k x 50 ms late (AbyssSubDungeonRules::RiseDelayMs). */
+	int32 DormantRank = 0;
+	/** Monsters: after the hero (chase / attack / flee): no idle variant (AbyssAnimActionRules::IdleVariantDue). */
+	bool bAggro = false;
 	/** The hero (K6): its Ashnumb stacks (HeroView::ashnumbStacks; 0 = none). */
 	int32 AshnumbStacks = 0;
 	/** The tier draws the per-stack Ashnumb band (AbyssWorldStateRules::BandAllowed: every tier but mobile low). */
@@ -498,6 +505,25 @@ private:
 	FName LocomotionClip;
 	/** Monsters (K1): facing toward the hero from the Taunt event while the hold lasts (the dialogue freezes the world). */
 	FVector2D HoldFaceDir = FVector2D::ZeroVector;
+	// ---- Wave 3 (U6) ----
+	/** The body holds the dormant pose (the last frame was dormant, or its staggered Rise has not started yet). */
+	bool bDormantPose = false;
+	/** A dormant monster's Rise, shown a few frames late along the rank (AbyssSubDungeonRules::StaggerStart). */
+	bool bHasPendingRise = false;
+	/** The rank along its line the last dormant frame gave (FAbyssCharacterFrame::DormantRank). */
+	int32 DormantRank = 0;
+	abyss::EvPlayAnim PendingRise;
+	/** The idle variant (manifest clip Idle_Order): time shown in plain Idle, the wait before the next one, rounds
+	 *  played, and the variant's remaining time while it plays (< 0: not playing). */
+	float IdleShownSec = 0.f;
+	/** -1 not looked up yet, 0 the asset has no (unambiguous) idle variant, 1 IdleVariantName is its clip. */
+	int32 IdleVariantState = -1;
+	FName IdleVariantName;
+	float IdleVariantWaitSec = -1.f;
+	int32 IdleVariantRound = 0;
+	float IdleVariantRemainingSec = -1.f;
+	/** The last frame's visual delta (UpdateLocomotion's clock for the idle variant). */
+	float LocomotionDeltaSec = 0.f;
 	const char* CurrentState = "idle";   // anim_timing.json transition state names
 	int32 AttackVariant = 0;
 	float FreezeRemainingMs = 0.f;

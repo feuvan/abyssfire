@@ -122,7 +122,14 @@ class FlowTest(unittest.TestCase):
         mpc = reg[f"{paths.MATERIALS_DIR}/{paths.MPC_NAME}"]
         names = {str(p.get_editor_property("parameter_name")) for p in mpc.get_editor_property("vector_parameters")}
         slots = {f"Light{i}{k}" for i in range(8) for k in ("PosR", "Col")}   # toon light slots (UAbyssVfxSystem)
-        self.assertEqual(names, {"SunDir", "KeyLightDir", "SunColor", "Ambient", "RimColor"} | slots)
+        grade = set(mats.GRADE_MPC_DEFAULTS)                                    # dark remake Wave 3: the zone grade
+        self.assertEqual(grade, {"GradeAmbient", "GradeLightPosR", "GradeLightCol"})
+        self.assertEqual(names, {"SunDir", "KeyLightDir", "SunColor", "Ambient", "RimColor"} | slots | grade)
+        defaults = {str(p.get_editor_property("parameter_name")): p.get_editor_property("default_value")
+                    for p in mpc.get_editor_property("vector_parameters")}
+        amb = defaults["GradeAmbient"]
+        self.assertEqual((amb.r, amb.g, amb.b, amb.a), (1.0, 1.0, 1.0, 1.0))    # neutral: every zone but a graded one
+        self.assertEqual(defaults["GradeLightCol"].a, 0.0)                      # no pool
         scalars = {str(p.get_editor_property("parameter_name")): p.get_editor_property("default_value")
                    for p in mpc.get_editor_property("scalar_parameters")}
         self.assertEqual(set(scalars), {"CameraTanHalfFovY", "TimeSec", "SunScale", "InkScale"})

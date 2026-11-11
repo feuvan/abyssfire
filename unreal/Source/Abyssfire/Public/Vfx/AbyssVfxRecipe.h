@@ -284,6 +284,12 @@ public:
 	/** Cells of a sprite texture laid out as a horizontal strip (variants: smoke 2, bolt 4, rock 2), at least 1. */
 	int32 GetSpriteCells(FName Sprite) const;
 	int32 Num() const { return Recipes.Num(); }
+	/**
+	 * Wave 3: the recipe document's `dark.<Theme>` contract (vfx_recipes.json `dark.pit`: the light-radius grade, the
+	 * cleanse sequence and the lamp swap of the Pit; parsed by AbyssSubDungeonRules::ParseCleanseSpec). Null when the
+	 * documents carry none for the theme.
+	 */
+	const abyss::JsonValue* FindDarkContract(std::string_view Theme) const;
 
 	/** Layer defaults of a web FxKit primitive (glow, flash, glint, sparks, motes, flames, smoke, debris, ring, shock,
 	 *  decal, slash, swipe, beam, gather, bolt, streak, mesh). False for an unknown name. */
@@ -315,6 +321,8 @@ private:
 	TMap<FName, FAbyssVfxPalette> Palettes;
 	TMap<FName, int32> SpriteCells;
 	FAbyssVfxPalette FallbackPalette;
+	/** The last merged document's `dark` object (shared: the type is only declared here). */
+	TSharedPtr<abyss::JsonValue> DarkContracts;
 };
 
 /** Built-in recipe documents (JSON text, one per group), Private/Vfx/AbyssVfxDefaults.cpp. */

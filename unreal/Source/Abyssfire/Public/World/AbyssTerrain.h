@@ -28,6 +28,12 @@ struct FAbyssTerrainSettings
 	float BankWidthTiles = 0.3f;
 	float SkirtHillCm = 180.f;
 	float SkirtRampTiles = 4.f;
+	/**
+	 * Wave 3 (a sub-dungeon is cut out of solid rock; implementation-plan.md 3D notes 23 / 24): the ground under wall
+	 * tiles that touch no open tile, and everything beyond the map, is void - vertex colour A = 0 there (bilinear over
+	 * the tile centres), which the terrain masters multiply their colour by (black). Off: A = 1 everywhere, as before.
+	 */
+	bool bVoidRock = false;
 };
 
 struct FAbyssTerrainMesh

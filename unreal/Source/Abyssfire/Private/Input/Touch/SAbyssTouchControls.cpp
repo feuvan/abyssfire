@@ -540,6 +540,10 @@ void SAbyssTouchControls::UpdateDynamicState(const abyss::Snapshot& Snap, const 
 				InteractButton->SetLabel(LocalizeOr("sys.mobile.interact.open", TEXT("Open")));
 				InteractButton->SetIcon(HudIcon(TEXT("open")));
 				break;
+			case abyss::InteractKind::SubDungeon:   // U6: the pit mouth (the labyrinth's "Enter")
+				InteractButton->SetLabel(LocalizeOr("ui.abyss.enter", TEXT("Enter")));
+				InteractButton->SetIcon(HudIcon(TEXT("use")));
+				break;
 			default:
 				InteractButton->SetLabel(LocalizeOr("sys.mobile.interact.use", TEXT("Use")));
 				InteractButton->SetIcon(HudIcon(TEXT("use")));

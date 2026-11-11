@@ -150,6 +150,8 @@ struct FAbyssArtAsset
 	FName OutlineClass;            // hero / monster / npc / interactive / decor / ...
 	/** UI portrait texture (manifest `portrait`, e.g. T_UI_Portrait_QuestElder_March); NAME_None when the asset has none. */
 	FName Portrait;
+	/** Wave 3 (manifest `placement.yawStepDeg`): a wall tile's block turns in steps of this (the crypt blocks: 90); 0 = any yaw. */
+	float YawStepDeg = 0.f;
 	bool bHasFootprint = false;
 	int32 FootprintW = 1;
 	int32 FootprintH = 1;
@@ -221,10 +223,21 @@ public:
 	 * is the intended fallback.
 	 */
 	const FAbyssArtAsset* ResolveFirst(TConstArrayView<FName> GameIds, uint32 VariantHash, FName Theme) const;
-	/** `<GameId>@<Theme>` when the manifest has that variant, else NAME_None. */
+	/** The variant of GameId under Theme's chain (`<GameId>@<Theme>`, else its parent's, ...) when the manifest has one,
+	 *  else NAME_None. */
 	FName FindThemedGameId(FName GameId, FName Theme) const;
-	/** Whether any asset is authored for the theme (`<id>@<Theme>` ids). */
-	bool HasTheme(FName Theme) const { return ThemedIds.Contains(Theme); }
+	/** Whether any asset is authored for the theme or one of its parents (`<id>@<Theme>` ids). */
+	bool HasTheme(FName Theme) const;
+	/**
+	 * Wave 3 (DECISIONS DR17 (1) / (9)): the parent of each presentation theme (terrain_styles.json themeParents: pit ->
+	 * march). Every themed lookup then tries `<id>@<theme>`, `<id>@<parent>`, ..., `<id>` (AbyssThemeRules::ThemeChain).
+	 * Set once the data is loaded (UAbyssAssetLibrary::SetThemeParents); none = single themes, as before.
+	 */
+	void SetThemeParents(const TMap<FName, FName>& InParents) { ThemeParents = InParents; }
+	/** Theme, then its parents (at most AbyssThemeRules::MaxThemeChain names, never one twice); empty for NAME_None. */
+	void GetThemeChain(FName Theme, TArray<FName, TInlineAllocator<4>>& Out) const;
+	/** Whether Theme is Candidate or has it among its parents. */
+	bool ThemeChainContains(FName Theme, FName Candidate) const;
 	/** Weapon mesh of a weapon type, preferring one authored for `HeldBy` (I6 / R4). */
 	const FAbyssArtAsset* FindWeapon(FName WeaponType, FName HeldBy) const;
 
@@ -255,6 +268,8 @@ private:
 	TMap<FName, TArray<int32>> AssetsByGameId;
 	/** Theme -> plain game id -> its `<id>@<theme>` variant id (built from AssetsByGameId's keys at load). */
 	TMap<FName, TMap<FName, FName>> ThemedIds;
+	/** Theme -> its parent theme (SetThemeParents). */
+	TMap<FName, FName> ThemeParents;
 	TArray<FName> ThemeParityMismatches;
 	abyss::JsonValue MaterialsJson;
 	/** GetAssetJson's blocks by asset name (assets that carry any). */

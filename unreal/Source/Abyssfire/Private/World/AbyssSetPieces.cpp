@@ -25,6 +25,8 @@
 #include "World/AbyssAssetLibrary.h"
 #include "World/AbyssSetPieceRules.h"
 #include "World/AbyssSetPieces.h"
+#include "World/AbyssSubDungeonRules.h"
+#include "World/AbyssSubDungeonState.h"
 #include "World/AbyssWorldTypes.h"
 
 namespace AbyssSetPiecesPrivate
@@ -75,10 +77,14 @@ namespace AbyssSetPiecesPrivate
 		return Out.IsEmpty() ? FString(TEXT("none")) : Out;
 	}
 
-	/** A yielded piece's instance: scale 0 far below the map (UAbyssVfxSystem's idle-pool idiom), so no shadow either. */
-	FTransform HiddenSetPieceTransform()
+	/**
+	 * A hidden piece's instance (a yielded piece, the lamp twin that is not shown): scale 0 where it stands, so it draws
+	 * nothing and casts no shadow, and the instanced component's bounds stay in the room (parked far below the map, 14
+	 * hidden lamp twins made their component's bounds a kilometre tall: never culled, in every shadow cascade).
+	 */
+	FTransform HiddenSetPieceTransform(const FTransform& Placed)
 	{
-		return FTransform(FQuat::Identity, FVector(0.0, 0.0, -100000.0), FVector::ZeroVector);
+		return FTransform(Placed.GetRotation(), Placed.GetLocation(), FVector::ZeroVector);
 	}
 }
 
@@ -99,16 +105,37 @@ void AAbyssZoneActor::BuildSetPieces(const abyss::Snapshot& Snap, const abyss::D
 	abyss::ExpandSetPieces(*Zone, *Map, Data, Frame, Placements);
 
 	FAbyssSetPieceState& State = *SetPieceState;
+	FAbyssSubDungeonState* Sub = SubDungeonState.Get();
+	// U6: the lamps of the theme's dark contract are placed twice at one transform (unlit and lit; ApplyLampStates hides
+	// the one that is not the entry's state, the cleanse sequence swaps them).
+	const std::string LampUnlit = Sub != nullptr && Sub->bInside ? Sub->Spec.LampUnlit : std::string();
+	const FName LampLitId = Sub != nullptr && !Sub->Spec.LampLit.empty() ? AbyssSetPiecesPrivate::SetPieceName(Sub->Spec.LampLit) : NAME_None;
+	const FName FlameSocket = AbyssSetPiecesPrivate::SetPieceName(AbyssSubDungeonRules::FlameSocket);
+	const FName LightSocket = AbyssSetPiecesPrivate::SetPieceName(AbyssSubDungeonRules::LightSocket);
+	const FName NicheSocket = AbyssSetPiecesPrivate::SetPieceName(AbyssSubDungeonRules::NicheSocket);
 	std::vector<AbyssSetPieceRules::PlacedArt> Arts(Placements.size());
 	for (size_t Index = 0; Index < Placements.size(); ++Index)
 	{
 		const abyss::SetPiecePlacement& Placement = Placements[Index];
 		const abyss::SetPieceDef& Def = *Placement.def;
+		std::vector<std::string> IdChain = AbyssSetPieceRules::IdChain(Def);
+		if (Def.anchor == abyss::SetPieceAnchorKind::Entrance)
+		{
+			// U6 (3D notes 7 / 28): a piece on a sub-dungeon entrance shows its `_open` art only while the entrance is
+			// unsealed; sealed, the `_sealed` twin on the same anchor, yaw and footprint.
+			bool bSealed = false;
+			for (const abyss::WorldMarkerView& Marker : Snap.markers)
+			{
+				bSealed = bSealed || (Marker.kind == abyss::MarkerKind::SubDungeonEntrance && Marker.key == Def.ref && Marker.sealed);
+			}
+			IdChain = AbyssSubDungeonRules::EntranceIdChain(IdChain, bSealed);
+		}
 		TArray<FName, TInlineAllocator<4>> Ids;
-		for (const std::string& Id : AbyssSetPieceRules::IdChain(Def))
+		for (const std::string& Id : IdChain)
 		{
 			Ids.Add(AbyssSetPiecesPrivate::SetPieceName(Id));
 		}
+		const bool bLamp = !LampUnlit.empty() && !LampLitId.IsNone() && Def.gameId == LampUnlit;
 		const abyss::TilePos Tile = abyss::RoundToTile(Placement.pos);
 		const uint32 Hash = AbyssSetPieceRules::VariantHash(Placement.variant,
 			AbyssWorldUtil::TileHash(Tile.col, Tile.row, AbyssSetPieceRules::VariantHashSalt));
@@ -116,7 +143,7 @@ void AAbyssZoneActor::BuildSetPieces(const abyss::Snapshot& Snap, const abyss::D
 		const float YawDeg = static_cast<float>(Placement.yawDeg);
 		const float Scale = static_cast<float>(Def.scale);
 		// Only a yielding piece needs its instance found again (hidden while a defend target stands on it).
-		const FName Key = Def.yieldsToDefendTarget
+		const FName Key = Def.yieldsToDefendTarget || bLamp
 			? AbyssSetPiecesPrivate::SetPieceName(AbyssSetPieceRules::InstanceKey(Placement)) : NAME_None;
 		const FAbyssArtAsset* Art = nullptr;
 		FTransform Transform;
@@ -139,6 +166,70 @@ void AAbyssZoneActor::BuildSetPieces(const abyss::Snapshot& Snap, const abyss::D
 		if (!Key.IsNone())
 		{
 			State.YieldTransforms.Add(Key, Transform);
+		}
+		if (bLamp)
+		{
+			++Sub->LampsExpected;   // the probe: a lamp whose lit twin does not place is a fault the verdict names
+			// The lit twin at the same transform (the same variant hash, never an occluder); its sockets carry the flame
+			// and the light pool's spot.
+			const FName LitKey(*(Key.ToString() + TEXT(":lit")));
+			const FName LitIds[] = { LampLitId };
+			const FAbyssArtAsset* LitArt = nullptr;
+			FTransform LitTransform;
+			if (PlaceArt(LitIds, Hash, Location, YawDeg, Scale, false, 0.f, LitKey, &LitArt, &LitTransform) && LitArt != nullptr)
+			{
+				State.YieldTransforms.Add(LitKey, LitTransform);
+				++State.PlacedMeshes;
+				FAbyssSubDungeonLamp& Lamp = Sub->Lamps.AddDefaulted_GetRef();
+				Lamp.UnlitKey = Key;
+				Lamp.LitKey = LitKey;
+				Lamp.Tile = Placement.pos;
+				Lamp.Flame = Lamp.Light = LitTransform.GetLocation();
+				for (const FAbyssArtSocket& Socket : LitArt->Sockets)
+				{
+					if (Socket.Name == FlameSocket)
+					{
+						Lamp.Flame = LitTransform.TransformPosition(Socket.LocCm);
+					}
+					else if (Socket.Name == LightSocket)
+					{
+						Lamp.Light = LitTransform.TransformPosition(Socket.LocCm);
+					}
+				}
+				// The pool lies on the ground under the `light` socket; the toon light slot sits at the socket itself.
+				const double LightGroundZ = GetGroundHeight(Lamp.Light.X, Lamp.Light.Y);
+				Lamp.LightHeightCm = static_cast<float>(FMath::Max(0.0, Lamp.Light.Z - LightGroundZ));
+				Lamp.Light.Z = LightGroundZ;
+			}
+		}
+		if (Sub != nullptr && Sub->bInside && !Sub->bHasNiche)
+		{
+			// The cleanse's niche (the Flame Niche): a piece whose art has a `niche` socket; its `mark_<n>` sockets glow
+			// after it, in number order.
+			for (const FAbyssArtSocket& Socket : Art->Sockets)
+			{
+				if (Socket.Name == NicheSocket)
+				{
+					Sub->bHasNiche = true;
+					Sub->Niche = Transform.TransformPosition(Socket.LocCm);
+					Sub->NicheTile = Placement.pos;
+				}
+			}
+			if (Sub->bHasNiche)
+			{
+				// The marks that exist, in number order (AbyssSubDungeonRules::MarkOrder: a gap in the numbering leaves no
+				// empty slot - a burst at the world origin - and a stray number cannot stretch the sequence).
+				std::vector<int> Numbers;
+				Numbers.reserve(static_cast<size_t>(Art->Sockets.Num()));
+				for (const FAbyssArtSocket& Socket : Art->Sockets)
+				{
+					Numbers.push_back(AbyssSubDungeonRules::MarkNumber(AbyssText::ToStd(Socket.Name.ToString())));
+				}
+				for (const int SocketIndex : AbyssSubDungeonRules::MarkOrder(Numbers))
+				{
+					Sub->Marks.Add(Transform.TransformPosition(Art->Sockets[SocketIndex].LocCm));
+				}
+			}
 		}
 		// Ground layers (the bridge's ditch bed, the circles' poured ash): same spot, yaw and variant hash, never occluders.
 		for (const std::string& Partner : Def.partners)
@@ -163,6 +254,14 @@ void AAbyssZoneActor::BuildSetPieces(const abyss::Snapshot& Snap, const abyss::D
 	for (const AbyssSetPieceRules::Yielder& Yielder : Spots.Yielders)
 	{
 		State.YielderKeys.Add(AbyssSetPiecesPrivate::SetPieceName(Yielder.Key));
+	}
+	// U6: a sub-dungeon entered cleansed burns already - every lamp's flame loop joins the zone loops (no catching flare).
+	if (Sub != nullptr && Sub->Cleanse.Phase == AbyssSubDungeonRules::ECleansePhase::Lit)
+	{
+		for (const FAbyssSubDungeonLamp& Lamp : Sub->Lamps)
+		{
+			EffectSpots.Add(MakeLampFlameSpot(Lamp));
+		}
 	}
 	int32 EmitterSpotCount = 0;
 	for (const AbyssSetPieceRules::EmitterSpots& Emitter : Spots.Emitters)
@@ -212,12 +311,8 @@ void AAbyssZoneActor::GetSetPieceCueSpots(FName CueId, TArray<FAbyssZoneEffectSp
 	for (const AbyssSetPieceRules::CueSpot* Spot : AbyssSetPieceRules::CueSpotsFor(SetPieceState->Spots, Cue))
 	{
 		FAbyssZoneEffectSpot& Effect = Out.AddDefaulted_GetRef();
-		Effect.RecipeId = AbyssSetPiecesPrivate::SetPieceName(Spot->Recipe);
-		Effect.Location = GroundPoint(Spot->Tile.x, Spot->Tile.y);
-		if (!PresentationTheme.IsNone() && Spot->Recipe.find('@') == std::string::npos)
-		{
-			Effect.ThemedRecipeId = FName(*(Effect.RecipeId.ToString() + TEXT("@") + PresentationTheme.ToString()));
-		}
+		Effect = MakeEffectSpot(AbyssSetPiecesPrivate::SetPieceName(Spot->Recipe), GroundPoint(Spot->Tile.x, Spot->Tile.y));
+		Effect.bThemedOnly = false;   // a cue ripple always has its plain recipe to fall back to
 	}
 }
 
@@ -260,7 +355,7 @@ void AAbyssZoneActor::UpdateSetPieceYields(TConstArrayView<abyss::Vec2> DefendTa
 		if (!Wanted.Contains(Key))
 		{
 			State.Yielded.RemoveAt(Index);
-			SetSetPieceHidden(Key, false);
+			SetSetPieceHidden(Key, false, TEXT("shown again"));
 		}
 	}
 	for (const FName Key : Wanted)
@@ -268,7 +363,7 @@ void AAbyssZoneActor::UpdateSetPieceYields(TConstArrayView<abyss::Vec2> DefendTa
 		if (!State.Yielded.Contains(Key))
 		{
 			State.Yielded.Add(Key);
-			SetSetPieceHidden(Key, true);
+			SetSetPieceHidden(Key, true, TEXT("hidden: a defend target of the same art stands on it"));
 		}
 	}
 }
@@ -286,7 +381,7 @@ bool AAbyssZoneActor::GetSetPieceYieldFacing(const abyss::Vec2& Tile, float& Out
 	return true;
 }
 
-void AAbyssZoneActor::SetSetPieceHidden(FName Key, bool bHidden)
+void AAbyssZoneActor::SetSetPieceHidden(FName Key, bool bHidden, const TCHAR* Why)
 {
 	const TPair<int32, int32>* Found = StoryInstances.Find(Key);
 	const FTransform* Placed = SetPieceState.IsValid() ? SetPieceState->YieldTransforms.Find(Key) : nullptr;
@@ -299,7 +394,7 @@ void AAbyssZoneActor::SetSetPieceHidden(FName Key, bool bHidden)
 	{
 		return;
 	}
-	const TArray<FTransform> Transforms = { bHidden ? AbyssSetPiecesPrivate::HiddenSetPieceTransform() : *Placed };
+	const TArray<FTransform> Transforms = { bHidden ? AbyssSetPiecesPrivate::HiddenSetPieceTransform(*Placed) : *Placed };
 	// Incremental instance update (5.4+ instance data manager), as the occlusion fade and the VFX pools do.
 	Component->BatchUpdateInstancesTransforms(Found->Value, Transforms, /*bWorldSpace*/ true, /*bMarkRenderStateDirty*/ false,
 		/*bTeleport*/ true);
@@ -332,6 +427,5 @@ void AAbyssZoneActor::SetSetPieceHidden(FName Key, bool bHidden)
 	{
 		UpdateFadeGhost(ComponentIndex);
 	}
-	UE_LOG(LogAbyss, Log, TEXT("Set piece %s %s"), *Key.ToString(),
-		bHidden ? TEXT("hidden: a defend target of the same art stands on it") : TEXT("shown again"));
+	UE_CLOG(Why != nullptr, LogAbyss, Log, TEXT("Set piece %s %s"), *Key.ToString(), Why);
 }

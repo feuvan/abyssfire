@@ -9,6 +9,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/SkinnedAssetCommon.h"
 #include "Engine/StaticMesh.h"
+#include "HAL/IConsoleManager.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -32,7 +33,15 @@
 #include "Framework/AbyssUnits.h"
 #include "Vfx/AbyssTelegraphRules.h"
 #include "World/AbyssAssetLibrary.h"
+#include "World/AbyssSubDungeonRules.h"
 #include "World/AbyssWorldStateRules.h"
+
+// Wave 3 (U6): the Unburied's idle variant (manifest clip Idle_Order: the Pitwarden digs a pit that is already full).
+static TAutoConsoleVariable<int32> CVarAbyssIdleVariant(
+	TEXT("abyss.IdleVariant"),
+	1,
+	TEXT("1: an idle monster whose art ships one Idle_Order clip plays it now and then; 0: plain Idle only."),
+	ECVF_Default);
 
 namespace AbyssCharacterPrivate
 {
@@ -323,6 +332,15 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	}
 
 	ArtClips = Art->Clips;
+	IdleVariantState = -1;
+	IdleVariantName = NAME_None;
+	IdleShownSec = 0.f;
+	IdleVariantRemainingSec = -1.f;
+	IdleVariantWaitSec = -1.f;   // a re-initialised actor hashes its own first wait
+	IdleVariantRound = 0;
+	bDormantPose = false;
+	bHasPendingRise = false;
+	DormantRank = 0;
 	ArtFx = Art->Fx;
 	ArtName = Art->Name;
 	// Dark remake 2G stage H (K6): the hero's Ashnumb band twin, loaded with the hero (not at the first stack), and the
@@ -1133,6 +1151,9 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	}
 	if (Event.action == abyss::AnimAction::Death)
 	{
+		bHasPendingRise = false;
+		bDormantPose = false;
+		IdleVariantRemainingSec = -1.f;
 		BeginDeath(Event);
 		return;
 	}
@@ -1140,6 +1161,25 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	{
 		return;   // locomotion comes from the snapshot
 	}
+	// Wave 3 (U6, 3D note 16): a dormant rank wakes as one - every Rise of the Helm Wall arrives within a step or two -
+	// and rises man by man: the Rise of rank k (its place along the line: FAbyssCharacterFrame::DormantRank, kept from its
+	// last dormant frame) starts k x 50 ms late and plays the faster, so it ends when the core's root does
+	// (AbyssSubDungeonRules::StaggerStart). Until then the body keeps its still pose.
+	if (Event.action == abyss::AnimAction::Rise && bDormantPose && !bHasPendingRise)
+	{
+		const AbyssSubDungeonRules::FStaggeredStart Late = AbyssSubDungeonRules::StaggerStart(Event.startMs, Event.durationMs,
+			AbyssSubDungeonRules::RiseDelayMs(DormantRank));
+		if (Late.StartMs > Frame.RenderSimMs)
+		{
+			PendingRise = Event;
+			PendingRise.startMs = Late.StartMs;
+			PendingRise.durationMs = Late.DurationMs;
+			bHasPendingRise = true;
+			return;
+		}
+	}
+	bDormantPose = false;
+	IdleVariantRemainingSec = -1.f;   // an action ends the idle variant
 
 	// The action began at Event.startMs (sim time); the interpolated pose shows Frame.RenderSimMs.
 	const float ElapsedSec = static_cast<float>(FMath::Max(0.0, Frame.RenderSimMs - Event.startMs) / 1000.0);
@@ -2296,6 +2336,79 @@ void AAbyssCharacterActor::UpdateLocomotion(const FAbyssCharacterFrame& Frame)
 		}
 		Rate = Frame.bExhausted ? 0.6f : 1.f;
 		State = "idle";
+		if (EntityKind == abyss::EntityKind::Monster && Chosen != nullptr)
+		{
+			if (bDormantPose)
+			{
+				// Wave 3 (3D notes 16 / 35): a dormant monster holds a still pose - Idle's first frame - and never fidgets.
+				Rate = 0.f;
+				IdleShownSec = 0.f;
+				IdleVariantRemainingSec = -1.f;
+				if (LocomotionClip != Chosen->Name || Anim->GetCurrentSequence() != FindClip(Chosen->Name))
+				{
+					PlayClip(*Chosen, 0.f, 0.f, State);
+					LocomotionClip = Chosen->Name;
+				}
+				else
+				{
+					Anim->SetPlayRate(0.f);
+				}
+				return;
+			}
+			// The idle variant (manifest clip Idle_Order: the Unburied keep their last order - the Pitwarden digs a pit
+			// that is full): a one-shot from READY back to READY after a hashed wait in plain Idle, never while the
+			// monster is after the hero (AbyssAnimActionRules::IdleVariantDue).
+			if (IdleVariantState < 0)
+			{
+				// Once per actor: the asset's variant by its clip names (AbyssAnimActionRules::IdleVariantFor).
+				std::vector<std::string> ClipNames;
+				ClipNames.reserve(static_cast<size_t>(ArtClips.Num()));
+				for (const FAbyssArtClip& ArtClip : ArtClips)
+				{
+					ClipNames.push_back(AbyssText::ToStd(ArtClip.Name.ToString()));
+				}
+				const std::string_view VariantName = AbyssAnimActionRules::IdleVariantFor(ClipNames);
+				IdleVariantName = VariantName.empty() ? NAME_None : FName(*AbyssText::ToFString(VariantName));
+				IdleVariantState = IdleVariantName.IsNone() ? 0 : 1;
+			}
+			const FAbyssArtClip* Variant = IdleVariantState > 0 && CVarAbyssIdleVariant.GetValueOnGameThread() != 0
+				? FindArtClip(IdleVariantName) : nullptr;
+			if (Variant != nullptr && FindClip(Variant->Name) != nullptr)
+			{
+				if (IdleVariantRemainingSec >= 0.f)
+				{
+					IdleVariantRemainingSec -= LocomotionDeltaSec;
+					if (IdleVariantRemainingSec >= 0.f && !Frame.bAggro && Anim->GetCurrentSequence() == FindClip(Variant->Name))
+					{
+						LocomotionClip = Variant->Name;
+						return;   // the variant plays on
+					}
+					IdleVariantRemainingSec = -1.f;
+					IdleShownSec = 0.f;
+				}
+				if (IdleVariantWaitSec < 0.f)
+				{
+					IdleVariantWaitSec = static_cast<float>(
+						AbyssAnimActionRules::IdleVariantWaitMs(static_cast<uint32_t>(EntityId), IdleVariantRound) / 1000.0);
+				}
+				IdleShownSec += LocomotionDeltaSec;
+				if (AbyssAnimActionRules::IdleVariantDue(IdleShownSec * 1000.0, IdleVariantWaitSec * 1000.0, /*bDormant*/ false,
+						Frame.bAggro, /*bHeldOrStunned*/ Frame.bStunned || AbyssAnimActionRules::IsHoldAction(Frame.HoldAction)))
+				{
+					PlayClip(*Variant, 1.f, 0.f, State);
+					LocomotionClip = Variant->Name;
+					IdleVariantRemainingSec = Variant->LengthSec;
+					++IdleVariantRound;
+					IdleVariantWaitSec = -1.f;
+					return;
+				}
+			}
+		}
+	}
+	else
+	{
+		IdleShownSec = 0.f;
+		IdleVariantRemainingSec = -1.f;
 	}
 	if (Chosen == nullptr)
 	{
@@ -2578,6 +2691,20 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 	{
 		SetActorRotation(FRotator(0.f, CurrentYawDeg, 0.f));
 	}
+
+	// ---- Wave 3: the dormant pose and the staggered Rise ----
+	if (bHasPendingRise && Info.RenderSimMs >= PendingRise.startMs)
+	{
+		bHasPendingRise = false;
+		bDormantPose = false;
+		OnPlayAnim(PendingRise, Info);
+	}
+	bDormantPose = !bDying && (Frame.bDormant || bHasPendingRise);
+	if (Frame.bDormant)
+	{
+		DormantRank = Frame.DormantRank;
+	}
+	LocomotionDeltaSec = ActionDelta;
 
 	// ---- actions / locomotion ----
 	if (ActionState.Action != EAbyssCharacterAction::None && ActionState.Action != EAbyssCharacterAction::Death)

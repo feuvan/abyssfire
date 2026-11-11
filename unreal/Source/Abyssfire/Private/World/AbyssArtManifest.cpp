@@ -307,6 +307,8 @@ namespace AbyssArtManifestPrivate
 			Out.Portrait = FName(*FPaths::GetBaseFilename(PortraitPath));
 		}
 		ParseFootprint(Json, Out);
+		// Wave 3: `placement.yawStepDeg` (the crypt wall blocks abut face to face: 90); `placement` is prose on most assets.
+		Out.YawStepDeg = static_cast<float>(FMath::Max(0.0, Json.Get("placement").Get("yawStepDeg").AsDouble(0.0)));
 		if (const abyss::JsonValue* Blocking = Json.Find("blocking"); Blocking != nullptr && Blocking->IsBool())
 		{
 			Out.bBlocking = Blocking->AsBool();
@@ -470,6 +472,7 @@ void FAbyssArtManifest::Reset()
 	AssetsByName.Reset();
 	AssetsByGameId.Reset();
 	ThemedIds.Reset();
+	ThemeParents.Reset();
 	ThemeParityMismatches.Reset();
 	MaterialsJson = abyss::JsonValue();
 	AssetJsonByName.Reset();
@@ -681,13 +684,57 @@ const FAbyssArtAsset* FAbyssArtManifest::ResolveFirst(TConstArrayView<FName> Gam
 	return nullptr;
 }
 
+void FAbyssArtManifest::GetThemeChain(FName Theme, TArray<FName, TInlineAllocator<4>>& Out) const
+{
+	Out.Reset();
+	// AbyssThemeRules::ThemeChain on FNames: the theme, then its parents; a name never twice, at most MaxThemeChain.
+	for (FName Name = Theme; !Name.IsNone() && Out.Num() < static_cast<int32>(AbyssThemeRules::MaxThemeChain) && !Out.Contains(Name);)
+	{
+		Out.Add(Name);
+		const FName* Parent = ThemeParents.Find(Name);
+		Name = Parent != nullptr ? *Parent : NAME_None;
+	}
+}
+
+bool FAbyssArtManifest::ThemeChainContains(FName Theme, FName Candidate) const
+{
+	TArray<FName, TInlineAllocator<4>> Chain;
+	GetThemeChain(Theme, Chain);
+	return !Candidate.IsNone() && Chain.Contains(Candidate);
+}
+
+bool FAbyssArtManifest::HasTheme(FName Theme) const
+{
+	TArray<FName, TInlineAllocator<4>> Chain;
+	GetThemeChain(Theme, Chain);
+	for (const FName Name : Chain)
+	{
+		if (ThemedIds.Contains(Name))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 const FAbyssArtAsset* FAbyssArtManifest::ResolveFirst(TConstArrayView<FName> GameIds, uint32 VariantHash, FName Theme) const
 {
-	const TMap<FName, FName>* Variants = Theme.IsNone() ? nullptr : ThemedIds.Find(Theme);
-	return AbyssThemeRules::ResolveThemedFirst<const FAbyssArtAsset*>(GameIds, Variants != nullptr,
-		[this, Variants, VariantHash](FName GameId) -> const FAbyssArtAsset*
+	// Wave 3: the theme's chain (pit, march): every id's `@pit` variant, then every id's `@march` variant, then the plain
+	// chain (AbyssThemeRules::ResolveChainFirst; one theme = the U1 order).
+	TArray<FName, TInlineAllocator<4>> Chain;
+	GetThemeChain(Theme, Chain);
+	TArray<const TMap<FName, FName>*, TInlineAllocator<4>> Variants;
+	for (const FName Name : Chain)
+	{
+		if (const TMap<FName, FName>* Found = ThemedIds.Find(Name))
 		{
-			const FName* Themed = Variants->Find(GameId);
+			Variants.Add(Found);
+		}
+	}
+	return AbyssThemeRules::ResolveChainFirst<const FAbyssArtAsset*>(GameIds, static_cast<size_t>(Variants.Num()),
+		[this, &Variants, VariantHash](size_t ThemeIndex, FName GameId) -> const FAbyssArtAsset*
+		{
+			const FName* Themed = Variants[static_cast<int32>(ThemeIndex)]->Find(GameId);
 			return Themed != nullptr ? ResolveGameId(*Themed, VariantHash) : nullptr;
 		},
 		[this, VariantHash](FName GameId) -> const FAbyssArtAsset*
@@ -699,9 +746,17 @@ const FAbyssArtAsset* FAbyssArtManifest::ResolveFirst(TConstArrayView<FName> Gam
 
 FName FAbyssArtManifest::FindThemedGameId(FName GameId, FName Theme) const
 {
-	const TMap<FName, FName>* Variants = Theme.IsNone() ? nullptr : ThemedIds.Find(Theme);
-	const FName* Themed = Variants != nullptr ? Variants->Find(GameId) : nullptr;
-	return Themed != nullptr ? *Themed : NAME_None;
+	TArray<FName, TInlineAllocator<4>> Chain;
+	GetThemeChain(Theme, Chain);
+	for (const FName Name : Chain)
+	{
+		const TMap<FName, FName>* Variants = ThemedIds.Find(Name);
+		if (const FName* Themed = Variants != nullptr ? Variants->Find(GameId) : nullptr)
+		{
+			return *Themed;
+		}
+	}
+	return NAME_None;
 }
 
 const FAbyssArtAsset* FAbyssArtManifest::FindWeapon(FName WeaponType, FName HeldBy) const

@@ -26,6 +26,7 @@
 #include "abyss/world/MapGen.h"
 
 #include "Audio/AbyssAudioDataRules.h"
+#include "World/AbyssThemeRules.h"
 
 namespace AbyssAmbienceRules
 {
@@ -158,6 +159,21 @@ namespace AbyssAmbienceRules
 			return abyss::EnumName(Map->presentationTheme);
 		}
 		return SnapshotTheme;
+	}
+
+	/**
+	 * The theme names the bed table is tried with, nearest first (dark remake Wave 3): the presentation theme and its
+	 * parents (AbyssThemeRules::ThemeChain over terrain_styles.json themeParents: the Pit has no bed of its own and
+	 * keeps the march's), else the map's theme alone.
+	 */
+	inline std::vector<std::string> BedThemeNames(const abyss::MapDef* Map, std::string_view SnapshotTheme,
+		const abyss::JsonValue* TerrainStyles)
+	{
+		if (Map != nullptr && Map->hasPresentationTheme)
+		{
+			return AbyssThemeRules::ThemeChain(TerrainStyles, abyss::EnumName(Map->presentationTheme));
+		}
+		return std::vector<std::string>{ std::string(SnapshotTheme) };
 	}
 
 	/** Emitter volume for the hero's distance (tiles): 1 within inner, linear to 0 at inner + falloff. */

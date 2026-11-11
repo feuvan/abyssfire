@@ -61,6 +61,7 @@
 #include "World/AbyssAssetLibrary.h"
 #include "World/AbyssQualityRules.h"
 #include "World/AbyssSetPieceRules.h"
+#include "World/AbyssSubDungeonRules.h"
 #include "World/AbyssThemeRules.h"
 #include "World/AbyssWorldStateRules.h"
 #include "World/AbyssZoneActor.h"
@@ -86,6 +87,17 @@ struct FAbyssQualityRefresh
 
 namespace AbyssWorldBuilderPrivate
 {
+	/** U6: a zone effect spot's own light spot, radius and colour (a lit lamp: FAbyssZoneEffectSpot) to the VFX context. */
+	void CopyLightSpot(const FAbyssZoneEffectSpot& Spot, FAbyssVfxContext& Context)
+	{
+		Context.bHasLightSpot = Spot.bHasLightSpot;
+		Context.LightSpot = Spot.LightSpot;
+		Context.LightHeightCm = Spot.LightHeightCm;
+		Context.LightRadiusCm = Spot.LightRadiusCm;
+		Context.bHasLightColor = Spot.bHasLightColor;
+		Context.LightColor = Spot.LightColor;
+	}
+
 	constexpr float NearMonsterOcclusionTiles = 6.f;   // world-map-nav.md 15.6: monsters within ~6 tiles fade props too
 	constexpr float NearLootOcclusionTiles = 9.f;      // ground loot on screen around the hero fades the dressing it is in
 	constexpr int32 MaxLootOcclusionTargets = 24;
@@ -168,7 +180,8 @@ namespace AbyssWorldBuilderPrivate
 			const std::string IdText = AbyssText::ToStd(GameId.ToString());
 			if (AbyssThemeRules::SplitThemedId(IdText, Base, ThemeName))
 			{
-				if (!Theme.IsNone() && FName(*AbyssText::ToFString(ThemeName)) == Theme)
+				// U6: the theme's own variant or one of a parent theme (pit shows `gather_herb@march`).
+				if (!Theme.IsNone() && Manifest.ThemeChainContains(Theme, FName(*AbyssText::ToFString(ThemeName))))
 				{
 					return true;
 				}
@@ -375,6 +388,7 @@ void UAbyssWorldBuilder::BindEvents()
 	Router.On<abyss::EvEmbersGained>().AddUObject(this, &UAbyssWorldBuilder::HandleEmbersGained);
 	Router.On<abyss::EvLoreCollected>().AddUObject(this, &UAbyssWorldBuilder::HandleLoreCollected);
 	Router.On<abyss::EvQuestUpdate>().AddUObject(this, &UAbyssWorldBuilder::HandleQuestUpdate);
+	Router.On<abyss::EvAreaCleansed>().AddUObject(this, &UAbyssWorldBuilder::HandleAreaCleansed);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssWorldBuilder::HandleSessionEnded);
 	SettingsHandle = GameInstance->OnSettingsChanged.AddUObject(this, &UAbyssWorldBuilder::ApplySettings);
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
@@ -667,6 +681,7 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 	}
 	EnsureCameraRig();
 	EnsureHelpers();
+	EnsureThemeParents();
 	if (ZoneActor != nullptr)
 	{
 		ZoneActor->ClearZone();
@@ -763,17 +778,12 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 			Context.Origin = Context.Target = Context.Point = Spot.Location;
 			Context.bHasColor = Spot.bHasColor;
 			Context.Color = Spot.Color;
-			// U1: the theme's variant first (camp.torch@march: the brazier's smoulder, no light pool), else today's recipe
-			// (not for a themed-only loop: the march's sealed exit plays nothing until exit.sealed@march exists).
-			TArray<FName, TInlineAllocator<2>> Recipes;
-			if (!Spot.ThemedRecipeId.IsNone())
-			{
-				Recipes.Add(Spot.ThemedRecipeId);
-			}
-			if (!Spot.bThemedOnly)
-			{
-				Recipes.Add(Spot.RecipeId);
-			}
+			AbyssWorldBuilderPrivate::CopyLightSpot(Spot, Context);   // U6: a lit lamp's pool under its `light` socket
+			// U1 / U6: the theme chain's variants first (camp.torch@march: the brazier's smoulder, no light pool; the Pit's
+			// exit.portal@pit before exit.portal@march), else today's recipe (not for a themed-only loop: the march's
+			// sealed exit plays nothing until exit.sealed@march exists).
+			TArray<FName, TInlineAllocator<4>> Recipes;
+			Spot.GetRecipes(Recipes);
 			if (const int32 Handle = Vfx->PlayFirst(Recipes, Context))
 			{
 				ZoneVfxHandles.Add(Handle);
@@ -802,6 +812,23 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 		UE_LOG(LogAbyss, Log, TEXT("Zone camera snaps to %s pitch %.1f (distance %.0f cm, focus %s), hero ground %s"),
 			*SnapCamera.ToString(), CameraRig->GetPitchDegrees(), CameraRig->GetCurrentDistance(), *SnapFocus.ToString(),
 			*HeroGround.ToString());
+	}
+	// U6: the sub-dungeon probe of this visit (the autotest), and the grade written from the first frame. Only a
+	// hand-authored sub-dungeon is a visit: the generated caves have no theme chain, lamps or grade to answer for.
+	EndSubDungeonVisit();
+	bGradeWritten = true;   // the next UpdateGradeCollection writes this zone's values (or the neutral ones once)
+	bGradeInstanceKnown = false;   // the collection instance and its Grade* parameters are looked up once per zone
+	bGradeValuesKnown = false;
+	if (const FAbyssSubDungeonStatus Status = ZoneActor->GetSubDungeonStatus(); Status.bCutFromRock)
+	{
+		++SubDungeonProbe.Visits;
+		SubDungeonProbe.bThemeResolved = Status.bThemeResolved;
+		SubDungeonProbe.WallTiles = Status.WallTiles;
+		SubDungeonProbe.WallBlocks = Status.WallBlocks;
+		SubDungeonProbe.LampsExpected = Status.LampsExpected;
+		SubDungeonProbe.Lamps = Status.Lamps;
+		SubDungeonProbe.bGradeExpected = Status.bGraded;
+		SubDungeonProbe.PeakLampsLit = FMath::Max(SubDungeonProbe.PeakLampsLit, Status.LampsLit);
 	}
 	bStoryFocusActive = false;
 	bZoneBuilt = true;
@@ -906,8 +933,26 @@ bool UAbyssWorldBuilder::PickGround(const APlayerController& Controller, const F
 // IAbyssWorldView: entities
 // =====================================================================================================================
 
+void UAbyssWorldBuilder::EnsureThemeParents() const
+{
+	if (bThemeParentsSet)
+	{
+		return;
+	}
+	const abyss::DataStore* Data = GetData();
+	UAbyssAssetLibrary* Assets = GetAssets();
+	if (Data == nullptr || Assets == nullptr)
+	{
+		return;
+	}
+	// DECISIONS DR17 (9): terrain_styles.json themeParents (pit -> march); every themed art lookup then follows the chain.
+	Assets->SetThemeParents(Data->RawTable("terrain_styles.json"));
+	bThemeParentsSet = true;
+}
+
 FName UAbyssWorldBuilder::PresentationThemeOf(const std::string& MapId) const
 {
+	EnsureThemeParents();   // every themed lookup of this class starts here
 	const abyss::DataStore* Data = GetData();
 	const std::string_view Theme = AbyssThemeRules::ThemeOf(Data != nullptr ? Data->FindMap(MapId) : nullptr);
 	return Theme.empty() ? NAME_None : FName(*AbyssText::ToFString(Theme));
@@ -1263,7 +1308,8 @@ void UAbyssWorldBuilder::UpdateElite(AAbyssCharacterActor& Actor, const abyss::M
 	{
 		return;
 	}
-	const bool bMarked = Monster.elite || Monster.miniBoss;
+	// U6 (3D note 37): a spent guardian (this save has killed him before; his kill gives nothing) wears no marker.
+	const bool bMarked = AbyssSubDungeonRules::ShowsEliteMarker(Monster.elite || Monster.miniBoss, Monster.spent);
 	TArray<FLinearColor> Colors;
 	for (const abyss::EliteAffixType Affix : Monster.affixes)
 	{
@@ -1965,6 +2011,32 @@ void UAbyssWorldBuilder::PresentCharacters(const abyss::Snapshot& Snap, const FA
 			// K1 holds (the mini-boss's Taunt while its dialogue holds it) and the stun pose (status Stun).
 			CharacterFrame.HoldAction = Monster->holdAction;
 			CharacterFrame.bStunned = (Monster->statusMask & (1u << static_cast<uint32>(abyss::StatusType::Stun))) != 0;
+			// K7 (U6): a dormant monster holds a still pose facing its heading; one after the hero plays no idle variant.
+			CharacterFrame.bDormant = Monster->dormant && Monster->alive;
+			CharacterFrame.bAggro = Monster->state != abyss::MonsterState::Idle && Monster->state != abyss::MonsterState::Patrol;
+			if (CharacterFrame.bDormant)
+			{
+				// Its rank along its line (RankDormant, a frame after it is first seen): the actor keeps the last one
+				// and delays its Rise by it, so the rank rises as a ripple from one end whatever the entity ids are.
+				if (const FDormantShown* Shown = DormantShown.Find(Id))
+				{
+					CharacterFrame.DormantRank = Shown->Rank;
+				}
+				else
+				{
+					FDormantShown& Added = DormantShown.Add(Id);
+					Added.PackId = Monster->packId;
+					Added.Tile = Monster->pos;
+					bDormantRanksDirty = true;
+					++VisitDormantSeen;
+					SubDungeonProbe.DormantSeen = FMath::Max(SubDungeonProbe.DormantSeen, VisitDormantSeen);
+				}
+			}
+			else if (DormantShown.Remove(Id) > 0 && Monster->alive)
+			{
+				++VisitDormantWakes;
+				SubDungeonProbe.DormantWakes = FMath::Max(SubDungeonProbe.DormantWakes, VisitDormantWakes);
+			}
 			// DR5: the mood's wind-up tint (zone_moods.json port.windupTint; else the web port's #FFC4B0 / #FF7A5C).
 			if (ZoneActor != nullptr)
 			{
@@ -2338,7 +2410,9 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 		StoryNpcHolds->Rules.Update(TimeSec, Snap.storyBusy);
 		ReleaseHeldNpcs(/*bAll*/ false);
 	}
+	UpdateSubDungeon(Snap);   // U6: the cleanse sequence's swaps and recipes, before the mood reads its progress
 	UpdateZoneMood(Snap);
+	UpdateGradeCollection(&Snap);
 	// U4: a yielding set piece is hidden while a defend target of the same art stands on it.
 	if (ZoneActor != nullptr)
 	{
@@ -2483,12 +2557,8 @@ void UAbyssWorldBuilder::HandleCuePlayed(FName CueId)
 		// The bell frame's ripple (camp.bell_toll: rings off the bell, a ground ring, falling ash) at its bell socket.
 		FAbyssVfxContext Context;
 		Context.Origin = Context.Target = Context.Point = Spot.Location;
-		TArray<FName, TInlineAllocator<2>> Recipes;
-		if (!Spot.ThemedRecipeId.IsNone())
-		{
-			Recipes.Add(Spot.ThemedRecipeId);
-		}
-		Recipes.Add(Spot.RecipeId);
+		TArray<FName, TInlineAllocator<4>> Recipes;
+		Spot.GetRecipes(Recipes);
 		Vfx->PlayFirst(Recipes, Context);
 	}
 }
@@ -2974,6 +3044,8 @@ void UAbyssWorldBuilder::HandleSessionEnded()
 		ZoneActor->Destroy();
 		ZoneActor = nullptr;
 	}
+	UpdateGradeCollection(nullptr);   // U6: a graded zone's ambient never outlives the session (the menu draws ungraded)
+	EndSubDungeonVisit();
 	if (CameraRig != nullptr)
 	{
 		CameraRig->ClearFades();
@@ -2983,6 +3055,205 @@ void UAbyssWorldBuilder::HandleSessionEnded()
 	Tracks.Reset();
 	bZoneBuilt = false;
 	bStoryFocusActive = false;
+}
+
+// =====================================================================================================================
+// Sub-dungeons (dark remake U6, Wave 3: AbyssSubDungeonRules.h; the zone actor owns the lamps and the sequence)
+// =====================================================================================================================
+
+void UAbyssWorldBuilder::HandleAreaCleansed(const abyss::EvAreaCleansed& Event)
+{
+	++SubDungeonProbe.Cleanses;
+	if (ZoneActor == nullptr || !bZoneBuilt)
+	{
+		return;   // no built zone to play it in: the next build enters lit (no sequence is owed)
+	}
+	const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
+	const abyss::Snapshot* Snap = GameInstance != nullptr ? GameInstance->GetSnapshot() : nullptr;
+	const double NowMs = Snap != nullptr ? Snap->simNowMs : LastFrame.SimNowMs;
+	// vfx_recipes.json dark.pit.cleanse: at 0 ms the embers rise round the hero (a camera-volume recipe, 6 s) and the
+	// mood starts toward the cleansed one (the zone actor: UpdateMood reads the sequence's progress; its ambience,
+	// ambient.pit_embers, starts with it); from 600 ms the lamps light nearest first (UpdateSubDungeon).
+	ZoneActor->StartCleanse(Event.pos, NowMs);
+	if (ZoneActor->GetSubDungeonStatus().bCleansing)
+	{
+		// The probe counts a sequence only when one started; a zone rebuilt or left under it counts it as cut.
+		++SubDungeonProbe.SequencesStarted;
+		bCleanseWasPlaying = true;
+		SubDungeonProbe.bCleansing = true;
+	}
+	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
+	{
+		FAbyssVfxContext Context;
+		Context.Origin = Context.Target = Context.Point = GroundAt(Event.pos);
+		Context.OriginActor = FindCharacter(abyss::kHeroEntityId);
+		Vfx->Play(FName(*AbyssText::ToFString(AbyssSubDungeonRules::EmbersRecipe)), Context);
+	}
+	UE_LOG(LogAbyss, Log, TEXT("Area cleansed: %s (flag %s, %d still stood)"), *AbyssText::ToFString(Event.zoneId),
+		*AbyssText::ToFString(Event.flag), Event.remaining);
+}
+
+void UAbyssWorldBuilder::EndSubDungeonVisit()
+{
+	if (bCleanseWasPlaying)
+	{
+		++SubDungeonProbe.SequencesCut;
+		UE_LOG(LogAbyss, Log, TEXT("Cleanse sequence cut by a zone build / the session's end (the next build enters lit)"));
+	}
+	bCleanseWasPlaying = false;
+	SubDungeonProbe.bCleansing = false;
+	DormantShown.Reset();
+	bDormantRanksDirty = false;
+	VisitDormantSeen = 0;
+	VisitDormantWakes = 0;
+}
+
+void UAbyssWorldBuilder::RankDormant()
+{
+	bDormantRanksDirty = false;
+	// Per pack (a dormant spawn entry is one pack: the Helm Wall's six): the members' ranks along their line.
+	TArray<uint32, TInlineAllocator<16>> Ids;
+	TArray<uint32, TInlineAllocator<4>> Packs;
+	for (const TPair<uint32, FDormantShown>& Pair : DormantShown)
+	{
+		Packs.AddUnique(Pair.Value.PackId);
+	}
+	std::vector<abyss::Vec2> Tiles;
+	for (const uint32 Pack : Packs)
+	{
+		Ids.Reset();
+		Tiles.clear();
+		for (const TPair<uint32, FDormantShown>& Pair : DormantShown)
+		{
+			if (Pair.Value.PackId == Pack)
+			{
+				Ids.Add(Pair.Key);
+				Tiles.push_back(Pair.Value.Tile);
+			}
+		}
+		const std::vector<int> Ranks = AbyssSubDungeonRules::LineRanks(Tiles);
+		for (int32 Index = 0; Index < Ids.Num(); ++Index)
+		{
+			DormantShown[Ids[Index]].Rank = Ranks[static_cast<size_t>(Index)];
+		}
+	}
+}
+
+void UAbyssWorldBuilder::UpdateSubDungeon(const abyss::Snapshot& Snap)
+{
+	if (ZoneActor == nullptr || !bZoneBuilt)
+	{
+		return;
+	}
+	if (bDormantRanksDirty)
+	{
+		RankDormant();
+	}
+	TArray<FAbyssZoneEffectSpot> Bursts;
+	TArray<FAbyssZoneEffectSpot> Loops;
+	ZoneActor->TickSubDungeon(Snap, Bursts, Loops);
+	if (UAbyssVfxSystem* Vfx = Bursts.Num() + Loops.Num() > 0 ? UAbyssVfxSystem::Get(this) : nullptr)
+	{
+		TArray<FName, TInlineAllocator<4>> Recipes;
+		for (const FAbyssZoneEffectSpot& Spot : Bursts)
+		{
+			FAbyssVfxContext Context;
+			Context.Origin = Context.Target = Context.Point = Spot.Location;
+			Spot.GetRecipes(Recipes);
+			Vfx->PlayFirst(Recipes, Context);
+		}
+		for (const FAbyssZoneEffectSpot& Spot : Loops)
+		{
+			// A lit lamp's flame (and, through the recipe's own light at the lamp's `light` socket, its warm pool) burns
+			// until the zone is left.
+			FAbyssVfxContext Context;
+			Context.Origin = Context.Target = Context.Point = Spot.Location;
+			AbyssWorldBuilderPrivate::CopyLightSpot(Spot, Context);
+			Spot.GetRecipes(Recipes);
+			if (const int32 Handle = Vfx->PlayFirst(Recipes, Context))
+			{
+				ZoneVfxHandles.Add(Handle);
+			}
+		}
+	}
+	// The probe, only while a sequence plays (or played last frame): nothing is read on an ordinary frame.
+	if (bCleanseWasPlaying)
+	{
+		const FAbyssSubDungeonStatus Status = ZoneActor->GetSubDungeonStatus();
+		SubDungeonProbe.PeakLampsLit = FMath::Max(SubDungeonProbe.PeakLampsLit, Status.LampsLit);
+		SubDungeonProbe.bCleansing = Status.bCleansing;
+		if (!Status.bCleansing)
+		{
+			bCleanseWasPlaying = false;
+			SubDungeonProbe.SequencesFinished += Status.bSequenceFinished ? 1 : 0;
+		}
+	}
+}
+
+void UAbyssWorldBuilder::UpdateGradeCollection(const abyss::Snapshot* Snap)
+{
+	// DECISIONS DR17 (4): the Pit's darkness is a grade in the materials - the toon and terrain masters multiply their
+	// colour by min(GradeAmbient.rgb + the hero's pool, GradeAmbient.a), emissive exempt (Scripts/abyss_content/hlsl.py
+	// `_ZONE_GRADE_CORE`). Written while a graded zone is up whenever the pool or the ambient moved, the neutral values
+	// once when it is not. A collection without the parameters (content built before Wave 3) is left alone: logged once.
+	// The collection instance and the "has the three parameters" answer are resolved once per zone build.
+	FAbyssZoneGrade Grade;
+	const bool bGraded = ZoneActor != nullptr && bZoneBuilt && ZoneActor->GetGrade(Grade);
+	if (!bGraded && !bGradeWritten)
+	{
+		return;
+	}
+	static const FName AmbientName(TEXT("GradeAmbient"));
+	static const FName LightPosName(TEXT("GradeLightPosR"));
+	static const FName LightColName(TEXT("GradeLightCol"));
+	if (!bGradeInstanceKnown)
+	{
+		bGradeInstanceKnown = true;
+		bGradeValuesKnown = false;
+		UAbyssAssetLibrary* Assets = GetAssets();
+		UWorld* OwningWorld = GetWorld();
+		UMaterialParameterCollection* Collection = Assets != nullptr ? Assets->GetLightingCollection() : nullptr;
+		GradeInstance = Collection != nullptr && OwningWorld != nullptr ? OwningWorld->GetParameterCollectionInstance(Collection) : nullptr;
+		bGradeParamsPresent = GradeInstance.IsValid() && Collection->GetVectorParameterByName(AmbientName) != nullptr
+			&& Collection->GetVectorParameterByName(LightPosName) != nullptr && Collection->GetVectorParameterByName(LightColName) != nullptr;
+	}
+	UMaterialParameterCollectionInstance* Instance = bGradeParamsPresent ? GradeInstance.Get() : nullptr;
+	if (Instance == nullptr)
+	{
+		UE_CLOG(bGraded && !bGradeMissLogged, LogAbyss, Warning, TEXT("MPC_AF_Lighting has no GradeAmbient / GradeLightPosR / ")
+			TEXT("GradeLightCol: the zone's light-radius grade is not drawn (rebuild the content: Scripts/build_content.sh)"));
+		bGradeMissLogged = bGradeMissLogged || bGraded;
+		bGradeWritten = false;
+		return;
+	}
+	FLinearColor PosR(0.f, 0.f, 0.f, 0.f);
+	if (bGraded && Snap != nullptr && Grade.HeroRadiusCm > 0.f)
+	{
+		const abyss::Vec2 HeroTile = AbyssUnits::LerpTile(Snap->hero.prevPos, Snap->hero.pos, LastFrame.Alpha);
+		const FVector Hero = GroundAt(HeroTile);
+		PosR = FLinearColor(static_cast<float>(Hero.X), static_cast<float>(Hero.Y), static_cast<float>(Hero.Z), Grade.HeroRadiusCm);
+	}
+	else
+	{
+		Grade.HeroColorPower = FLinearColor(0.f, 0.f, 0.f, 0.f);
+	}
+	// A hero that stands still under an ambient that does not move writes nothing (0.5 cm: below a pixel of the pool).
+	if (bGradeValuesKnown && bGradeWritten == bGraded && GradeWrittenAmbient.Equals(Grade.AmbientCeil, 1.e-5f)
+		&& GradeWrittenCol.Equals(Grade.HeroColorPower, 1.e-5f) && GradeWrittenPosR.Equals(PosR, 0.5f))
+	{
+		return;
+	}
+	Instance->SetVectorParameterValue(AmbientName, Grade.AmbientCeil);
+	Instance->SetVectorParameterValue(LightPosName, PosR);
+	Instance->SetVectorParameterValue(LightColName, Grade.HeroColorPower);
+	GradeWrittenAmbient = Grade.AmbientCeil;
+	GradeWrittenPosR = PosR;
+	GradeWrittenCol = Grade.HeroColorPower;
+	bGradeValuesKnown = true;
+	UE_CLOG(bGraded && !SubDungeonProbe.bGraded, LogAbyss, Log, TEXT("Zone grade written: ambient %s (ceil in a), hero pool %s radius %.0f cm"),
+		*Grade.AmbientCeil.ToString(), *Grade.HeroColorPower.ToString(), Grade.HeroRadiusCm);
+	SubDungeonProbe.bGraded = SubDungeonProbe.bGraded || bGraded;
+	bGradeWritten = bGraded;
 }
 
 // =====================================================================================================================

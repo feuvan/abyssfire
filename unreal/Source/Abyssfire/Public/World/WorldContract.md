@@ -115,7 +115,10 @@ The zone ground is a `UProceduralMeshComponent` (chunked sections, no collision)
 Ground and water triangles face +Z in UE's convention (front normal `(P2 - P0) ^ (P1 - P0)`: a cell is
 `V00, V01, V10` + `V10, V01, V11`); M_AF_Terrain and M_AF_Water are one-sided, so the reverse order is culled.
 
-* Vertex colours: R = water depth 0..1, G = wall-tile coverage 0..1, B = skirt factor 0 (map) .. 1 (4+ tiles out), A = 1.
+* Vertex colours: R = water depth 0..1, G = wall-tile coverage 0..1, B = skirt factor 0 (map) .. 1 (4+ tiles out), A = 1
+  (lit ground). Inside a sub-dungeon (`FAbyssTerrainSettings::bVoidRock`, dark remake Wave 3) A = 0 under wall tiles
+  that touch no open tile and beyond the map, bilinear over the tile centres: the terrain masters multiply their albedo
+  by it (`AF_ZoneGrade`), so the rock the rooms are cut from is black.
 * UV0 = tile-space position (col, row); `UV0 / 3` is the web's 3x3-tile pattern period.
 * Texture parameter `TileIds`: transient `Cols x Rows` B8G8R8A8, point sampled, clamp, not sRGB. Sample at
   `(floor(UV0) + 0.5) / (MapCols, MapRows)`. Channels: R = paint index (tile type; walls -> `WallPaintTile`, camp walls
@@ -180,7 +183,15 @@ shade band, grounding and emissive mix; no light band, no rim) and outputs
 * k = scalar `CastShadowStrength` (master default 1), set per instance by the content build: heroes, monsters, NPCs,
   pets, weapons .7 (readable in a tree's shade), pickups .8, props 1, foliage canopies .6, ground cover
   (`MI_AF_Toon_Foliage_<Theme>_Ground`) 1. Scalars `BaseSaturation` / `BaseValue` (default 1) grade the palette colour
-  like the ground (3.1).
+  like the ground (3.1). Scalar `ShadeCool` (default 1; dark remake 3C): the share of the cool shade tint the shade
+  band keeps; `MI_AF_Toon_Props_March_Crypt` (the Pit's statics) ships .3, with `RimOverride` 1 / `RimOverrideAlpha`
+  .02 (no rim), from its manifest slot. Nothing in the module sets it.
+* Zone grade (dark remake Wave 3, DECISIONS DR17 (4)): Emit and Lit are multiplied by `lerp(g, 1, e)`, g =
+  `min(GradeAmbient.rgb + GradeLightCol.rgb x saturate(1 - d / GradeLightPosR.w)^GradeLightCol.a, GradeAmbient.a)`,
+  d = the ground (XY) distance from `GradeLightPosR.xy`, e = the palette's emissive amount (3.5). Applied before the
+  torch term, so a light slot (a lit lamp) adds on top. The unlit toon (slime, fade ghosts) and the terrain masters
+  (their albedo, no emissive exemption) apply the same g; the ink, the selection rim, the water, the telegraph and the
+  FX masters do not read it. With the collection's defaults g = 1 exactly.
 * No engine local light lights the toon: torches, campfires and spell glows reach it through the MPC light slots of
   3.5 (`Emit += decode(c) (1 - e) x Light<i>Col.rgb x saturate(1 - d^2 / r^2)^2 x lerp(.35, 1, smoothstep(.4, .5,
   N.l x .5 + .5))`, d = `Light<i>PosR.xyz` - the absolute world position, r = `Light<i>PosR.w`). A future desktop
@@ -225,6 +236,9 @@ parameter the collection lacks (an older content build).
 | `InkScale` | scalar, 1.5 | world (`abyss.InkScale`) | ink and selection-rim width scale (DECISIONS R3 revised: OutlinePx1080 x InkScale px per 1080 rows) |
 | `Light0PosR` .. `Light7PosR` | vector, 0 | readability (`UAbyssVfxSystem`) | toon light slot: xyz absolute world position (cm), w radius (cm) |
 | `Light0Col` .. `Light7Col` | vector, 0 | readability (`UAbyssVfxSystem`) | rgb = colour x intensity x lightScale x `abyss.CharLightGain` (3.5), a > 0 = slot on; 8 slots desktop, 4 mobile (the rest stay a = 0) |
+| `GradeAmbient` | vector, (1, 1, 1, 1) | world (`UAbyssWorldBuilder::UpdateGradeCollection`: in a graded zone, on every frame the hero's pool or the ambient moved; the default once elsewhere; the collection instance is resolved once per zone build) | zone grade (3.3): rgb = the ambient the toon and terrain masters multiply by, a = the ceiling of ambient + pool. The Pit: (.21, .23, .30) dark, (.52, .44, .36) cleansed, ceiling 1.12 (`vfx_recipes.json` `dark.pit`) |
+| `GradeLightPosR` | vector, 0 | world | the hero's light radius: xyz absolute world position (cm), w radius (cm; the Pit 5.6 tiles) |
+| `GradeLightCol` | vector, 0 | world | rgb = the pool's colour x gain, a = its falloff power (0 = no pool) |
 
 ### 3.6 Post-process and atmosphere (DECISIONS P14)
 
@@ -389,7 +403,8 @@ Rune, ShardFrost, Skull.
 recalibrated for the tone curve), `abyss.Bloom` (-1 = the art manifest's hero `fx.bloom.strength`), `abyss.ShakeScale`
 (camera shake amplitude), `abyss.FadeGhost` (occlusion fade of the dressing, 3.4: 0 = dithered on every tier, 1 = auto:
 translucent ghosts without temporal AA (default), 2 = ghosts on every tier), `abyss.DebugLeash` (0; 1 draws every living
-monster's M1 leash within 24 tiles of the hero as a rim-only telegraph ring, dark remake 2G). Console command
+monster's M1 leash within 24 tiles of the hero as a rim-only telegraph ring, dark remake 2G), `abyss.IdleVariant` (1; 0:
+an idle monster never plays its `Idle_Order` clip, dark remake Wave 3). Console command
 `abyss.Vfx.Status` logs the particle budget (live / peak / cap; in a zone with a presentation theme the loop ceiling at
 75 % of the cap, loops culled beyond 30 m of the camera focus, the mobile loop-density floor; spawns dropped since the
 zone build: `AbyssVfxBudgetRules`, 2G cross-stage review).
