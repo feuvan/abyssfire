@@ -7,6 +7,16 @@
 #                                                      "Developer ID Application" in the temporary keychain)
 #   AF_ASC_API_KEY_P8_B64 / AF_ASC_API_KEY_ID / AF_ASC_API_ISSUER_ID   App Store Connect API key for notarytool
 #
+# On a developer's own Mac (unreal/Scripts/release_mac.sh) nothing is decoded and no keychain is created: the names
+# below point at what the user's own keychains already hold. They are names, not secrets.
+#
+#   AF_MAC_SIGN_IDENTITY without AF_MAC_DEVID_P12_B64  sign with that identity from the user's keychain search list
+#                                                      (AF_KEYCHAIN stays empty: no --keychain, no lock / unlock).
+#                                                      Outside GitLab only (mac-dmg.sh): a pipeline without the p12
+#                                                      keeps its ad-hoc signature whatever the runner's keychain holds
+#   AF_NOTARY_KEYCHAIN_PROFILE                         notarytool credentials stored with
+#                                                      `xcrun notarytool store-credentials NAME` (af_notary_use_profile)
+#
 # The temporary keychain lives in the job's work directory, is added to the user search list for the duration of
 # the job (xcodebuild has no --keychain option) and is deleted with the original search list restored on exit; the
 # keys are imported non-extractable, the keychain is locked whenever nothing signs and auto-locks when idle, and the
@@ -92,6 +102,35 @@ af_keychain_unlock() {
   security unlock-keychain -p "$AF_KEYCHAIN_PASSWORD" "$AF_KEYCHAIN"
 }
 
+# af_local_identities NAME_OR_SHA1 -> prints the `security find-identity` lines (`  1) <SHA-1> "<name>"`) of the valid
+# code-signing identities in the user's own keychain search list that carry that text (fails when there is none).
+# The local signing path: nothing is imported. af_local_identity prints the first one only.
+af_local_identities() {
+  local lines
+  lines="$(security find-identity -v -p codesigning | sed -n -E '/^[[:space:]]*[0-9]+\) [0-9A-Fa-f]{40} /p' |
+    grep -F -- "$1" || true)"
+  [[ -n "$lines" ]] || return 1
+  printf '%s\n' "$lines"
+}
+af_local_identity() {
+  local lines
+  lines="$(af_local_identities "$1")" || return 1
+  printf '%s\n' "$lines" | sed -n 1p
+}
+
+# af_codesign_file FILE IDENTITY -> signs one file (the DMG) with a secure timestamp; with the temporary keychain it
+# is unlocked only while codesign runs, with an identity of the user's own keychains nothing is locked or unlocked.
+af_codesign_file() {
+  local file="$1" identity="$2" kc=()
+  if [[ -n "$AF_KEYCHAIN" ]]; then
+    kc=(--keychain "$AF_KEYCHAIN")
+    af_keychain_unlock
+  fi
+  codesign --force --timestamp ${kc[@]+"${kc[@]}"} --sign "$identity" "$file"
+  af_keychain_lock
+  codesign --verify --verbose=2 "$file"
+}
+
 af_keychain_cleanup() {
   if [[ -n "$AF_KEYCHAIN" ]]; then
     if [[ ${#AF_KEYCHAIN_SAVED_LIST[@]} -gt 0 ]]; then
@@ -137,6 +176,7 @@ af_codesign_bundle() {
 AF_NOTARY_KEY=""
 AF_NOTARY_KEY_ID=""
 AF_NOTARY_ISSUER=""
+AF_NOTARY_PROFILE=""
 af_notary_prepare() {
   local dir="$1"
   af_require_vars AF_ASC_API_KEY_P8_B64 AF_ASC_API_KEY_ID AF_ASC_API_ISSUER_ID
@@ -148,13 +188,25 @@ af_notary_prepare() {
   AF_NOTARY_ISSUER="$(af_secret_value AF_ASC_API_ISSUER_ID)"
 }
 
-# af_notarize FILE -> submits FILE (zip / dmg / pkg) with the key from af_notary_prepare and waits
-# (AF_NOTARY_TIMEOUT, default 1h: installer:mac-dmg notarises twice within its 3h job timeout).
+# af_notary_use_profile NAME -> notarise with the credentials `xcrun notarytool store-credentials NAME` saved in the
+# user's keychain (the local path: no key file, nothing to decode or clean up).
+af_notary_use_profile() {
+  [[ -n "${1:-}" ]] || af_die "af_notary_use_profile needs the profile name"
+  AF_NOTARY_PROFILE="$1"
+}
+
+# af_notarize FILE -> submits FILE (zip / dmg / pkg) with the keychain profile from af_notary_use_profile, else the
+# key from af_notary_prepare, and waits (AF_NOTARY_TIMEOUT, default 1h: installer:mac-dmg notarises twice within its
+# 3h job timeout).
 af_notarize() {
   local file="$1" out status id auth
   af_require_cmd xcrun
-  [[ -n "$AF_NOTARY_KEY" && -s "$AF_NOTARY_KEY" ]] || af_die "af_notary_prepare first"
-  auth=(--key "$AF_NOTARY_KEY" --key-id "$AF_NOTARY_KEY_ID" --issuer "$AF_NOTARY_ISSUER")
+  if [[ -n "$AF_NOTARY_PROFILE" ]]; then
+    auth=(--keychain-profile "$AF_NOTARY_PROFILE")
+  else
+    [[ -n "$AF_NOTARY_KEY" && -s "$AF_NOTARY_KEY" ]] || af_die "af_notary_prepare or af_notary_use_profile first"
+    auth=(--key "$AF_NOTARY_KEY" --key-id "$AF_NOTARY_KEY_ID" --issuer "$AF_NOTARY_ISSUER")
+  fi
   mkdir -p "$AF_LOG_DIR"
   af_log "notarytool submit $(basename "$file") (waits up to ${AF_NOTARY_TIMEOUT:-1h})"
   out="$(xcrun notarytool submit "$file" "${auth[@]}" --wait --timeout "${AF_NOTARY_TIMEOUT:-1h}" \

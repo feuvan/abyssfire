@@ -10,6 +10,7 @@ plain CPython 3.11 + the standard library, run by the Unreal Editor (`-run=pytho
 |---|---|
 | `build_content.py` | entry point (options below) |
 | `build_content.sh` | macOS / Linux wrapper: builds `AbyssfireEditor`, runs the build headless, checks the report |
+| `release_mac.sh` | one command on your Mac: content → package → DMG → GitHub pre-release (section 4.1) |
 | `abyss_content/` | the package: `manifest.py` (plan), `hlsl.py` (all material shader code), `pngio.py`, `report.py`, `ue/` (editor side) |
 | `tests/` | `python3 -m unittest discover -s unreal/Scripts/tests` — no Unreal needed (see *Developer checks*) |
 | `fonts/` | the backbone's font subsetter (not part of the content build) |
@@ -198,6 +199,148 @@ set UE=C:\Program Files\Epic Games\UE_5.8
 
 After an engine upgrade delete `unreal/Binaries`, `unreal/Intermediate`, `unreal/Saved` and `unreal/DerivedDataCache`
 and rebuild (ue58-platform.md §12).
+
+### 4.1 macOS pre-release on GitHub in one command (`release_mac.sh`)
+
+`unreal/Scripts/release_mac.sh` takes the current commit to a published GitHub **pre-release**: content build →
+Shipping package (Apple Silicon) → DMG → `gh release create --prerelease`. It only orchestrates scripts that already
+exist (`build_content.sh`, then `unreal/CI/scripts/ue-package.sh Mac` and `mac-dmg.sh`, the same ones the GitLab
+pipeline runs) and adds the checks, the release notes and the GitHub part. There is no CI runner involved: it runs on
+your Mac.
+
+**Once:**
+
+1. UE 5.8.3 and Xcode with the Metal toolchain (section 1; `xcodebuild -downloadComponent MetalToolchain`).
+2. The GitHub CLI, logged in with an account that can write to the repository:
+   ```bash
+   brew install gh
+   gh auth login          # GitHub.com, HTTPS, log in with the browser
+   ```
+3. Each time: the commit you release is **committed and pushed** (GitHub tags that commit; uncommitted changes to
+   tracked files stop the run — untracked files such as `unreal/Content/` do not count). **Leave the checkout alone
+   while the script runs**: it checks after every step that `HEAD` and the tracked files are still that commit, and
+   stops if you committed or edited in between — the build would not be what its tag says. Work in a second clone or
+   a `git worktree` meanwhile.
+
+If you export `GH_TOKEN` / `GITHUB_TOKEN`, `gh` uses that token instead of your login: it needs write access to the
+repository's contents (fine-grained token: *Contents: Read and write*), which only the upload itself can prove.
+`GH_HOST` and `GH_REPO` are ignored: the release always goes to the github.com repository shown in the summary.
+
+**The command** (from the repository root):
+
+```bash
+unreal/Scripts/release_mac.sh                 # asks once, at the end, before anything is published
+unreal/Scripts/release_mac.sh --no-publish    # the same build without touching GitHub (a dry run of everything else)
+unreal/Scripts/release_mac.sh --help
+```
+
+**What happens.** First a preflight, which takes seconds and stops with the fix in one line: macOS host, engine at
+`UE_ROOT` (default `/Users/Shared/Epic Games/UE_5.8`), Metal toolchain, the tools each step needs, a clean tree,
+`gh` logged in, the repository reachable and writable, the commit present on GitHub, no release or tag of that name
+yet. Nothing is built before all of that passed. Then four steps, each announced with its number and followed by its
+elapsed time:
+
+| Step | Runs | First run | Later runs |
+|---|---|---|---|
+| `content` | `build_content.sh`: builds `AbyssfireEditor`, writes `unreal/Content/` | 10–30 min (section 2: imports + shader compilation) | short: unchanged sources, graphs and settings are skipped |
+| `package` | `ue-package.sh Mac`: BuildCookRun Shipping arm64, checks that every `Data/` + `Fonts/` file is in the pak | the long one: the game target is compiled and every shader is compiled for the cook. No measured figure yet — the script prints it; CI allows this job 4 h | faster while `unreal/DerivedDataCache`, `Binaries` and `Intermediate` are kept |
+| `dmg` | `mac-dmg.sh`: version into `Info.plist`, signature, styled DMG (the window layout needs two pinned wheels from PyPI; offline the DMG is built without it, with a warning) | no engine work: unpacking, signing and compressing the app | the same; with `--notary-profile` add Apple's notarisation, twice (app, DMG; each waits up to `AF_NOTARY_TIMEOUT`, 1 h) |
+| `publish` | release notes, `SHA256SUMS.txt`, summary, your confirmation, upload | the upload | the same |
+
+Before publishing the script prints a summary (repository, tag, commit, title, signature state, every file with size
+and SHA-256, and what `--replace` is about to delete) and asks `[y/N]`. Nothing on GitHub is changed before your
+answer. After the upload it reads the release back and prints its URL.
+
+**After a release: `git fetch --tags origin`.** GitHub creates the tag; your clone does not have it until you fetch.
+The notes' "Changes since …" section lists the commit subjects under `unreal/` since the nearest earlier `unreal-v*`
+tag **in your clone** (nothing is fetched for you), so without the fetch the next release simply has no such section.
+The script prints this reminder after every public release.
+
+**Names.** Without `--version` the version is `<ProjectVersion of Config/DefaultGame.ini>-pre.<commit date>.<8 hex of
+the commit>`, e.g. `0.1.0-pre.20261111.83228c4f`: the same for every run on the same commit, so a resumed run produces
+the same file names. Tag `unreal-v<version>`, file `Abyssfire-<version>-macos-arm64.dmg`, title *Abyssfire Unreal
+\<version\> (macOS, pre-release)*.
+
+**The tag must not start with `v`.** `.github/workflows/release.yml` builds the *web* game's desktop app and drafts a
+release for every pushed tag matching `v*`, and a tag created by `gh release create` counts as a push. The script
+refuses such a `--tag`; the default prefix is `unreal-v`.
+
+**Where things land** (all under `unreal/CI/out/`, git-ignored; `AF_OUT_DIR` moves it):
+
+| Path | What |
+|---|---|
+| `release/mac/` | what is published: the DMG under its final name, `SHA256SUMS.txt`, `release-notes.md` |
+| `installers/mac/`, `package/mac/` | the steps' own outputs (DMG, `Abyssfire.app.zip`) and a `release-info.txt` each: version, configuration, commit |
+| `content-info.txt`, `installer-assets/` | the commit the content step finished on; the DMG artwork (drawn again when the version changes) |
+| `logs/release-mac/<step>.log` | the console of each step; `logs/release-mac/<step>/` holds the step's own logs (UAT, notarytool answers) |
+| `unreal/Saved/ContentBuild/` | the content build's report and editor log (section 2) |
+
+**Options**
+
+| Option | Effect |
+|---|---|
+| `--version X.Y.Z[-pre]` | version of the build (default above). It goes into the file names, the tag and the app (`CFBundleShortVersionString` is `X.Y.Z`) |
+| `--tag NAME` | tag GitHub creates on the commit (default `unreal-v<version>`; never `v…`) |
+| `--repo OWNER/NAME` | GitHub repository; default: the `origin` remote. Needed when `origin` is not on github.com |
+| `--config NAME` | `Shipping` (default), `Development` or `Test`. Anything but Shipping is named in the file (`…-development-macos-arm64.dmg`), the title and the notes; a Development build keeps the log, the console and the in-game autotest |
+| `--from STEP` | `content` (default), `package`, `dmg` or `publish`: start there, reuse the earlier steps' output (checked, see *Resuming*) |
+| `--no-publish` | everything except GitHub: `gh` is not needed, the notes are written, the `gh release create` command is printed instead of run |
+| `--draft` | create the pre-release as a draft: only you see it until you publish it on github.com |
+| `--replace` | delete an existing **draft or pre-release** and tag of that name first — with its files and download counts; the summary says so, and it happens only after your `y`. A release that is neither (one you promoted on github.com) is never deleted: do that yourself. Without `--replace`, an existing release or tag stops the run in the preflight |
+| `--notes-file FILE` | your own Markdown, placed at the top of the generated notes (not a file inside `release/mac/`: that directory is rebuilt on every run) |
+| `--sign-identity NAME` | sign with a *Developer ID Application* identity from your keychain (below); a name that fits two certificates is refused — pass the SHA-1 then |
+| `--notary-profile NAME` | notarise with a `notarytool` keychain profile (below); needs `--sign-identity` |
+| `--shaders` | passed to `build_content.sh` (section 2) |
+| `--allow-dirty` | build with uncommitted changes; only with `--no-publish` — such a build is never published |
+| `--yes` | publish without asking; required when stdin is not a terminal |
+| `-h`, `--help` | the same list, from the script |
+
+**Resuming after a failure.** A failing step ends the run with its exit status, the path of its log and the `--from`
+to continue with. Fix the cause and continue from that step — the earlier output is reused:
+
+```bash
+unreal/Scripts/release_mac.sh --from package    # the content step finished on this commit: cook again
+unreal/Scripts/release_mac.sh --from dmg        # the packaged app is fine
+unreal/Scripts/release_mac.sh --from publish    # everything is built: notes + upload only
+```
+
+Leftovers are checked, not trusted: `--from dmg` and `--from publish` refuse a packaged app or a DMG of another
+version, configuration or commit (the `release-info.txt` files), a DMG the script did not build, and anything built
+with `--allow-dirty`; the message names the step to re-run. `--from package` reuses `unreal/Content` only when a
+content step of this script **finished on this commit** (`content-info.txt`); after a failed or interrupted content
+step, or on a new commit, run without `--from` — a content build skips what did not change. If you killed the package
+step hard (`kill -9`, power loss) it could not restore `Config/DefaultGame.ini`; the next run tells you the one `mv`
+that does. If the upload itself fails, the script prints the exact command to resume with (`--from publish`, plus
+`--replace` when GitHub kept a half-made release). With `--replace` the earlier release is deleted *before* the
+upload: if the upload then fails, nothing of that name is left on GitHub until the resumed run succeeds.
+
+**Signing and notarisation.** By default the app is ad-hoc signed and not notarised — no Apple Developer account
+needed. People who download it must allow it once; the release notes tell them how (*System Settings → Privacy &
+Security → Open Anyway*; Control-click → Open on macOS 14 and earlier; or `xattr -dr com.apple.quarantine
+/Applications/Abyssfire.app`). With a Developer ID the download opens like any other app:
+
+```bash
+security find-identity -v -p codesigning        # the "Developer ID Application: Your Name (TEAMID)" line is the identity
+xcrun notarytool store-credentials abyssfire-notary --apple-id you@example.com --team-id TEAMID
+                                                # asks for an app-specific password (appleid.apple.com) and saves it in your keychain
+unreal/Scripts/release_mac.sh --sign-identity "Developer ID Application: Your Name (TEAMID)" --notary-profile abyssfire-notary
+```
+
+The certificate stays in your own keychain (no temporary keychain, nothing exported; macOS may ask once to let
+`codesign` use the key). `--sign-identity` alone signs without notarising: Gatekeeper still blocks the download, and
+the notes keep the workaround. The CI variables (`AF_MAC_DEVID_P12_B64`, `AF_ASC_API_*`, …) are ignored here.
+
+**Two things that surprise people**
+
+* **The kit deletes `unreal/Binaries`, `unreal/Intermediate` and `unreal/Saved` when the engine or Xcode changed**
+  since the last build it made (it keeps a stamp in `Intermediate/.af-toolchain-stamp`), or when `AF_CLEAN_BUILD=1` is
+  set. `Saved/` includes editor logs, the content-build report and local save games. The script does this once, before
+  the content step; the next build is then a full one.
+* **The cook uses `unreal/DerivedDataCache`**, not the engine's shared cache, unless `AF_PERSISTENT_DDC=/some/dir` says
+  otherwise. It takes disk space (section 1 counts it in the 150 GB) and is what makes later cooks fast: do not delete
+  it between releases, and point `AF_PERSISTENT_DDC` at one directory if you build from several clones.
+
+Self-test without Unreal, a Mac or GitHub: `unreal/CI/tools/test_release_mac.sh` (`Docs/CI.md` §7).
 
 ---
 

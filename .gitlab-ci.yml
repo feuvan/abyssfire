@@ -184,12 +184,13 @@ ci:lint:
     AF_APT_PACKAGES: shellcheck python3 python3-yaml git
   script:
     - python3 unreal/CI/tools/check_gitlab_ci.py
-    - shellcheck -x -P SCRIPTDIR unreal/CI/version.sh unreal/CI/lib/*.sh unreal/CI/scripts/*.sh unreal/CI/tools/*.sh
+    - shellcheck -x -P SCRIPTDIR unreal/CI/version.sh unreal/CI/lib/*.sh unreal/CI/scripts/*.sh unreal/CI/tools/*.sh unreal/Scripts/*.sh
   timeout: 10m
 
 # Self-tests of the CI scripts themselves (no Unreal): real NSIS / MSI builds from a fake staged build with
-# Authenticode signing, APK / AAB signing, the macOS job scripts against stub Apple tools, the PowerShell scripts
-# against a fake RunUAT. Only when the CI scripts change.
+# Authenticode signing, APK / AAB signing, the macOS job scripts and the local release script
+# (unreal/Scripts/release_mac.sh) against stub Apple tools and a fake gh, the PowerShell scripts against a fake RunUAT.
+# Only when the CI scripts (or the shell scripts next to the content build) change.
 .rules-ci-changes:
   rules:
     - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
@@ -197,6 +198,7 @@ ci:lint:
     - changes:
         - .gitlab-ci.yml
         - unreal/CI/**/*
+        - unreal/Scripts/*.sh
 
 ci:selftest:
   stage: verify
@@ -204,16 +206,18 @@ ci:selftest:
   image: $AF_IMAGE_UBUNTU
   needs: []
   variables:
-    AF_APT_PACKAGES: nsis msitools wixl osslsigncode 7zip zip unzip openssl python3 python3-pil python3-venv apksigner zipalign openjdk-21-jdk-headless ca-certificates
+    AF_APT_PACKAGES: nsis msitools wixl osslsigncode 7zip zip unzip openssl python3 python3-pil python3-venv apksigner zipalign openjdk-21-jdk-headless ca-certificates git jq
   script:
     - unreal/CI/tools/test_windows_installers.sh --sign "$CI_PROJECT_DIR/unreal/CI/out/selftest/windows"
     - unreal/CI/tools/test_android_sign.sh "$CI_PROJECT_DIR/unreal/CI/out/selftest/android"
     - unreal/CI/tools/test_mac_scripts.sh "$CI_PROJECT_DIR/unreal/CI/out/selftest/mac"
+    - unreal/CI/tools/test_release_mac.sh "$CI_PROJECT_DIR/unreal/CI/out/selftest/release-mac"
   artifacts:
     when: always
     paths:
       - unreal/CI/out/selftest/windows/out/installers/
       - unreal/CI/out/selftest/mac/*.log
+      - unreal/CI/out/selftest/release-mac/*.log
     expire_in: 1 week
   timeout: 20m
 

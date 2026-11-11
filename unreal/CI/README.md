@@ -14,3 +14,7 @@ Read **[`unreal/Docs/CI.md`](../Docs/CI.md)** (runner setup, every CI/CD variabl
 
 Everything runs the same locally: e.g. `bash unreal/CI/scripts/core-tests.sh gcc`, `unreal/CI/tools/test_windows_installers.sh --sign`.
 Outputs go to `unreal/CI/out/` (git-ignored).
+
+No runner at hand? [`unreal/Scripts/release_mac.sh`](../Scripts/release_mac.sh) chains `Scripts/build_content.sh`,
+`scripts/ue-package.sh Mac` and `scripts/mac-dmg.sh` on your own Mac and publishes the DMG as a GitHub pre-release
+(`gh`); see [`unreal/Scripts/README.md`](../Scripts/README.md) §4.1. Its self-test is `tools/test_release_mac.sh`.

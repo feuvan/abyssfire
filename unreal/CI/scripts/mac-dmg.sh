@@ -12,10 +12,21 @@
 #
 # Secrets (masked + protected CI variables, environment scope mac-signing): AF_MAC_DEVID_P12_B64,
 # AF_MAC_DEVID_P12_PASSWORD, AF_ASC_API_KEY_P8_B64, AF_ASC_API_KEY_ID, AF_ASC_API_ISSUER_ID; optional
-# AF_MAC_SIGN_IDENTITY. Without them (development pipelines) the app is ad-hoc signed and not notarised; on release
-# tags they are mandatory (AF_REQUIRE_SIGNING, common.sh). They are consumed at the start (p12 imported into the
-# temporary keychain, .p8 decoded once) and then unset: no later process (pip, the DMG layout helper, Finder) sees them.
-# The keychain stays locked except while codesign runs.
+# AF_MAC_SIGN_IDENTITY (which identity of the p12). Without them (development pipelines) the app is ad-hoc signed and
+# not notarised; on release tags they are mandatory (AF_REQUIRE_SIGNING, common.sh). They are consumed at the start
+# (p12 imported into the temporary keychain, .p8 decoded once) and then unset: no later process (pip, the DMG layout
+# helper, Finder) sees them. The keychain stays locked except while codesign runs.
+#
+# Local signing (a developer's own Mac, unreal/Scripts/release_mac.sh; these are names, not secrets):
+#   AF_MAC_SIGN_IDENTITY        set WITHOUT AF_MAC_DEVID_P12_B64, outside GitLab: sign with this identity (name or
+#                               SHA-1, normally "Developer ID Application: ...") from the user's own keychain search
+#                               list - no temporary keychain, no lock / unlock, no --keychain argument. In a GitLab
+#                               job (GITLAB_CI set) the p12 stays the only way to a Developer ID signature: a pipeline
+#                               that does not get the protected p12 is ad-hoc signed as before, whatever the runner's
+#                               own keychain holds
+#   AF_NOTARY_KEYCHAIN_PROFILE  notarise with `xcrun notarytool submit --keychain-profile NAME` (credentials saved once
+#                               with `xcrun notarytool store-credentials NAME`); wins over the App Store Connect key;
+#                               needs a Developer ID signature (either path; ignored by a GitLab job without one)
 #   AF_SKIP_NOTARIZE=1     sign but do not notarise
 #   AF_NOTARY_TIMEOUT      notarytool --wait limit per submission (default 1h; the job allows 3h for both)
 #   AF_MAC_APP_ICON        auto (default: use the generated icon when unreal/Build/Mac has none) | always | never
@@ -102,15 +113,38 @@ if af_have AF_MAC_DEVID_P12_B64; then
       af_die "AF_MAC_DEVID_P12_B64 holds no 'Developer ID Application' identity"
   fi
   signed=1
+elif [[ -z "${GITLAB_CI:-}" ]] && af_have AF_MAC_SIGN_IDENTITY; then
+  # local signing: the identity is already in one of the user's own keychains (AF_KEYCHAIN stays empty). Never in a
+  # GitLab job: there the protected p12 decides who gets a Developer ID signature, not what the runner's keychain holds.
+  af_require_cmd security
+  identity_line="$(af_local_identity "$AF_MAC_SIGN_IDENTITY")" ||
+    af_die "no valid code-signing identity '$AF_MAC_SIGN_IDENTITY' in your keychains (security find-identity -v -p codesigning)"
+  identity="$AF_MAC_SIGN_IDENTITY"
+  if [[ "$identity_line" != *"Developer ID Application"* ]]; then
+    if af_have AF_NOTARY_KEYCHAIN_PROFILE && ! af_is_true "${AF_SKIP_NOTARIZE:-0}"; then
+      af_die "'$AF_MAC_SIGN_IDENTITY' is not a Developer ID Application identity: Apple's notary service refuses anything else"
+    fi
+    af_warn "'$AF_MAC_SIGN_IDENTITY' is not a Developer ID Application identity: Gatekeeper will block the download"
+  fi
+  af_log "signing with an identity of your own keychains (no temporary keychain)"
+  signed=1
 elif af_signing_required; then
   af_die "release builds need AF_MAC_DEVID_P12_B64 / AF_MAC_DEVID_P12_PASSWORD (or AF_REQUIRE_SIGNING=0)"
+elif [[ -z "${GITLAB_CI:-}" ]] && af_have AF_NOTARY_KEYCHAIN_PROFILE; then
+  af_die "AF_NOTARY_KEYCHAIN_PROFILE needs a Developer ID signature: set AF_MAC_SIGN_IDENTITY (or AF_MAC_DEVID_P12_B64)"
 else
+  if af_have AF_MAC_SIGN_IDENTITY || af_have AF_NOTARY_KEYCHAIN_PROFILE; then
+    af_warn "AF_MAC_SIGN_IDENTITY / AF_NOTARY_KEYCHAIN_PROFILE without AF_MAC_DEVID_P12_B64 are ignored in a GitLab job"
+  fi
   af_warn "no Developer ID certificate: ad-hoc signature, no notarisation (Gatekeeper will block the download)"
 fi
 
 notarize=0
 if [[ $signed -eq 1 ]] && ! af_is_true "${AF_SKIP_NOTARIZE:-0}"; then
-  if af_have AF_ASC_API_KEY_P8_B64; then
+  if af_have AF_NOTARY_KEYCHAIN_PROFILE; then
+    notarize=1
+    af_notary_use_profile "$AF_NOTARY_KEYCHAIN_PROFILE"
+  elif af_have AF_ASC_API_KEY_P8_B64; then
     notarize=1
     af_notary_prepare "$work/secrets"
   elif af_signing_required; then
@@ -224,12 +258,7 @@ hdiutil convert "$rw" -format UDZO -imagekey zlib-level=9 -o "$dst/$dmg_name" >/
 rm -f "$rw"
 af_section_end dmg
 
-if [[ $signed -eq 1 ]]; then
-  af_keychain_unlock
-  codesign --force --timestamp --keychain "$AF_KEYCHAIN" --sign "$identity" "$dst/$dmg_name"
-  af_keychain_lock
-  codesign --verify --verbose=2 "$dst/$dmg_name"
-fi
+if [[ $signed -eq 1 ]]; then af_codesign_file "$dst/$dmg_name" "$identity"; fi
 if [[ $notarize -eq 1 ]]; then
   af_section_start notarize_dmg "Notarise + staple the DMG"
   af_notarize "$dst/$dmg_name"

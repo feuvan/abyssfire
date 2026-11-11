@@ -46,7 +46,7 @@ web:vitest (optional)
 |---|---|---|---|
 | `version` | SaaS `bash:5.2` | `unreal/CI/version.sh` → dotenv（`AF_VERSION` 等），后续作业通过 `needs` 继承 | 5m |
 | `ci:lint` | SaaS `ubuntu:24.04` | `check_gitlab_ci.py`（流水线结构 + 规则模拟）+ shellcheck | 10m |
-| `ci:selftest` | SaaS `ubuntu:24.04` | 仅 `.gitlab-ci.yml` / `unreal/CI/**` 有改动时：真实构建 NSIS + MSI（含自签名证书签名）、APK/AAB 签名、用桩工具跑 Mac 作业脚本 | 20m |
+| `ci:selftest` | SaaS `ubuntu:24.04` | 仅 `.gitlab-ci.yml` / `unreal/CI/**` / `unreal/Scripts/*.sh` 有改动时：真实构建 NSIS + MSI（含自签名证书签名）、APK/AAB 签名、用桩工具跑 Mac 作业脚本和本机发布脚本 `release_mac.sh`（假 gh） | 20m |
 | `ci:selftest-pwsh` | SaaS `mcr.microsoft.com/powershell` | 同上条件：PowerShell 脚本解析 + 假 RunUAT 端到端（Win64 / Android） | 10m |
 | `core:gcc` / `core:clang` | SaaS `ubuntu:24.04` | `CoreTests/run.sh gcc|clang`，JUnit 报告 | 45m |
 | `core:gcc-sanitize` | SaaS | `ABYSS_SANITIZE=1`（ASan + UBSan + float-cast-overflow） | 60m |
@@ -259,7 +259,8 @@ web:vitest (optional)
 | `AF_WIN_REQUIRE_CODESIGN` | （空） | `1` = 没有 Windows 证书时失败（默认 Windows 签名可选；未签名时 Release 说明会注明 SmartScreen 警告） |
 | `AF_SKIP_NOTARIZE` | （空） | `1` = 只签名不公证（调试用；Gatekeeper 会拦截下载的 App） |
 | `AF_NOTARY_TIMEOUT` | `1h` | notarytool `--wait` 超时（每次提交；`installer:mac-dmg` 公证两次，作业超时 3h） |
-| `AF_MAC_SIGN_IDENTITY` | 自动 | 指定签名身份（名称或 SHA-1），默认取 p12 中第一个 “Developer ID Application” |
+| `AF_MAC_SIGN_IDENTITY` | 自动 | 指定签名身份（名称或 SHA-1），默认取 p12 中第一个 “Developer ID Application”。**本地签名**：设置它而**不设** `AF_MAC_DEVID_P12_B64` 时，`mac-dmg.sh` 直接用登录用户钥匙串搜索列表里的这个身份签名（不建临时钥匙串、不加锁/解锁、不传 `--keychain`，DMG 自身的签名也一样）。**只在 GitLab 之外生效**（`GITLAB_CI` 未设置）：流水线里没有拿到受保护的 p12（例如非保护分支）时，即使这个名字是普通变量、runner 自己的钥匙串里也有该证书，仍按原样做 ad-hoc 签名（tag 上照旧失败），Developer ID 签名只由 p12 决定 |
+| `AF_NOTARY_KEYCHAIN_PROFILE` | （空） | **本地公证**：notarytool 的钥匙串 profile 名（`xcrun notarytool store-credentials <名字>` 存一次），以 `notarytool submit --keychain-profile` 公证 App 与 DMG 并 staple；设置后优先于 App Store Connect API 密钥；必须同时有 Developer ID 签名（GitLab 作业里没有 p12 时与上一行一样被忽略并告警）。它与上一行都只是名字，不是密钥；本机一键发布脚本 `unreal/Scripts/release_mac.sh --sign-identity / --notary-profile` 传的就是这两个变量 |
 | `AF_MAC_APP_ICON` | `auto` | `auto`：项目没有提交 Mac 图标时用生成的图标；`always` / `never` |
 | `AF_DMG_FINDER` | （空） | `1` = 允许用 Finder AppleScript 设置 DMG 窗口（需图形会话；默认用 ds_store 无头写入） |
 | `AF_PERSISTENT_DDC` | （无，**CI 中必填**） | runner 本机持久 DDC 目录，写进 runner `config.toml`（3.1 / 3.2） |
@@ -360,7 +361,7 @@ Environment scope：`AF_MAC_DEVID_*`、`AF_ASC_API_*` → `mac-signing`；`AF_AN
 python3 unreal/CI/tools/check_gitlab_ci.py                       # 结构 + 规则模拟（需要 PyYAML）
 python3 unreal/CI/tools/check_gitlab_ci.py --schema ci.json      # + GitLab 官方 JSON schema（pip install jsonschema；
 #   schema: https://gitlab.com/gitlab-org/gitlab/-/raw/master/app/assets/javascripts/editor/schema/ci.json）
-shellcheck -x -P SCRIPTDIR unreal/CI/version.sh unreal/CI/lib/*.sh unreal/CI/scripts/*.sh unreal/CI/tools/*.sh
+shellcheck -x -P SCRIPTDIR unreal/CI/version.sh unreal/CI/lib/*.sh unreal/CI/scripts/*.sh unreal/CI/tools/*.sh unreal/Scripts/*.sh
 unreal/CI/tools/test_windows_installers.sh [--sign]              # 假 staged 构建 → 真实 NSIS .exe + .msi + 检查（apt: nsis msitools wixl osslsigncode 7zip）
                                                                  #   MSI 版本 X.Y.(Z*100+S)、exe/msi 互斥、SIGNING-windows.txt、AF_REQUIRE_SIGNING=1 拒绝未签名
 unreal/CI/tools/test_android_sign.sh                             # 一次性密钥签过的假 APK/AAB → 重新签名后只剩上传密钥（release / debug / tag 拒绝）
@@ -368,7 +369,15 @@ pwsh -NoProfile -File unreal/CI/tools/test_powershell.ps1        # 解析 + 假 
                                                                  #   PDB zip、工具链戳、一次性 keystore、通用 APK、Intermediate/Android 清理、密钥不进引擎
 unreal/CI/tools/test_mac_scripts.sh                              # 假引擎 + 桩 Apple 工具跑 ue-content / ue-package (Mac/Android/IOS) / mac-dmg /
                                                                  #   mac-keychain-reset：版本写入、由内向外签名、ad-hoc 不带 hardened runtime、两次公证 + staple、
-                                                                 #   钥匙串加锁 / 不可导出 / 搜索列表清理、pak 清单、一次性 Android 密钥、DDC 必填、Metal 检查、失败路径
+                                                                 #   钥匙串加锁 / 不可导出 / 搜索列表清理、pak 清单、一次性 Android 密钥、DDC 必填、Metal 检查、失败路径、
+                                                                 #   本地签名路径（用户钥匙串里的身份 + notarytool 钥匙串 profile，不建临时钥匙串；GitLab 作业
+                                                                 #   没有 p12 时不走这条路径）、Pillow 绘制中途失败时回退到标准库渲染
+unreal/CI/tools/test_release_mac.sh                              # 临时 git 仓库 + 假引擎 / 桩 Apple 工具 + 假 gh 跑 unreal/Scripts/release_mac.sh：
+                                                                 #   子脚本顺序与环境（版本号；无 CI_COMMIT_TAG / 签名密钥 / GitHub token）、预检拒绝且此前不构建、
+                                                                 #   --from 与陈旧产物拒绝、gh release create 参数、--no-publish / --draft / --replace / --config、
+                                                                 #   本地签名与 ad-hoc、发布说明内容（不含本机路径 / 用户名 / 邮箱）、失败路径、bash 3.2 写法检查；
+                                                                 #   构建期间提交 / 改动被拒绝、确认之前不删除任何东西、--replace 不删正式版本。需要 jq：
+                                                                 #   假 gh 只接受真 gh 的参数与 --json 字段名，并用 jq 执行脚本里的 --jq 表达式
 python3 unreal/CI/installers/assets/make_installer_assets.py --out /tmp/af-assets   # 图标 / DMG 背景 / NSIS 位图
 bash unreal/CI/scripts/core-tests.sh gcc                          # 与 CI 完全相同的作业脚本
 bash unreal/CI/scripts/data-check.sh
@@ -377,6 +386,11 @@ AF_RELEASE_DRY_RUN=1 CI_COMMIT_TAG=v1.2.3 bash unreal/CI/scripts/release.sh     
 
 Mac 上可直接在仓库里跑 UE 作业脚本做冒烟：`bash unreal/CI/scripts/ue-content.sh`、`bash unreal/CI/scripts/ue-package.sh Mac`、
 `bash unreal/CI/scripts/mac-dmg.sh`（无签名变量时生成 ad-hoc 签名、未公证的 DMG）。所有输出在 `unreal/CI/out/`（已被 git 忽略）。
+
+**没有 CI runner 时在自己的 Mac 上一键发布**：`unreal/Scripts/release_mac.sh` 依次调用 `build_content.sh`、`ue-package.sh Mac`、
+`mac-dmg.sh`，再用 `gh release create --prerelease` 把 DMG 发布为 **GitHub 预发布版本**（tag 默认 `unreal-v<版本>`，**不能以 `v` 开头**：
+`.github/workflows/release.yml` 会对每个 `v*` tag 构建 Web 版桌面应用）。预检、选项、断点续跑、签名与公证见 `unreal/Scripts/README.md` 4.1。
+它与本流水线互不影响：GitLab 的 `release` 作业仍只认 `vX.Y.Z[-pre]` tag。
 
 ---
 
@@ -453,7 +467,7 @@ Mac 上可直接在仓库里跑 UE 作业脚本做冒烟：`bash unreal/CI/scrip
 unreal/CI/version.sh                            版本号 → dotenv
 unreal/CI/lib/common.sh                         日志、折叠段、密钥解码、签名策略、版本加载
 unreal/CI/lib/ue.sh                             UE 路径 / 版本检查、DDC、ini 覆盖与还原、BuildCookRun
-unreal/CI/lib/macos.sh                          临时钥匙串、inside-out codesign、notarytool
+unreal/CI/lib/macos.sh                          临时钥匙串、inside-out codesign、notarytool（CI 密钥或本地钥匙串身份 / profile）
 unreal/CI/scripts/core-tests.sh                 core:*        CoreTests/run.sh + JUnit
 unreal/CI/scripts/data-check.sh                 data:check    export-data --check
 unreal/CI/scripts/web-test.sh                   web:vitest
@@ -474,5 +488,6 @@ unreal/CI/installers/mac/dmg_style.py           .DS_Store（窗口、图标位�
 unreal/CI/installers/mac/dmg-requirements.txt   dmg_style.py 的依赖（固定版本 + 哈希）
 unreal/CI/installers/assets/make_installer_assets.py   图标 / DMG 背景 / NSIS 位图（Pillow 或纯标准库）
 unreal/CI/tools/check_gitlab_ci.py              ci:lint 流水线检查
-unreal/CI/tools/test_*.sh / .ps1                本地自测（第 7 节）
+unreal/CI/tools/test_*.sh / .ps1                本地自测（第 7 节）；fake_mac.sh = Mac 自测共用的假引擎与桩 Apple 工具
+unreal/Scripts/release_mac.sh                   不属于流水线：本机一键构建 Mac 版并发布 GitHub 预发布版本（Scripts/README.md 4.1）
 ```

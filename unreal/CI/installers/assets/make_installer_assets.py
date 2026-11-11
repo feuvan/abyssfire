@@ -20,8 +20,9 @@ Icon source, first match wins: --source; unreal/Art/Export/Icons/T_UI_AppIcon.pn
 unreal/Art/Export/Icons/*AppIcon*.png; unreal/Art/Export/Portraits/T_UI_Portrait_Hero_Warrior.png; any
 T_UI_Portrait_*.png; otherwise a procedural ember emblem. Text uses the project's OFL fonts (unreal/Fonts).
 
-Pillow is used when installed (pip install pillow); without it (or with --stdlib) a pure standard-library path
-draws the procedural emblem and an untitled background, so the macOS runner can still produce every file.
+Pillow is used when it works (pip install pillow); without it, with a broken or too old one, or with --stdlib, a
+pure standard-library path draws the procedural emblem and an untitled background, so the macOS runner can still
+produce every file.
 """
 from __future__ import annotations
 
@@ -335,6 +336,20 @@ def build_pillow(out: Path, source: Path | None, version: str) -> str:
     return what
 
 
+def pillow_unusable() -> str:
+    """Why build_pillow cannot run here ("" when it can). `import PIL` alone proves nothing: a half-installed Pillow
+    (the pure-Python package without its compiled _imaging core, e.g. a distribution package seen by another
+    interpreter) imports fine and fails at `from PIL import Image`. Probe exactly what build_pillow uses."""
+    try:
+        from PIL import Image, ImageDraw, ImageFilter, ImageFont  # noqa: F401
+        Image.Resampling.LANCZOS  # Pillow >= 9.1
+        Image.linear_gradient
+        Image.new("L", (2, 2), 0).filter(ImageFilter.GaussianBlur(1)).resize((1, 1), Image.Resampling.LANCZOS)
+    except Exception as e:  # ImportError: not installed, or installed without its C core; anything else: too old
+        return f"{type(e).__name__}: {e}"  # (no Image.Resampling) or a core that does not match the Python package
+    return ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", required=True)
@@ -347,12 +362,21 @@ def main() -> int:
     source = find_source(args.source)
     use_pillow = not args.stdlib
     if use_pillow:
-        try:
-            import PIL  # noqa: F401
-        except ImportError:
-            print("Pillow not installed: using the standard-library renderer", file=sys.stderr)
+        why = pillow_unusable()
+        if why:
+            print(f"Pillow not usable ({why}): using the standard-library renderer", file=sys.stderr)
             use_pillow = False
-    what = build_pillow(out, source, args.version) if use_pillow else build_stdlib(out, args.version)
+    what = ""
+    if use_pillow:
+        # The probe cannot try everything build_pillow needs (FreeType, the PNG decoder, the ICO / ICNS writers): a
+        # Pillow that passes it and still fails must not cost the job its artwork either.
+        try:
+            what = build_pillow(out, source, args.version)
+        except Exception as e:
+            print(f"Pillow renderer failed ({type(e).__name__}: {e}): using the standard-library renderer",
+                  file=sys.stderr)
+    if not what:
+        what = build_stdlib(out, args.version)
     (out / "source.txt").write_text(what + "\n", encoding="utf-8")
     for p in sorted(out.rglob("*")):
         if p.is_file():

@@ -56,6 +56,23 @@ af_overlay_ini() {
   } >>"$file"
 }
 
+# af_ue_build_version ROOT -> prints MAJOR.MINOR.PATCH of the engine at ROOT (Engine/Build/Build.version); fails
+# when the file is absent.
+af_ue_build_version() {
+  local bv="$1/Engine/Build/Build.version" major minor patch
+  [[ -f "$bv" ]] || return 1
+  major="$(sed -n 's/.*"MajorVersion"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$bv")"
+  minor="$(sed -n 's/.*"MinorVersion"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$bv")"
+  patch="$(sed -n 's/.*"PatchVersion"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$bv")"
+  printf '%s.%s.%s\n' "$major" "$minor" "$patch"
+}
+
+# Xcode 26 no longer bundles the Metal toolchain; the cook compiles Metal shaders / metallibs with it.
+af_ue_require_metal() {
+  xcrun -sdk macosx metal --version >/dev/null 2>&1 ||
+    af_die "Metal Toolchain missing: xcodebuild -downloadComponent MetalToolchain (unreal/Docs/CI.md 3.1)"
+}
+
 af_ue_init() {
   case "$(uname -s)" in
     Darwin)
@@ -82,29 +99,23 @@ af_ue_init() {
     AF_EDITOR_CMD="$bin/UnrealEditor"
   fi
 
-  local bv="$UE_ROOT/Engine/Build/Build.version" major minor patch
-  if [[ -f "$bv" ]]; then
-    major="$(sed -n 's/.*"MajorVersion"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$bv")"
-    minor="$(sed -n 's/.*"MinorVersion"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$bv")"
-    patch="$(sed -n 's/.*"PatchVersion"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$bv")"
-    af_log "Unreal Engine $major.$minor.$patch at $UE_ROOT"
-    if [[ "$major.$minor" != "5.8" ]]; then af_die "the project pins UE 5.8 (DECISIONS P1); found $major.$minor"; fi
+  local version patch
+  if version="$(af_ue_build_version "$UE_ROOT")"; then
+    patch="${version##*.}"
+    af_log "Unreal Engine $version at $UE_ROOT"
+    if [[ "${version%.*}" != "5.8" ]]; then af_die "the project pins UE 5.8 (DECISIONS P1); found ${version%.*}"; fi
     if [[ -n "$patch" ]] && ((patch < ${AF_UE_MIN_PATCH:-3})); then
       af_warn "UE 5.8.$patch is older than the tested 5.8.${AF_UE_MIN_PATCH:-3} hotfix"
     fi
   else
-    af_warn "$bv not found; engine version not checked"
+    af_warn "$UE_ROOT/Engine/Build/Build.version not found; engine version not checked"
   fi
 
   if [[ -n "${AF_XCODE_DEVELOPER_DIR:-}" ]]; then export DEVELOPER_DIR="$AF_XCODE_DEVELOPER_DIR"; fi
   if command -v xcodebuild >/dev/null 2>&1; then
     af_log "$(xcodebuild -version 2>/dev/null | tr '\n' ' ')($(xcode-select -p 2>/dev/null || true))"
   fi
-  if [[ "$AF_UE_HOST" == "Mac" ]]; then
-    # Xcode 26 no longer bundles the Metal toolchain; the cook compiles Metal shaders / metallibs with it.
-    xcrun -sdk macosx metal --version >/dev/null 2>&1 ||
-      af_die "Metal Toolchain missing: xcodebuild -downloadComponent MetalToolchain (unreal/Docs/CI.md 3.1)"
-  fi
+  if [[ "$AF_UE_HOST" == "Mac" ]]; then af_ue_require_metal; fi
 
   af_ue_toolchain_stamp
 

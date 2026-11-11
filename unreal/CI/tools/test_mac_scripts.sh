@@ -5,7 +5,8 @@
 # Apple tools (security, codesign, xcrun notarytool / stapler, hdiutil, ditto, PlistBuddy, sips, tiffutil, spctl,
 # lipo, uname), with every signing secret set to throw-away values. It checks the flow, not Apple's tools:
 # outputs and names, version stamping, inside-out signing order, two notarisations + staples, keychain handling
-# (non-extractable import, locked outside signing, stale search-list entries dropped, after_script reset), that no
+# (non-extractable import, locked outside signing, stale search-list entries dropped, after_script reset), the local
+# signing path (an identity of the user's own keychains, a notarytool keychain profile: no temporary keychain), that no
 # signing secret reaches the engine, the pak check of the runtime Data/ + Fonts/ files, the Android throw-away key
 # and universal APK, the toolchain stamp, ini / keystore / Intermediate/Android clean-up, the pinned DMG helper
 # requirements, and that failing steps fail the job.
@@ -32,7 +33,8 @@ check() { # check DESCRIPTION COMMAND... -> ok / FAIL
   if "$@"; then ok "$what"; else bad "$what"; fi
 }
 has_call() { grep -q -- "$1" "$W/calls.log"; }
-in_dmg() { unzip -l "$dmg" | grep -q -- "$1"; }
+# not grep -q: it exits at the first match, and unzip then dies of SIGPIPE under pipefail on a busy machine
+in_dmg() { unzip -l "$dmg" | grep -- "$1" >/dev/null; }
 
 # ---------------------------------------------------------------------------------- project skeleton (copy of CI)
 mkdir -p "$W/unreal/CI"
@@ -51,151 +53,9 @@ cp "$W/unreal/Config/DefaultGame.ini" "$W/DefaultGame.ini.orig"
 cp "$W/unreal/Config/Android/AndroidEngine.ini" "$W/AndroidEngine.ini.orig"
 cp "$W/unreal/Config/IOS/IOSEngine.ini" "$W/IOSEngine.ini.orig"
 
-# ------------------------------------------------------------------------------------------------- fake engine
-UE="$W/UE"
-mkdir -p "$UE/Engine/Build/BatchFiles/Mac" "$UE/Engine/Binaries/Mac"
-echo '{ "MajorVersion": 5, "MinorVersion": 8, "PatchVersion": 3, "Changelist": 0 }' >"$UE/Engine/Build/Build.version"
-cat >"$UE/Engine/Build/BatchFiles/Mac/Build.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "Build.sh $*" >>"$AF_TEST_CALLS"
-[[ "$1 $2 $3" == "AbyssfireEditor Mac Development" ]] || exit 9
-EOF
-cat >"$UE/Engine/Binaries/Mac/UnrealEditor-Cmd" <<'EOF'
-#!/usr/bin/env bash
-echo "UnrealEditor-Cmd $*" >>"$AF_TEST_CALLS"
-proj="$(dirname "$1")"
-mkdir -p "$proj/Content/Abyssfire/Maps" "$proj/Content/Abyssfire/Characters"
-echo umap >"$proj/Content/Abyssfire/Maps/L_Main.umap"
-echo asset >"$proj/Content/Abyssfire/Characters/SK_Hero_Warrior.uasset"
-for a in "$@"; do case "$a" in -abslog=*) echo "LogPython: content built" >"${a#-abslog=}" ;; esac; done
-echo '{"ok": true, "assets": 2}' >"$AF_CONTENT_REPORT"
-[[ "$(env | grep -c '^UE-LocalDataCachePath=')" == "1" ]] || exit 8
-EOF
-cat >"$UE/Engine/Build/BatchFiles/RunUAT.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "RunUAT $*" >>"$AF_TEST_CALLS"
-[[ -n "${AF_TEST_UAT_FAIL:-}" ]] && { echo "ERROR: cook failed"; exit 25; }
-if env | grep -Eq '^AF_[A-Z_]*(_B64|PASSWORD)='; then echo "a signing secret reached the engine"; exit 19; fi
-platform="" archive="" project=""
-for a in "$@"; do
-  case "$a" in -platform=*) platform="${a#-platform=}" ;; -archivedirectory=*) archive="${a#-archivedirectory=}" ;;
-    -project=*) project="${a#-project=}" ;; esac
-done
-u="$(dirname "$project")"
-grep -q "ProjectVersion=$AF_VERSION" "$u/Config/DefaultGame.ini" || { echo "no ProjectVersion overlay"; exit 11; }
-# the pak response file UAT writes into uebp_LogFolder (AF_TEST_DROP: leave one runtime file out)
-(cd "$u" && find Data Fonts -type f | sort) | while IFS= read -r f; do
-  [[ "$f" == "${AF_TEST_DROP:-}" ]] || printf '"%s" "../../../Abyssfire/%s" -compress\n' "$u/$f" "$f"
-done >"$uebp_LogFolder/PakList_pakchunk0-$platform.txt"
-case "$platform" in
-  Mac)
-    app="$archive/Mac/Abyssfire-Mac-Shipping.app/Contents"
-    mkdir -p "$app/MacOS" "$app/Resources" "$app/Frameworks/libfoo.framework" "$app/UE/Engine/Binaries"
-    printf 'MACHO' >"$app/MacOS/Abyssfire-Mac-Shipping"; chmod +x "$app/MacOS/Abyssfire-Mac-Shipping"
-    printf 'MACHO' >"$app/UE/Engine/Binaries/libtbb.dylib"
-    printf 'MACHO' >"$app/Frameworks/libfoo.framework/libfoo"; chmod +x "$app/Frameworks/libfoo.framework/libfoo"
-    python3 -c 'import plistlib,sys; plistlib.dump({"CFBundleIdentifier":"com.feuvan.abyssfire","CFBundleExecutable":"Abyssfire-Mac-Shipping","CFBundleIconName":"AppIcon"}, open(sys.argv[1],"wb"))' "$app/Info.plist"
-    ;;
-  Android)
-    ini="$u/Config/Android/AndroidEngine.ini"
-    grep -q "StoreVersion=$AF_ANDROID_VERSION_CODE" "$ini" || { echo "no StoreVersion"; exit 12; }
-    if [[ " $* " == *" -distribution "* ]]; then
-      grep -q "KeyStore=abyssfire-ci-throwaway.keystore" "$ini" || exit 13
-      grep -q "KeyAlias=ci" "$ini" || exit 13
-      [[ -s "$u/Build/Android/abyssfire-ci-throwaway.keystore" ]] || exit 14
-    fi
-    [[ -f "$u/Build/Android/res/drawable-xxxhdpi/icon.png" ]] || { echo "no generated icons"; exit 15; }
-    # what UEDeployAndroid leaves behind: a copy of the keystore, gradle.properties with the passwords
-    mkdir -p "$archive/Android_ASTC" "$u/Binaries/Android" "$u/Intermediate/Android/arm64/gradle"
-    echo "STORE_PASSWORD=..." >"$u/Intermediate/Android/arm64/gradle/gradle.properties"
-    # like UE in bundle mode: an .apk only through bundletool's universal APK
-    if grep -q "bEnableUniversalAPK=True" "$ini"; then echo apk >"$archive/Android_ASTC/Abyssfire-arm64-universal.apk"; fi
-    echo aab >"$u/Binaries/Android/Abyssfire-Android-Shipping-arm64.aab"
-    ;;
-  IOS)
-    ini="$u/Config/IOS/IOSEngine.ini"
-    grep -q "IOSSigningIdentity=Apple Distribution: Test (TEAM123456)" "$ini" || { echo "no identity"; exit 16; }
-    grep -q "CodeSigningTeam=TEAM123456" "$ini" || exit 17
-    mkdir -p "$W/ipa/Payload/Abyssfire.app" "$archive/IOS"
-    (cd "$W/ipa" && zip -qr "$archive/IOS/Abyssfire.ipa" Payload)
-    ;;
-esac
-echo "BUILD SUCCESSFUL"
-EOF
-chmod +x "$UE/Engine/Build/BatchFiles/Mac/Build.sh" "$UE/Engine/Binaries/Mac/UnrealEditor-Cmd" \
-  "$UE/Engine/Build/BatchFiles/RunUAT.sh"
-
-# ------------------------------------------------------------------------------------------------- Apple stubs
-stub() {
-  printf '#!/usr/bin/env bash\necho "%s $*" >>"$AF_TEST_CALLS"\n%s\n' "$1" "$2" >"$W/bin/$1"
-  chmod +x "$W/bin/$1"
-}
-stub uname 'echo Darwin'
-stub codesign 'exit 0'
-stub spctl 'exit 0'
-stub sips 'out=""; while [[ $# -gt 0 ]]; do [[ "$1" == "--out" ]] && out="$2"; shift; done; echo tiff >"$out"'
-stub tiffutil 'out=""; while [[ $# -gt 0 ]]; do [[ "$1" == "-out" ]] && out="$2"; shift; done; echo tiff >"$out"'
-stub SetFile 'exit 0'
-stub lipo 'echo arm64'
-stub file 'if [[ "$(head -c 5 "${@: -1}" 2>/dev/null)" == "MACHO" ]]; then echo "Mach-O 64-bit executable arm64"; else echo data; fi'
-stub security '
-state="$HOME/keychain-search-list"
-[[ -f "$state" ]] || echo "$HOME/Library/Keychains/login.keychain-db" >"$state"
-case "$1" in
-  create-keychain) touch "${@: -1}" ;;
-  list-keychains) if [[ $# -eq 3 ]]; then sed "s/.*/    \"&\"/" "$state"; else shift 4; printf "%s\n" "$@" >"$state"; fi ;;
-  find-identity) echo "  1) ABCDEF0123456789ABCDEF0123456789ABCDEF01 \"Developer ID Application: Test (TEAM123456)\""
-                 echo "  2) 1111111111222222222233333333334444444444 \"Apple Distribution: Test (TEAM123456)\"" ;;
-  cms) python3 -c "import plistlib,sys; sys.stdout.buffer.write(plistlib.dumps({\"UUID\":\"1234-PROFILE\",\"Name\":\"AF\"}))" ;;
-  delete-keychain) rm -f "$2" ;;
-esac
-exit 0'
-stub xcrun '
-[[ -n "${AF_TEST_NO_METAL:-}" && "$*" == *metal* ]] && { echo "error: cannot execute tool metal due to missing Metal Toolchain" >&2; exit 72; }
-case "$1 $2" in
-  "notarytool submit") echo "{\"id\":\"sub-$RANDOM\",\"status\":\"Accepted\",\"message\":\"ok\"}" ;;
-  "notarytool log") echo "{}" >"${@: -1}" ;;
-esac
-exit 0'
-stub ditto '
-if [[ "$1" == "-c" ]]; then src="${@: -2:1}"; dst="${@: -1}"; (cd "$(dirname "$src")" && zip -qry "$dst" "$(basename "$src")")
-elif [[ "$1" == "-x" ]]; then unzip -qo "$3" -d "$4"
-else cp -R "$1" "$2"; fi'
-stub hdiutil '
-cmd="$1"; shift
-case "$cmd" in
-  create) src=""; while [[ $# -gt 1 ]]; do [[ "$1" == "-srcfolder" ]] && src="$2"; shift; done
-          mkdir -p "$1.d" && cp -R "$src/." "$1.d/" && echo img >"$1" ;;
-  attach) img="$1"; m="$AF_TEST_VOLUMES/Abyssfire"; rm -rf "$m"; cp -R "$img.d" "$m"
-          printf "/dev/disk4\tGUID_partition_scheme\t\n/dev/disk4s1\tApple_HFS\t%s\n" "$m"; echo "$img" >"$m/.af-image" ;;
-  detach) m="$1"; img="$(cat "$m/.af-image")"; rm -f "$m/.af-image"; rm -rf "$img.d"; cp -R "$m" "$img.d"; rm -rf "$m" ;;
-  convert) src="$1"; out=""; while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
-           (cd "$src.d" && zip -qry "$out" .) ;;
-  verify) exit 0 ;;
-esac'
-cat >"$W/bin/PlistBuddy" <<'EOF'
-#!/usr/bin/env python3
-import plistlib, sys
-cmd, path = sys.argv[2], sys.argv[3]
-with open(path, "rb") as f:
-    d = plistlib.load(f)
-op, rest = cmd.split(" ", 1)
-key = rest.split(" ")[0].lstrip(":")
-if op == "Print":
-    if key not in d: sys.exit(1)
-    print(d[key]); sys.exit(0)
-if op == "Delete":
-    if key not in d: sys.exit(1)
-    del d[key]
-elif op == "Set":
-    if key not in d: sys.exit(1)
-    d[key] = rest.split(" ", 1)[1]
-elif op == "Add":
-    d[key] = rest.split(" ", 2)[2]
-with open(path, "wb") as f:
-    plistlib.dump(d, f)
-EOF
-chmod +x "$W/bin/PlistBuddy"
+# ------------------------------------------------------------------- fake engine + Apple stubs ($W/UE, $W/bin)
+# shellcheck source=fake_mac.sh
+source "$here/fake_mac.sh"
 
 # ------------------------------------------------------------------------------------------------- environment
 b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
@@ -320,6 +180,90 @@ else bad "development DMG failed (see $W/dmg-dev.log)"; fi
 check "development DMG named 0.0.0-<sha>" test -f "$OUT/installers/mac/Abyssfire-0.0.0-abcdef12-macos-arm64.dmg"
 check "ad-hoc identity '-' used" has_call "--sign - "
 check "ad-hoc signatures without the hardened runtime" bash -c "! grep -- '--sign - ' '$W/calls.log' | grep -q -- '--options runtime'"
+
+echo "=== mac-dmg.sh, local signing (an identity of the user's keychains + a notarytool keychain profile)"
+# what unreal/Scripts/release_mac.sh --sign-identity / --notary-profile does: no CI secret, no tag, not a GitLab job
+cp "$W/calls.log" "$W/calls-ci.log"
+: >"$W/calls.log"
+local_dmg() { # local_dmg SLUG VAR=VALUE... -> mac-dmg.sh without any CI signing secret, outside GitLab
+  local slug="$1"
+  shift
+  env -u AF_MAC_DEVID_P12_B64 -u AF_MAC_DEVID_P12_PASSWORD -u AF_ASC_API_KEY_P8_B64 -u AF_ASC_API_KEY_ID \
+    -u AF_ASC_API_ISSUER_ID -u CI_COMMIT_TAG -u GITLAB_CI CI_JOB_NAME_SLUG="$slug" "$@" \
+    bash "$W/unreal/CI/scripts/mac-dmg.sh" >"$W/$slug.log" 2>&1
+}
+local_id="Developer ID Application: Test (TEAM123456)"
+if local_dmg dmg-local AF_MAC_SIGN_IDENTITY="$local_id" AF_NOTARY_KEYCHAIN_PROFILE=af-notary; then ok "exit 0"; else
+  bad "exit $? (see $W/dmg-local.log)"
+fi
+check "app signed with the named identity, hardened runtime + timestamp" \
+  has_call "codesign --force --options runtime --timestamp --sign $local_id .*Abyssfire.app\$"
+check "DMG signed with the named identity" has_call "codesign --force --timestamp --sign $local_id .*\.dmg\$"
+check "no --keychain argument" bash -c "! grep -q -- '--keychain ' '$W/calls.log'"
+check "no temporary keychain, no lock / unlock, search list untouched" bash -c \
+  "! grep -Eq '^security (create-keychain|import|unlock-keychain|lock-keychain|set-keychain-settings|delete-keychain|list-keychains .* -s)' '$W/calls.log'"
+check "identity looked up in the user's search list" has_call "^security find-identity -v -p codesigning\$"
+check "notarised twice with the keychain profile" \
+  test "$(grep -c 'notarytool submit .* --keychain-profile af-notary --wait' "$W/calls.log")" = 2
+check "no API key handed to notarytool" bash -c "! grep -q -- 'notarytool .* --key ' '$W/calls.log'"
+check "stapled twice" test "$(grep -c 'stapler staple' "$W/calls.log")" = 2
+check "no key files left" test -z "$(find "$OUT/work" \( -name '*.p8' -o -name '*.p12' \) 2>/dev/null)"
+: >"$W/calls.log"
+if local_dmg dmg-local-signed AF_MAC_SIGN_IDENTITY="$local_id"; then ok "identity without a profile: signed, not notarised"; else
+  bad "identity without a profile failed (see $W/dmg-local-signed.log)"
+fi
+check "no notarytool call without a profile" bash -c "! grep -q 'notarytool' '$W/calls.log'"
+if local_dmg dmg-local-unknown AF_MAC_SIGN_IDENTITY="Developer ID Application: Nobody (XXXXXXXXXX)"; then
+  bad "an identity that is in no keychain was accepted"
+else ok "an identity that is in no keychain is refused"; fi
+if local_dmg dmg-local-noid AF_NOTARY_KEYCHAIN_PROFILE=af-notary; then bad "a notary profile without a signature was accepted"; else
+  ok "a notary profile without a signing identity is refused"
+fi
+if local_dmg dmg-local-dist AF_MAC_SIGN_IDENTITY="Apple Distribution: Test (TEAM123456)" AF_NOTARY_KEYCHAIN_PROFILE=af-notary; then
+  bad "notarisation with an identity that is not Developer ID was accepted"
+else ok "notarisation with an identity that is not Developer ID is refused"; fi
+if AF_MAC_SIGN_IDENTITY="$local_id" run_job dmg-ci-named mac-dmg.sh; then ok "CI path with AF_MAC_SIGN_IDENTITY (p12 present)"; else
+  bad "CI path with AF_MAC_SIGN_IDENTITY failed (see $W/dmg-ci-named.log)"
+fi
+check "the p12 still goes into the temporary keychain" has_call "security import .* -x "
+check "and signing uses that keychain" has_call "--timestamp --keychain .* --sign $local_id "
+# A GitLab job that does not get the protected p12 (an unprotected branch) but sees the identity's name, a plain
+# variable: ad-hoc as before the local path existed, whatever the runner's own keychain holds.
+: >"$W/calls.log"
+if env -u AF_MAC_DEVID_P12_B64 -u CI_COMMIT_TAG CI_JOB_NAME_SLUG=dmg-ci-nop12 AF_MAC_SIGN_IDENTITY="$local_id" \
+  AF_NOTARY_KEYCHAIN_PROFILE=af-notary bash "$W/unreal/CI/scripts/mac-dmg.sh" >"$W/dmg-ci-nop12.log" 2>&1; then
+  ok "GitLab job with the identity's name but no p12: exit 0"
+else bad "GitLab job with the identity's name but no p12 failed (see $W/dmg-ci-nop12.log)"; fi
+check "... ad-hoc signed, never with the runner's own Developer ID" bash -c \
+  "grep -q -- '--sign - ' '$W/calls.log' && ! grep -q -- '--sign $local_id' '$W/calls.log' && ! grep -q '^security find-identity' '$W/calls.log'"
+check "... not notarised, and the log says the names were ignored" bash -c \
+  "! grep -q notarytool '$W/calls.log' && grep -q 'ignored in a GitLab job' '$W/dmg-ci-nop12.log'"
+if env -u AF_MAC_DEVID_P12_B64 CI_JOB_NAME_SLUG=dmg-ci-nop12-tag AF_MAC_SIGN_IDENTITY="$local_id" \
+  bash "$W/unreal/CI/scripts/mac-dmg.sh" >"$W/dmg-ci-nop12-tag.log" 2>&1; then
+  bad "release tag in GitLab without the p12 was signed from the runner's keychain"
+else ok "... and on a release tag the p12 stays mandatory"; fi
+
+echo "=== make_installer_assets.py: a Pillow that passes the probe and fails while drawing"
+if python3 - "$ci/installers/assets/make_installer_assets.py" "$W/assets-fallback" >"$W/assets-fallback.log" 2>&1 <<'EOF'; then
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("mia", sys.argv[1])
+mia = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mia)
+def no_freetype(*args):
+    raise OSError("cannot open resource")  # what ImageFont.truetype says without FreeType
+def stdlib(out, version):
+    (out / "dmg-background.png").write_bytes(b"png")
+    return "procedural emblem (standard-library renderer)"
+mia.pillow_unusable = lambda: ""
+mia.build_pillow = no_freetype
+mia.build_stdlib = stdlib
+sys.argv = [sys.argv[1], "--out", sys.argv[2], "--version", "1.2.3"]
+sys.exit(mia.main())
+EOF
+  ok "exit 0"
+else bad "the artwork step died with its Pillow renderer (see $W/assets-fallback.log)"; fi
+check "the standard-library renderer took over, and the log says why" bash -c \
+  "grep -q 'standard-library' '$W/assets-fallback/source.txt' && grep -q 'Pillow renderer failed (OSError' '$W/assets-fallback.log'"
 
 echo "=== mac-keychain-reset.sh (after_script)"
 printf '%s\n' "$HOME/Library/Keychains/login.keychain-db" "$OUT/work/dmg/keychain/af-ci-signing.keychain-db" \
