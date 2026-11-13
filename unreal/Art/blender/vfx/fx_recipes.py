@@ -2163,6 +2163,9 @@ def build() -> dict:
     # passes so they get the same strike offsets, camera bias, ground lift, prewarm and mesh dissolve
     import fx_recipes_dark
     dark = fx_recipes_dark.apply(recipes, PAL)
+    # Chapter 2 (vfx/fx_recipes_hangwood.py): the Hanging Wood's recipes, registered the same way
+    import fx_recipes_hangwood
+    hangwood = fx_recipes_hangwood.apply(recipes)
     strike_offsets(recipes)
     camera_bias(recipes)
     ground_lift(recipes)
@@ -2262,6 +2265,7 @@ def build() -> dict:
             **fx_recipes_dark.INTEGRATION,
         },
         "dark": fx_recipes_dark.doc_section(dark),
+        "hangwood": fx_recipes_hangwood.doc_section(hangwood),
     }
     return doc
 

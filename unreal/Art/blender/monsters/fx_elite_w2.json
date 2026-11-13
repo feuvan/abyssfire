@@ -417,6 +417,51 @@
     }
    }
   },
+  "SK_Mon_MoonHound": {
+   "bone": "root",
+   "posM": [
+    0.0,
+    -0.26,
+    1.37
+   ],
+   "restLocCm": [
+    0.0,
+    26.0,
+    137.0
+   ],
+   "relLocCm": [
+    0.0,
+    -137.0,
+    26.0
+   ],
+   "choice": "root left 0 fwd 8 up 32",
+   "offsetCm": {
+    "left": 0,
+    "forward": 8,
+    "up": 32,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 16.5,
+      "rest": 18.7
+     },
+     "sw": {
+      "trough": 17.6,
+      "rest": 19.8
+     },
+     "ne": {
+      "trough": 6.3,
+      "rest": 8.5
+     },
+     "nw": {
+      "trough": 18.4,
+      "rest": 20.5
+     }
+    }
+   }
+  },
   "SK_Mon_OathZealot": {
    "bone": "root",
    "posM": [

@@ -148,12 +148,15 @@ from kit import Palette, Region, Bind, HumanoidSpec, Pose, Clip, Key, PoseLib
 **palette** — `Region(hex, s=.42, l=.32, e=0, o=1)` (`.tone()`, `.line_region()` for modelled crease strips);
 `Palette(family)` with `.add(name, region) → swatch`, `.bake_uvs(mesh)` (collapses UVs of face attr `af_swatch`),
 `.save()` (registry JSON + both PNGs), `.material_name`, `.manifest_entry()`. Families: Heroes, Monsters_Plains,
-NPC, Props_Plains, Foliage_Plains, FX, Test, Weapons, Pickups, Pets, and the dark remake's Monsters_March,
-Props_March, Foliage_March (§19).
+NPC, Props_Plains, Foliage_Plains, FX, Test, Weapons, Pickups, Pets, the dark remake's Monsters_March,
+Props_March, Foliage_March (§19) and Chapter 2's Monsters_Hangwood, Props_Hangwood, Foliage_Hangwood (§34).
 
 **theme** (pure Python) — themed game ids for a zone's presentation theme (§19): `themed("tree", "march")` →
 `tree@march`, `themed_ids(ids, theme)`, `split`, `resolve(gameIds, id, theme)` (the runtime order: `<id>@<theme>`,
 then `<id>`), `family("Props", "march")` → `Props_March`, `audit(manifest)`; `THEMES`.
+
+**skel_quadruped** — the second rig family (§34): `QuadrupedSpec`, `build_quadruped(spec) → Rig` (`SKEL_Quadruped`, 36
+bones, sockets incl. `fx_overhead` / `fx_elite` / `mouth` / `bite` / `collar`); posed by `monsters/qclips.py`.
 
 **shading** — constants (`T_SHADE`, `T_LIGHT`, `L_KEY`, rim, grounding, ink, camera), `toon_material(pal)`,
 `outline_material(pal)`, `flat_toon_material(name, hex)`, `stage_ground_material(...)`, `toon_reference(...)`,
@@ -3253,3 +3256,192 @@ Consumed or raised: `corpse_husks.GUARDED`).
 | 9 | `vfx_recipes.json` `dark.pit` | the grade is a hard acceptance item, the in-material route recommended (above); the material contract names `ShadeCool` |
 | 10 | previews, comments | whole-frame sheets per room; the Pitwarden's husk previews stand on the Pit's dug earth (`corpse_husks.PREVIEW_GROUND`, `fx_preview_dark.DarkStage("pit")`); the "L* 12 earth" comment corrected (20.7) |
 | 11 | `vfx/hue_audit.py` | no change: the audit still exits 1 on the one violation it had before 3C — the mage's `arcane_torrent.impactColor` #B07CFF in `hit.impact*` (35 hits, 6 recipes; core-lane data, §30 *Open*). The Pit's recipes and the Pitwarden's fx colours add no violet, ember or fill hit: **not a 3C failure** |
+
+## 34. Chapter 2, package 4R-1 — the quadruped rig family and the moon-hound (`kit/skel_quadruped.py`, `monsters/qclips.py`, `monsters/moon_hound.py`, `hangwood/hangwood_palettes.py`, `environment/terrain_hangwood.py`)
+
+绳林 / the Hanging Wood (`Docs/dark-remake/chapter2.md` §4.1, §4.4, §15, §17, §21 4R-1, §22 O4): the second rig family of
+the kit, its first member, the chapter's palette families and theme rows, the theme's ground for the darkest-tile gate,
+and the hue audit with the chapter's two new enemy accents.
+
+```bash
+P="EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender"
+$P/hangwood/hangwood_palettes.py                 # register + atlases (--check: rules on a scratch copy; --list)
+$P/environment/terrain_hangwood.py               # terrain.hangwood textures, manifest section, previews (~35 s)
+$P/monsters/moon_hound.py                        # ship (~80 s): SK + LOD1 + 9 clips + portrait + previews + verify
+#   --quick [pose] · --anims [Clip …] [--facing=se] · --poses Clip@ms … [--facing=side] [--pitch=-12] · --portrait
+#   --gait (the no-slide report) · --no-previews · --no-verify
+$P/monsters/corpse_husks.py SK_Mon_MoonHound     # after every ship: mship.ship replaces the entry, the corpse block with it
+$P/monsters/elite_sigil.py --solve-elite --only=MOONHOUND      # fx_elite -> fx_elite_w2.json (mship re-applies it)
+$P/coherence/darkgate.py SK_Mon_MoonHound --all --theme=hangwood   # --all: the zone's Data roster is still the web's
+$P/tests/quadruped_test.py                       # the family's kit test (~2 s, 63 checks, no render)
+$P/vfx/fx_preview_hangwood.py                    # the chapter's recipe previews on the hangwood ground
+```
+
+| File | Holds |
+|---|---|
+| `kit/skel_quadruped.py` | `QuadrupedSpec` (side-view landmarks + half widths; `.scaled(k)`, `.but(points=…)`), `build_quadruped(spec) → Rig`, `default_sockets`; the names `SPINE / NECK / TAIL / FORELEG / HINDLEG / LEGS / IK_BONES / CORE_BONES` |
+| `monsters/qclips.py` | `QP` (one pose: trunk curve, neck, head, jaw, ears, tail, four paw targets, `follow`, `reach`), `QuadAnims` (solver: trunk FK + two-bone IK per leg under a set pastern; `basis` for `kit.anim.bake_basis`; `apply`; `slide_report`; the ground clamp `probes` / `lowest` / `grounded`) and the clip library: `idle`, `idle_sniff`, `walk` (trot), `run` (gallop), `attack`, `pounce`, `howl`, `hurt`, `death`, `stun` — every length and beat an argument |
+| `monsters/moon_hound.py` | `SK_Mon_MoonHound` (`monster_moon_hound`): mesh, READY, the member's clip list, LOD1, portrait, ship |
+| `hangwood/hangwood_palettes.py` | the colour script: `Monsters_Hangwood` (17 swatches: shared `tarnish.*` / `sallow.lamp`, the Moon-Bitten kit, the hound), seed rows of `Props_Hangwood` (15) and `Foliage_Hangwood` (6) for 4R-3; `region(name)`; `HANGWOOD_GROUND`; `--check` rules |
+| `environment/terrain_hangwood.py` | terrain style `hangwood` (a first cut for darkgate; 4R-3 owns it from here): leaf mould, root earth, wet stone, yard, pond; `manifest.terrain.hangwood` with `dataStyle` (HANDOFF 4A: `terrain_styles themes.hangwood`) |
+| `vfx/fx_recipes_hangwood.py` · `fx_preview_hangwood.py` | `notify.FX_PounceLeap` / `notify.FX_PounceLand` (earth, leaves, dust: no glow), the `hangwood` section of `vfx_recipes.json` (bindings, accents); their previews |
+| `tests/quadruped_test.py` | bone set / hierarchy / hinge axes / sockets, the solver, the gaits at the hound's size and at × 2.2, notifies, loops, bakes |
+| touched | `kit/palette.py` (three families), `kit/theme.py` (`hangwood`, `barrow`, `PARENTS_PENDING_DATA`, `parent_of`), `vfx/hue_audit.py` (rules `tarnish` × 2, `accents`; the `o4` block), `vfx/fx_recipes.py` (registers the chapter module), `vfx/fx_preview_dark.py` (`DarkStage("hangwood")`), `monsters/corpse_husks.py` (roster, `CARCASS_NOTES`, hangwood ground), `monsters/elite_sigil.py` (`ROSTER_CH2`) |
+
+### SKEL_Quadruped (36 bones)
+
+`root → pelvis → spine_01..04 → neck_01..02 → head → jaw, ear_l/r`; `pelvis → tail_01..03`; `spine_04 →
+foreleg_01..03_{l,r} → foretoe` (humerus, radius, pastern, paw); `pelvis → hindleg_01..03_{l,r} → hindtoe` (femur,
+tibia, metatarsus, paw); `root → ik_foot_root → ik_foot_fl/fr/bl/br` (no weights; copy the paws). The animal faces −Y,
+every limb / trunk bone has local X = the lateral hinge. The zigzag of a dog's legs is in the rest pose, so a leg is a
+two-bone IK of the upper pair toward the wrist / hock plus a pastern angle. Sockets (manifest, UE bone-relative cm):
+`fx_feet` (root), `fx_chest` (spine_04), `fx_head` (head), **`fx_overhead`** (root, 30 cm over the withers: nameplate,
+stun stars, W1 crown — on root so it does not swing with a bite), **`fx_elite`** (root; solved per asset:
+`elite_sigil.py --solve-elite`), `fx_eye_l/r` (head), **`mouth`** (head, between the teeth: a light in the maw — Volgan's
+`boss.volgan.maw` loop — breath), **`bite`** (jaw, at the lower fangs), **`collar`** (neck_01, under the throat: the chain,
+a UE cable to the oak's ring-bolt), `tail_tip`.
+
+What the rest of the family takes from it: the **Pack-Leader** the same skeleton and clips + `QuadAnims.howl`
+(`Cast01` 1400 / Contact 1000, `FX_Howl`), a heavier mesh; **Volgan** `QuadrupedSpec().scaled(2.2)` (or `.but(points=…)`
+for his longer legs: same names and hierarchy, so the UE skeleton asset is shared and his clips carry his own bone
+translations) with `mouth` for the tarnish light and `collar` for the chain; his `Attack02` / `Snap` / `Cast01` /
+`Roar` are new clips on `QP` (`volgan_clips.py`), `Pounce` / `Cast02` the library's with his beats
+(`pounce(1400, 450, 800)`, `howl(1400, 1000, name="Cast02")`). `tests/quadruped_test.py` runs the library on a × 2.2 rig
+(gaits at × 2.2 speed: 0 mm slide). The cub: `.scaled(k)`.
+
+### The moon-hound
+
+A gaunt long-legged hound, 0.75 m at the withers, 1.30 m nose to rump (+ 0.40 m of straight tail): deep narrow chest,
+tucked waist, five painted ribs a side and a flank hollow, the head carried under the back line, a torn leather collar
+with the tarnished Well-Ring lashed over the left shoulder (under the throat the game camera never sees it; the
+`collar` socket stays there). Marker: **silver-white eye-shine, not emissive** (`moonbitten.eye` #E6ECF5, preset `flat`,
+under a slate lid: a slit, ~6 × 3 px at the W1 camera). 3278 toon + 2344 hull triangles (≤ 5 k; hull 0.72 ×), LOD1 1876 +
+1176 (≤ 2.5 k; hull 0.63 ×; no claws, side teeth, ribs, lip lines, inner ears), 30 weighted bones.
+
+| Clip | ms (frames) | Notifies (ms) | |
+|---|---|---|---|
+| `Idle` | 1600 (96) loop | — | |
+| `Idle_Sniff` | 2400 (144) | — | idle variant, READY → READY |
+| `Walk` | 700 (42) loop | FootFL 0, FootBR 0, FootFR 350, FootBL 350 | the trot; `refSpeedCmS` **130** |
+| `Run` | 460 (28) loop | FootBL 0, FootBR 46, FootFL 211.6, FootFR 266.8 | the gallop; `refSpeedCmS` **375** = data speed 125 |
+| `Attack01` | 800 (48) | WindupEnd 198.4, **Contact 320** | one bite, one damage roll |
+| `Pounce` | 1000 (60) | Leap 380, FX_PounceLeap 380, WindupEnd 403, **Contact 650**, FX_PounceLand 650 | in place: the core dashes the actor |
+| `Hurt` | 280 (17) | — | |
+| `Death` | 900 (54) | — | onto its side; the last frame is the corpse |
+| `Stun` | 700 (42) loop | — | |
+
+No `Rise` (the Moon-Bitten leave remains: `corpse` block `look: carcass`, not consumable, not raisable). **Walk's ref
+speed is 1.30 m/s, not the data speed**: a 0.55 m foreleg covers 0.455 m in half of a 700 ms trot; UE picks Walk or
+Run by the nearer ref speed (log scale), so the hound at 3.75 m/s gallops at rate 1.0 and trots below ~2.2 m/s (a
+slow). Both gaits: 0.00 mm planted-paw slide (`--gait`; the ship asserts ≤ 2 mm).
+
+Gates (numbers of the shipped state): ship ink — 25 cells, min rim 96.1 % at ≥ 3 px (worst: the corpse, `Death` F54
+se), median 3.74 px, hull lum p95 24.6; QA ground 0.0 cm on every clip; re-import verify PASS (LOD1 too). **Darkest
+tile** (`hangwood:rootearth`, L* 19.8): se — rim 100 %, lit ΔL* +36.3, marker 3 px (19 px): PASS, not at an edge; sw
+99.8 % / +38.8 / 3 px, front 99.5 % / +39.4 / 3 px. From behind (ne, back: run, not recorded) rim 99.4-99.6 % and ΔL*
++36-37 hold and the marker is 0 px — an eye marker is not seen from behind, as on every Chapter 1 figure. The shade
+band of the coat sits at L* 19.3, the ground's own value: the ink (L* 6.5), the lit back and the pale belly line carry
+the read on the shadow side. `fx_elite`: root, [0, 26, 137] cm (clear by ≥ 6.3 px at the bob's trough in the four
+diagonals, 18.7 / 19.8 px at rest in se / sw).
+
+**How it reads** (looked at: `Previews/mon_moon_hound/`, `ch1_dark/darkgate_hangwood_*`, `corpse_husks/SK_Mon_MoonHound/`).
+In the six facings that show a flank (se, sw, ne, nw, the two sides) it is a hound at the first glance — back line,
+tuck, four thin legs, low wedge head, level tail — and nothing in Chapter 1 has that silhouette (every figure there
+is an upright or a dome). **End-on (front, back) it is weaker**: at the −50° pitch a narrow animal seen along its
+length is a long bar with ears at one end and a tail at the other; the splayed stance and a 5° bend of READY give it
+paws and an S-curve, not a dog's outline. The gallop has both flight frames since the review (below): the planted span is still
+set by the no-slide rule at 3.75 m/s, the swing reaches past it. `Idle_Sniff` breaks the neck a little sharply at the head. The portrait is a
+snarling profile with a large pale eye: it reads, it is not handsome.
+
+### Palettes, the theme rows, the two accents (O4)
+
+`Monsters_Hangwood` / `Props_Hangwood` / `Foliage_Hangwood` are in `kit.palette.FAMILIES` and the manifest;
+`kit.theme.THEMES` has `hangwood` (zone `twilight_forest`) and `barrow` (`sub_hw_barrow`). Their parents (march,
+hangwood) live in `PARENTS_PENDING_DATA` — see the comment there: a `"parent"` line in a THEMES row has to land
+together with the data's `themeParents` row or the exporter's equality check fails for every lane; `chain()` walks
+both tables, and the Phase 4 exporter reads the pending table. 4G moves the two entries into their rows.
+
+**O4.** `hue_audit.py` has the chapter's rules: `tarnish` (no hero colour at sat > .5, value ≥ .35, within 30° of
+moon-tarnish), `tarnish` on `telegraph.*` (never a damage telegraph), `accents` (sallow lamplight ≥ 10° outside the
+ember band: 15.8°). The spec's moon-tarnish **#9FE0C8 (hue 157.8°) fails**: 12 hits in 3 hero recipes —
+`hero.resonance` / `.aura` #66E58A (137.0°) and `skill.life_regen` #40C060 (135°). Frost passes (#46B4F0, 201.2°: 43.4°
+away). The spec's fallback, a shift toward 150°, **fails worse** (#9FE0BF, 149.5°: 12.5° from the greens). The only
+band clear of both the greens and frost is 167.0-171.2°; the accent is registered at **#9FE0D4 (168.9°, the spec's
+saturation and value: 31.9° / 32.3° clear)** — provisional, in one place per tool (`hue_audit.MOON_TARNISH`,
+`hangwood_palettes.MOON_TARNISH`, `fx_recipes_hangwood.MOON_TARNISH`); the report's `o4` block has the three
+candidates. No shipped asset draws it yet (the hound has no tarnish). The owner's call: keep 169°, or keep 158° and
+recolour the two hero greens. The audit still exits 1 on the old violet violation (#B07CFF, core-lane data, §30).
+
+### The ground
+
+`terrain.hangwood`: leaf mould L* 26.0, **root earth 19.8** (the darkest walkable tile, darkgate's ground: root ridges
+with a lit lip, scuffs), wet stone 25.1, yard 26.2, black pond. Kept at the march mud's / the Pit earth's level on
+purpose (a near-black body must stay ≥ 15 L* darker than the tile it stands on; the wood's darkness is the zone mood).
+The detail painter knows `stones / bigTuft / crackStar / straw / flowers / lilyPads`; the forest style's `mushrooms /
+roots / glowSpecks` are not painted by `terrain.py` (roots and fungus are art extras here).
+
+### Art review (4R-1), round 1 — what changed
+
+Every preview was looked at again, the paws were measured from the **baked actions** (not from the solver's own
+report), the darkest-tile gate was run on the worst poses, and the manifest was read against §4.4 / §17.2.
+
+* **Planted paws were dragged in the one-shots** (the gaits were clean: 0.00 mm, baked). `Attack01`: the left fore
+  that steps into the bite slid 13 cm back over the ground in the recovery, and the right fore was pulled 1.4 cm off
+  the ground at the hit (reach clamp). `Pounce`: the fores slid 7 cm forward in the crouch, the hinds 8 cm back at the
+  push, and after the landing all four paws slid 10-25 cm back to the stand. Now: the crouch and the push keep the
+  paws on their spots; the fores strike where they then stand and are brought back **one step at a time** (lifted
+  5 cm), the hinds come down on their own stand; the bite's recovery is a step; the lunge is 2.5 cm lower so the
+  right fore reaches. Worst ground drag of a planted paw: `Attack01` 0.5 cm, every other one-shot ≤ 0.1 cm
+  (`Death` excepted: a body going down). Beats unchanged (Contact 320; Leap 380 / Contact 650).
+* **The gallop had no flight frames** (the swing stopped at the stance's ends: fore-to-hind span never beyond the
+  stand's). `step_cycle(over=)`: after lift-off a paw trails further back, before touchdown it reaches further
+  forward and is drawn back onto its spot (0.11 m fore, 0.13 m hind); the back flexes ± 9° (was 7). Extended flight
+  (all four paws up): 117 cm fore to hind against the stand's 70. Stance untouched: 0.00 mm slide, baked.
+* **`tests/quadruped_test.py`** (47 → 63 checks, both sizes): no planted paw is dragged in a one-shot (≤ 1.5 cm × k);
+  the gaits' slide measured again on the baked action's toe bones frame by frame; `Run` has an extended flight frame.
+* **Manifest**: `abilities.pounce.travelMs [380, 650]` + `travelNote` (see 4U below).
+* **Darkest tile, worst poses** (run, not recorded in the report; `--clip= --frame=`): the pounce crouch se rim 96.3 %
+  (P10 3.32 px) / ΔL* +41.2 / marker 3 px; the gathered gallop frame 99.4 % / +37.9 / 3 px; `Stun` head-on 98.4 % /
+  +36.3 / **marker 2 px = the threshold** (the head hangs); the crouch from behind 94.1 % / +42.4 / marker 1 px (no
+  eyes from behind). Rim (≥ 90 %) and lit separation (≥ 15) pass with room in every pose and facing tried; **the
+  eye-shine is one pixel over its limit in a stand and at it when the head drops** — the hound is read by its light
+  coat and ink on this ground, not by its eyes. The ground's value (L* 19.8) is this package's own choice at the
+  march mud's level; the zone mood (light scale 0.36) is not applied by the gate — the in-game look review (§20) is
+  where that is seen.
+
+Left as it is, and why:
+
+* **End-on (front / back)** it is still a bar with ears and a tail; from straight behind the bite's wind-up and
+  contact differ by a few pixels of length only (the telegraph decal carries it there). A long narrow animal seen
+  along its length at −50° has no other outline; the actor turns continuously, so the exact end-on case is brief.
+* **The portrait** is a profile with one large flat disc of an eye: it reads as "pale-eyed hound", closer to comic
+  than to dread. A heavier lid or a smaller, harder highlight would need a portrait-only eye piece.
+* **`Run` is 460 ms authored, 28 frames = 466.7 ms in the file** (the kit rounds to whole frames, as every clip
+  since Chapter 1): the planted paws are sampled at the file's frame times, so the ground speed at rate 1 is exact;
+  the swing's last frame is 0.4 frame short. Not visible.
+* **`collar` is under the throat** (as the spec names it). A cable from there to a ring-bolt behind the animal
+  passes under the chest; if Volgan's chain should leave over the withers, `volgan.py` moves its own socket (the
+  list is per rig: `rig.sockets`).
+* `notify.FX_PounceLand` is a small puff at the game camera (4R-3 owns the recipe from here).
+
+### Handoff
+
+* **4U (UE), the pounce's travel**: the core fixes `dashTo` at the wind-up and teleports the caster **at Contact**
+  (`Combat.cpp`, `TeleportReason::Dash`); `AbyssTelegraphRules::DashSlide` then eases the actor over 200 ms. The clip
+  is airborne from Leap (380) to Contact (650) and stands from Contact on, so played on today's slide the hound leaps
+  on the spot, lands, and then skates 4 tiles on planted paws (and `FX_PounceLand` fires at the line's start). The
+  visual has to travel the line inside `abilities.pounce.travelMs` (the telegraph knows the line's end from the
+  wind-up); the Chapter 1 charges' slide can stay as it is. Volgan's `Pounce` (450 / 800) has the same contract.
+* **4U (UE)**: skeleton `SKEL_Quadruped` is created by the first import (no content-script change: `build_content.py
+  --plan --strict` 0 problems, skeletons +1). Clip names to map: `Idle, Idle_Sniff, Walk, Run, Attack01, Pounce, Hurt,
+  Death, Stun` (+ `Cast01` on the Pack-Leader); `Pounce` is the new ability clip (`abilities.pounce` in the entry:
+  `leapMs` 380, `contactMs` 650, `dash`). Foot notifies are `FootFL / FootFR / FootBL / FootBR` (the footstep audio
+  listens to `FootL` / `FootR` today). Data `animCategory`: `beast` exists in `AnimRig`; there is no `quadruped`
+  (entry `rig.animCategoryData`). Not single-view. `notify.FX_PounceLeap` / `FX_PounceLand` play through the notify
+  path. The eye-shine needs no eye card.
+* **4A (data)**: `monster_moon_hound` resolves to the asset; copy `terrain.hangwood.dataStyle` to `terrain_styles
+  themes.hangwood`; **re-run the exporter** (`Data/assets.json` mirrors the art manifest and is stale after this
+  package).
+* **4R-2**: append members to `hangwood_palettes.MONSTERS`, `corpse_husks.ROSTER`, `elite_sigil.ROSTER_CH2`; run
+  `corpse_husks.py <asset>` after each ship. **4R-3**: the terrain style, the two seed palettes,
+  `fx_recipes_hangwood.py` and `fx_preview_hangwood.scenarios()` are yours to extend.

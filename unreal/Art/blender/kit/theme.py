@@ -47,8 +47,39 @@ THEMES: dict[str, dict] = {
                 "(outcrop_plains@pit) and stair (exit_portal@pit); everything else it shows is the march's, so its "
                 "lookups fall back to the parent theme before the plain id (implementation-plan.md 3D notes)",
     },
+    "hangwood": {
+        "zones": ("twilight_forest",),                       # 绳林 / the Hanging Wood (chapter2.md §2, §15)
+        "palettes": {"Monsters": "Monsters_Hangwood", "Props": "Props_Hangwood", "Foliage": "Foliage_Hangwood",
+                     "NPC": "NPC", "Heroes": "Heroes", "Pickups": "Pickups", "Weapons": "Weapons", "Pets": "Pets"},
+        "note": "Chapter 2 (4R-1): its own terrain style (terrain.hangwood: leaf mould, root ridges, wet stone, "
+                "black pond water), monsters on Monsters_Hangwood (the Moon-Bitten on SKEL_Quadruped first). Art "
+                "parent: the march (PARENTS_PENDING_DATA below; see its comment)",
+    },
+    "barrow": {
+        "zones": ("sub_hw_barrow",),                         # 根冢 / the Root Barrow (chapter2.md §9.2)
+        "palettes": {"Monsters": "Monsters_Hangwood", "Props": "Props_Hangwood", "Foliage": "Foliage_Hangwood",
+                     "NPC": "NPC", "Heroes": "Heroes", "Pickups": "Pickups", "Weapons": "Weapons", "Pets": "Pets"},
+        "note": "Chapter 2 (4R-3 ships its kit): the Hanging Wood's underground, on the crypt blocks with root "
+                "overlays. Art parent: hangwood (PARENTS_PENDING_DATA below)",
+    },
 }
 BASE_THEME = "plains"
+
+# Theme parents the art ships along that are kept out of the THEMES rows. The exporter
+# (Tools/export-data/src/themeParents.ts) asserts that the data's ``themeParents`` (GameData/world.ts
+# REMAKE_OVERRIDES) equals the kit's table. A ``"parent"`` line written into a THEMES row before the data has the
+# same row fails the data check of every lane (the reader at 4R-1's start knew only those lines), so Chapter 2's two
+# parents wait here: the exporter that knows nothing of this table sees no kit parent for them (and no data row: it
+# agrees), the Phase 4 exporter reads this table as part of the kit's chain (one line, ``{"theme": "parent", ...}``:
+# keep that shape) and agrees with the data's rows. :func:`chain` walks both, so kit lookups already resolve
+# hangwood -> march and barrow -> hangwood -> march (chapter2.md §15). HANDOFF (4G gate, once both lanes are in):
+# move each entry into its THEMES row as a ``"parent"`` line and leave this table empty.
+PARENTS_PENDING_DATA: dict[str, str] = {"hangwood": "march", "barrow": "hangwood"}
+
+
+def parent_of(theme: str) -> str | None:
+    """The theme's art parent: its THEMES row, else the row waiting for the data lane (PARENTS_PENDING_DATA)."""
+    return THEMES[theme].get("parent") or PARENTS_PENDING_DATA.get(theme)
 
 
 def chain(theme: str | None) -> list[str]:
@@ -59,7 +90,7 @@ def chain(theme: str | None) -> list[str]:
         if theme not in THEMES:
             raise ValueError(f"unknown presentation theme {theme!r} (kit.theme.THEMES: {', '.join(THEMES)})")
         out.append(theme)
-        theme = THEMES[theme].get("parent")
+        theme = parent_of(theme)
     return out
 
 

@@ -8388,6 +8388,345 @@
     "THE PITWARDEN (marker)",
     "RISEN FOOTMAN (marker)"
    ]
+  },
+  "hangwood:rootearth": {
+   "roster": "every shipped monster",
+   "presentationTheme": "hangwood",
+   "ground": {
+    "theme": "hangwood",
+    "tile": "rootearth",
+    "selectedBy": "darkest walkable material by median L* of an 8 x 8 composited field",
+    "L50": 19.8,
+    "L10": 18.8,
+    "L90": 23.9,
+    "meanRgb": "#37312B",
+    "materials": {
+     "leafmould": {
+      "key": "0",
+      "L50": 26.0,
+      "L10": 20.6,
+      "L90": 30.3,
+      "meanRgb": "#413D2E"
+     },
+     "rootearth": {
+      "key": "1",
+      "L50": 19.8,
+      "L10": 18.8,
+      "L90": 23.9,
+      "meanRgb": "#37312B"
+     },
+     "wetstone": {
+      "key": "2",
+      "L50": 25.1,
+      "L10": 13.1,
+      "L90": 35.2,
+      "meanRgb": "#383E3B"
+     },
+     "yard": {
+      "key": "5",
+      "L50": 26.2,
+      "L10": 23.9,
+      "L90": 28.8,
+      "meanRgb": "#443D33"
+     }
+    }
+   },
+   "camera": {
+    "yawUE": 45.0,
+    "pitchUE": -50.0,
+    "fovH": 35.0,
+    "distance": "default (16 x 12 tiles)",
+    "res": [
+     1920,
+     1080
+    ]
+   },
+   "facing": "se",
+   "pages": 1,
+   "pass": true,
+   "failed": [],
+   "figures": [
+    {
+     "asset": "SK_Mon_MoonHound",
+     "variant": null,
+     "label": "MOON-HOUND",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 19,
+      "swatches": [
+       "moonbitten.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#DFE4EE",
+      "medianL": 90.5,
+      "deltaL": 70.7,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 1.0,
+      "rimPxMedian": 3.73,
+      "rimPxP10": 3.39,
+      "fracDark": 1.0,
+      "hullLumP95": 24.2,
+      "edges": 539,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 6.5,
+      "inkDeltaL": 13.3,
+      "fracInkClear": 0.001
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 36.3,
+      "signedDeltaL": 36.3,
+      "litL": 56.1,
+      "groundL": 19.8,
+      "band": "light band + rim light",
+      "pixels": 1696,
+      "litP10": 53.7,
+      "litP90": 70.4,
+      "fracLitClear": 0.999,
+      "shadeL": 19.3,
+      "inkL": 6.5
+     },
+     "ok": true,
+     "atEdge": []
+    }
+   ],
+   "atEdge": []
+  },
+  "hangwood:rootearth@sw": {
+   "roster": "every shipped monster",
+   "presentationTheme": "hangwood",
+   "ground": {
+    "theme": "hangwood",
+    "tile": "rootearth",
+    "selectedBy": "darkest walkable material by median L* of an 8 x 8 composited field",
+    "L50": 19.8,
+    "L10": 18.8,
+    "L90": 23.9,
+    "meanRgb": "#37312B",
+    "materials": {
+     "leafmould": {
+      "key": "0",
+      "L50": 26.0,
+      "L10": 20.6,
+      "L90": 30.3,
+      "meanRgb": "#413D2E"
+     },
+     "rootearth": {
+      "key": "1",
+      "L50": 19.8,
+      "L10": 18.8,
+      "L90": 23.9,
+      "meanRgb": "#37312B"
+     },
+     "wetstone": {
+      "key": "2",
+      "L50": 25.1,
+      "L10": 13.1,
+      "L90": 35.2,
+      "meanRgb": "#383E3B"
+     },
+     "yard": {
+      "key": "5",
+      "L50": 26.2,
+      "L10": 23.9,
+      "L90": 28.8,
+      "meanRgb": "#443D33"
+     }
+    }
+   },
+   "camera": {
+    "yawUE": 45.0,
+    "pitchUE": -50.0,
+    "fovH": 35.0,
+    "distance": "default (16 x 12 tiles)",
+    "res": [
+     1920,
+     1080
+    ]
+   },
+   "facing": "sw",
+   "pages": 1,
+   "pass": true,
+   "failed": [],
+   "figures": [
+    {
+     "asset": "SK_Mon_MoonHound",
+     "variant": null,
+     "label": "MOON-HOUND",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "sw",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 27,
+      "swatches": [
+       "moonbitten.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#DBDFE7",
+      "medianL": 88.9,
+      "deltaL": 69.1,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9979,
+      "rimPxMedian": 3.69,
+      "rimPxP10": 3.34,
+      "fracDark": 1.0,
+      "hullLumP95": 24.2,
+      "edges": 470,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 6.2,
+      "inkDeltaL": 13.6,
+      "fracInkClear": 0.037
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 38.8,
+      "signedDeltaL": 38.8,
+      "litL": 58.6,
+      "groundL": 19.8,
+      "band": "light band + rim light",
+      "pixels": 822,
+      "litP10": 52.6,
+      "litP90": 71.4,
+      "fracLitClear": 0.999,
+      "shadeL": 16.9,
+      "inkL": 6.2
+     },
+     "ok": true,
+     "atEdge": []
+    }
+   ],
+   "atEdge": []
+  },
+  "hangwood:rootearth@front": {
+   "roster": "every shipped monster",
+   "presentationTheme": "hangwood",
+   "ground": {
+    "theme": "hangwood",
+    "tile": "rootearth",
+    "selectedBy": "darkest walkable material by median L* of an 8 x 8 composited field",
+    "L50": 19.8,
+    "L10": 18.8,
+    "L90": 23.9,
+    "meanRgb": "#37312B",
+    "materials": {
+     "leafmould": {
+      "key": "0",
+      "L50": 26.0,
+      "L10": 20.6,
+      "L90": 30.3,
+      "meanRgb": "#413D2E"
+     },
+     "rootearth": {
+      "key": "1",
+      "L50": 19.8,
+      "L10": 18.8,
+      "L90": 23.9,
+      "meanRgb": "#37312B"
+     },
+     "wetstone": {
+      "key": "2",
+      "L50": 25.1,
+      "L10": 13.1,
+      "L90": 35.2,
+      "meanRgb": "#383E3B"
+     },
+     "yard": {
+      "key": "5",
+      "L50": 26.2,
+      "L10": 23.9,
+      "L90": 28.8,
+      "meanRgb": "#443D33"
+     }
+    }
+   },
+   "camera": {
+    "yawUE": 45.0,
+    "pitchUE": -50.0,
+    "fovH": 35.0,
+    "distance": "default (16 x 12 tiles)",
+    "res": [
+     1920,
+     1080
+    ]
+   },
+   "facing": "front",
+   "pages": 1,
+   "pass": true,
+   "failed": [],
+   "figures": [
+    {
+     "asset": "SK_Mon_MoonHound",
+     "variant": null,
+     "label": "MOON-HOUND",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "front",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 27,
+      "swatches": [
+       "moonbitten.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#DBE1E0",
+      "medianL": 89.3,
+      "deltaL": 69.5,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9946,
+      "rimPxMedian": 3.73,
+      "rimPxP10": 3.32,
+      "fracDark": 1.0,
+      "hullLumP95": 22.3,
+      "edges": 372,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 6.2,
+      "inkDeltaL": 13.6,
+      "fracInkClear": 0.016
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 39.4,
+      "signedDeltaL": 39.4,
+      "litL": 59.2,
+      "groundL": 19.8,
+      "band": "light band + rim light",
+      "pixels": 1303,
+      "litP10": 54.5,
+      "litP90": 74.2,
+      "fracLitClear": 0.998,
+      "shadeL": 16.9,
+      "inkL": 6.2
+     },
+     "ok": true,
+     "atEdge": []
+    }
+   ],
+   "atEdge": []
   }
  },
  "edgeMargins": {

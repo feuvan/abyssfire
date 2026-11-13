@@ -66,6 +66,10 @@ def make_march_ground(theme: str = "march"):
         import terrain_pit as TM
         m[:, :] = 2
         m[3:rows - 3, 3:cols - 3] = 1
+    elif theme == "hangwood":                                # Chapter 2: root earth (the darkest tile) in leaf mould
+        import terrain_hangwood as TM
+        m[:, :] = 0
+        m[3:rows - 3, 3:cols - 3] = 1
     else:
         import terrain_march as TM
         for r in range(rows):
@@ -108,7 +112,8 @@ def make_march_ground(theme: str = "march"):
 # ── the stage ──────────────────────────────────────────────────────────────────────────────────────────
 class DarkStage(FP.Stage):
     """``fx_preview.Stage`` on the march ground with march figures (no goblins, heroes on demand); ``ground``
-    ``"pit"``: on the Pit's dug earth (the Pitwarden's husk falls there, not on the march)."""
+    ``"pit"``: on the Pit's dug earth (the Pitwarden's husk falls there, not on the march); ``"hangwood"``: on the
+    Hanging Wood's root earth (Chapter 2's bodies)."""
 
     def __init__(self, ground: str = "march"):
         import cohkit as CK
@@ -116,7 +121,7 @@ class DarkStage(FP.Stage):
         CK.reset()
         bpy.context.scene.view_settings.view_transform = "Standard"
         self.ground = make_march_ground(ground)
-        self.ground_label = "PIT EARTH" if ground == "pit" else "MARCH"
+        self.ground_label = {"pit": "PIT EARTH", "hangwood": "HANGWOOD ROOT EARTH"}.get(ground, "MARCH")
         self.heroes = {}
         self.hero = None
         self.gobs = []

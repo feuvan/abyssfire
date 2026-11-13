@@ -31,6 +31,16 @@
    "rim": "#D11F2E",
    "fill": "#FFE8DC"
   },
+  "moonTarnish": "#9FE0D4",
+  "moonTarnishHue": 168.9,
+  "tarnishGuardDeg": 30.0,
+  "tarnishSat": 0.5,
+  "tarnishMinVal": 0.35,
+  "tarnishTelegraphDeg": 20.0,
+  "sallowLamp": "#E6D36A",
+  "sallowHue": 50.8,
+  "sallowSat": 0.539,
+  "sallowToEmberDeg": 15.8,
   "fill": {
    "grow": 1.5,
    "keep": 0.5,
@@ -61,7 +71,25 @@
    "rule": "ember",
    "subject": "enemy art (monster emissive / eye swatches, manifest fx)",
    "ok": true,
-   "detail": "122 colours checked; 0 ember"
+   "detail": "129 colours checked; 0 ember"
+  },
+  {
+   "rule": "tarnish",
+   "subject": "hero recipes",
+   "ok": true,
+   "detail": "no hero colour with HSV sat > 0.5 (value >= 0.35) within 30 deg of moon-tarnish #9FE0D4 (hue 168.9); 0 hits in 0 recipes"
+  },
+  {
+   "rule": "tarnish",
+   "subject": "telegraph recipes (never a damage telegraph)",
+   "ok": true,
+   "detail": "no telegraph.* layer within 20 deg of moon-tarnish at sat > .15; 0 hits in 0 recipes"
+  },
+  {
+   "rule": "accents",
+   "subject": "Chapter 2 accent constants",
+   "ok": true,
+   "detail": "sallow lamplight #E6D36A hue 50.8 sat 0.54: 15.8 deg outside the ember band (>= 10); moon-tarnish hue 168.9 is 119.2 deg from breach-violet"
   }
  ],
  "sides": {
@@ -78,8 +106,8 @@
    "colours": 105
   },
   "enemy": {
-   "recipes": 53,
-   "colours": 747
+   "recipes": 55,
+   "colours": 778
   }
  },
  "violations": {
@@ -449,7 +477,9 @@
   },
   "fill": [],
   "ember": {},
-  "emberArt": []
+  "emberArt": [],
+  "tarnish": {},
+  "tarnishTelegraph": {}
  },
  "advisory": {
   "violetFriendlyNeutral": {},
@@ -827,6 +857,217 @@
     }
    ]
   },
+  "tarnishFriendlyNeutral": {
+   "exit.portal": [
+    {
+     "layer": 1,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #3FE0A0",
+     "hex": "#3FE0A0",
+     "hue": 156.1,
+     "sat": 0.719,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Rune",
+     "slot": "color",
+     "source": "fixed #1E6E5C",
+     "hex": "#1E6E5C",
+     "hue": 166.5,
+     "sat": 0.727,
+     "blend": "translucent"
+    },
+    {
+     "layer": 6,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #3FE0A0",
+     "hex": "#3FE0A0",
+     "hue": 156.1,
+     "sat": 0.719,
+     "blend": "additive"
+    },
+    {
+     "layer": 7,
+     "what": "Rune",
+     "slot": "color",
+     "source": "fixed #1E6E5C",
+     "hex": "#1E6E5C",
+     "hue": 166.5,
+     "sat": 0.727,
+     "blend": "translucent"
+    }
+   ],
+   "prop.event": [
+    {
+     "layer": 0,
+     "what": "Glow",
+     "slot": "color",
+     "source": "fixed #72D8FF",
+     "hex": "#72D8FF",
+     "hue": 196.6,
+     "sat": 0.553,
+     "blend": "additive"
+    },
+    {
+     "layer": 1,
+     "what": "Glow",
+     "slot": "color",
+     "source": "fixed #72D8FF",
+     "hex": "#72D8FF",
+     "hue": 196.6,
+     "sat": 0.553,
+     "blend": "additive"
+    }
+   ],
+   "prop.soul_echo": [
+    {
+     "layer": 0,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #7FD8FF",
+     "hex": "#7FD8FF",
+     "hue": 198.3,
+     "sat": 0.502,
+     "blend": "additive"
+    },
+    {
+     "layer": 1,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #7FD8FF",
+     "hex": "#7FD8FF",
+     "hue": 198.3,
+     "sat": 0.502,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #7FD8FF",
+     "hex": "#7FD8FF",
+     "hue": 198.3,
+     "sat": 0.502,
+     "blend": "additive"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #7FD8FF",
+     "hex": "#7FD8FF",
+     "hue": 198.3,
+     "sat": 0.502,
+     "blend": "additive"
+    }
+   ]
+  },
+  "tarnishLaterChapters": {},
+  "tarnishNearestHero": [
+   {
+    "degFromTarnish": 31.9,
+    "hex": "#66E58A",
+    "recipe": "hero.resonance"
+   },
+   {
+    "degFromTarnish": 31.9,
+    "hex": "#66E58A",
+    "recipe": "hero.resonance.aura"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "ground.default"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "ground.slow_trap"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "ground.slow_trap.trigger"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "proj.ice_arrow"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "skill.blizzard"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "skill.freeze"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "skill.ice_armor"
+   },
+   {
+    "degFromTarnish": 32.3,
+    "hex": "#46B4F0",
+    "recipe": "skill.slow_trap"
+   },
+   {
+    "degFromTarnish": 33.9,
+    "hex": "#40C060",
+    "recipe": "skill.life_regen"
+   },
+   {
+    "degFromTarnish": 34.2,
+    "hex": "#5AB4EC",
+    "recipe": "skill.blizzard"
+   },
+   {
+    "degFromTarnish": 34.7,
+    "hex": "#56AEE8",
+    "recipe": "skill.blizzard"
+   },
+   {
+    "degFromTarnish": 35.0,
+    "hex": "#5DADE2",
+    "recipe": "hit.impact"
+   },
+   {
+    "degFromTarnish": 35.0,
+    "hex": "#5DADE2",
+    "recipe": "hit.impact.crit"
+   },
+   {
+    "degFromTarnish": 35.0,
+    "hex": "#5DADE2",
+    "recipe": "hit.impact.heavy"
+   },
+   {
+    "degFromTarnish": 35.0,
+    "hex": "#5DADE2",
+    "recipe": "hit.impact.kill"
+   },
+   {
+    "degFromTarnish": 35.0,
+    "hex": "#5DADE2",
+    "recipe": "hit.impact.light"
+   },
+   {
+    "degFromTarnish": 35.0,
+    "hex": "#5DADE2",
+    "recipe": "hit.impact.normal"
+   },
+   {
+    "degFromTarnish": 43.2,
+    "hex": "#2E73C1",
+    "recipe": "skill.blizzard"
+   }
+  ],
   "nearEmber": {
    "recipes": {
     "hit.claw": [
@@ -1504,6 +1745,190 @@
        "sat": 0.726,
        "blend": "translucent"
       }
+     ],
+     "notify.FX_PounceLand": [
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#1C1109",
+       "hue": 26.0,
+       "sat": 0.686,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#0F0804",
+       "hue": 22.6,
+       "sat": 0.761,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#2E2012",
+       "hue": 29.5,
+       "sat": 0.609,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#2C1E11",
+       "hue": 29.3,
+       "sat": 0.618,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#150C06",
+       "hue": 25.9,
+       "sat": 0.727,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#1C1109",
+       "hue": 26.0,
+       "sat": 0.686,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#0F0804",
+       "hue": 22.6,
+       "sat": 0.768,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#2E2012",
+       "hue": 29.5,
+       "sat": 0.609,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#150D06",
+       "hue": 25.5,
+       "sat": 0.718,
+       "blend": "translucent"
+      }
+     ],
+     "notify.FX_PounceLeap": [
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#1C1109",
+       "hue": 26.0,
+       "sat": 0.686,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#0F0804",
+       "hue": 22.6,
+       "sat": 0.761,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#2E2012",
+       "hue": 29.5,
+       "sat": 0.609,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#2C1E11",
+       "hue": 29.3,
+       "sat": 0.618,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#150C06",
+       "hue": 25.9,
+       "sat": 0.727,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#1C1109",
+       "hue": 26.0,
+       "sat": 0.686,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#0F0804",
+       "hue": 22.6,
+       "sat": 0.768,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#2E2012",
+       "hue": 29.5,
+       "sat": 0.609,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5C5146 x T_FX_Rock texel",
+       "hex": "#150D06",
+       "hue": 25.5,
+       "sat": 0.718,
+       "blend": "translucent"
+      }
      ]
     },
     "art": [
@@ -1541,6 +1966,93 @@
     ]
    }
   }
+ },
+ "o4": {
+  "decision": "Docs/dark-remake/chapter2.md §22 O4 (two new enemy accents)",
+  "rule": "no hero colour at sat > 0.5 (value >= 0.35) within 30 deg of moon-tarnish",
+  "candidates": [
+   {
+    "candidate": "spec",
+    "hex": "#9FE0C8",
+    "hue": 157.8,
+    "sat": 0.29,
+    "pass": false,
+    "hits": 12,
+    "recipes": [
+     "hero.resonance",
+     "hero.resonance.aura",
+     "skill.life_regen"
+    ],
+    "colours": [
+     "#40C060",
+     "#66E58A"
+    ],
+    "nearestBelow": {
+     "hex": "#66E58A",
+     "hue": 137.0,
+     "deg": 20.8,
+     "recipe": "hero.resonance"
+    },
+    "nearestAbove": {
+     "hex": "#46B4F0",
+     "hue": 201.2,
+     "deg": 43.4,
+     "recipe": "ground.default"
+    }
+   },
+   {
+    "candidate": "toward150",
+    "hex": "#9FE0BF",
+    "hue": 149.5,
+    "sat": 0.29,
+    "pass": false,
+    "hits": 12,
+    "recipes": [
+     "hero.resonance",
+     "hero.resonance.aura",
+     "skill.life_regen"
+    ],
+    "colours": [
+     "#40C060",
+     "#66E58A"
+    ],
+    "nearestBelow": {
+     "hex": "#66E58A",
+     "hue": 137.0,
+     "deg": 12.5,
+     "recipe": "hero.resonance"
+    },
+    "nearestAbove": {
+     "hex": "#46B4F0",
+     "hue": 201.2,
+     "deg": 51.7,
+     "recipe": "ground.default"
+    }
+   },
+   {
+    "candidate": "shipped",
+    "hex": "#9FE0D4",
+    "hue": 168.9,
+    "sat": 0.29,
+    "pass": true,
+    "hits": 0,
+    "recipes": [],
+    "colours": [],
+    "nearestBelow": {
+     "hex": "#66E58A",
+     "hue": 137.0,
+     "deg": 31.9,
+     "recipe": "hero.resonance"
+    },
+    "nearestAbove": {
+     "hex": "#46B4F0",
+     "hue": 201.2,
+     "deg": 32.3,
+     "recipe": "ground.default"
+    }
+   }
+  ],
+  "outcome": "the spec hex fails against the hero greens; the stated fallback (toward 150 deg) fails worse; 'shipped' is the nearest hue that clears both the greens and frost (same saturation and value). Provisional: the owner rules (or recolours the two hero greens)"
  },
  "unresolved": [
   {
@@ -2203,6 +2715,8 @@
    "notify.FX_Land",
    "notify.FX_PitCollapse",
    "notify.FX_PitDig",
+   "notify.FX_PounceLand",
+   "notify.FX_PounceLeap",
    "notify.FX_Roar",
    "notify.FX_bell_ring",
    "proj.monster_bolt",
@@ -2687,6 +3201,30 @@
    "ember": false
   },
   {
+   "source": "manifest SK_Mon_MoonHound.fx.eyeShine.color",
+   "hex": "#E6ECF5",
+   "hue": 216.0,
+   "sat": 0.061,
+   "val": 0.961,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_MoonHound.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_MoonHound.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
    "source": "manifest SK_Mon_OathZealot.fx.attackTrail.color",
    "hex": "#E8E0CC",
    "hue": 42.9,
@@ -2956,6 +3494,38 @@
    "hue": 265.3,
    "sat": 0.075,
    "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Hangwood[0] tarnish.glow (emissive 0.85)",
+   "hex": "#9FE0D4",
+   "hue": 168.9,
+   "sat": 0.29,
+   "val": 0.878,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Hangwood[2] tarnish.pinpoint (emissive 1.00)",
+   "hex": "#9FE0D4",
+   "hue": 168.9,
+   "sat": 0.29,
+   "val": 0.878,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Hangwood[3] sallow.lamp (emissive 0.80)",
+   "hex": "#E6D36A",
+   "hue": 50.8,
+   "sat": 0.539,
+   "val": 0.902,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Hangwood[4] moonbitten.eye (eye)",
+   "hex": "#E6ECF5",
+   "hue": 216.0,
+   "sat": 0.061,
+   "val": 0.961,
    "ember": false
   },
   {

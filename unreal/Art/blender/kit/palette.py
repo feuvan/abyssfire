@@ -36,7 +36,10 @@ FAMILIES = ("Heroes", "Monsters_Plains", "NPC", "Props_Plains", "Foliage_Plains"
             "Pets",                 # Pets: ley-beast companions (pets/, DECISIONS Q3)
             # dark remake 焚境 (Docs/dark-remake, package A1): the Chapter-1 `march` theme's monster / prop /
             # foliage atlases (colour script and usage: march/march_palettes.py); NPCs append to "NPC"
-            "Monsters_March", "Props_March", "Foliage_March")
+            "Monsters_March", "Props_March", "Foliage_March",
+            # Chapter 2 绳林 / the Hanging Wood (Docs/dark-remake/chapter2.md §17, package 4R-1): the `hangwood`
+            # theme's atlases (colour script: hangwood/hangwood_palettes.py); NPCs keep appending to "NPC"
+            "Monsters_Hangwood", "Props_Hangwood", "Foliage_Hangwood")
 
 
 def _q8(v: float) -> int:

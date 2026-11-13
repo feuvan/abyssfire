@@ -93,6 +93,21 @@ EMBER_HUE = (15.0, 35.0)          # ember orange family (#FF7A2A): hue 15-35° �
 EMBER_SAT = 0.6                   # … at saturation above this
 EMBER_MIN_VAL = 0.35              # … and HSV value from this (a darker colour reads black / brown: a pupil, soot)
 HAZARD_RIM, HAZARD_FILL = "#D11F2E", "#FFE8DC"
+# Chapter 2 (Docs/dark-remake/chapter2.md §4.1, §22 O4): two more enemy accents, audited before any art uses them
+MOON_TARNISH = "#9FE0D4"          # the fouled Moon Seal's light: enemy magic that is not a damage hazard. O4 outcome
+#                                   (see ``o4_candidates``): the spec's #9FE0C8 (hue 158) FAILS this rule against the
+#                                   hero greens (hero.resonance #66E58A 137 deg, skill.life_regen #40C060 135 deg) and
+#                                   its stated fallback, a shift toward 150, fails worse; the only band that clears
+#                                   both the greens and frost (#46B4F0, 201 deg) is 167-171 deg, so the accent ships
+#                                   at 169 deg with the spec's saturation and value. Provisional until the owner rules.
+MOON_TARNISH_SPEC = "#9FE0C8"     # chapter2.md §4.1 as written (hue 157.8)
+O4_CANDIDATES = (("spec", "#9FE0C8"), ("toward150", "#9FE0BF"), ("shipped", MOON_TARNISH))
+TARNISH_GUARD_DEG = 30.0          # no hero colour within this of moon-tarnish's hue …
+TARNISH_SAT = 0.5                 # … at HSV saturation above this
+TARNISH_MIN_VAL = 0.35            # … and HSV value from this (darker reads as black-green: a shadow, not a light)
+TARNISH_TELEGRAPH_DEG = 20.0      # an enemy telegraph layer within this of the hue (sat > .15) is a rule break
+SALLOW_LAMP = "#E6D36A"           # Lamp-Bearer lanterns (hue 51, sat .54): must stay out of the ember band
+SALLOW_EMBER_MARGIN_DEG = 10.0    # … by at least this much hue
 FILL_GROW = 1.5                   # a filling ground shape grows at least this much over its life …
 FILL_KEEP = 0.5                   # … and keeps ≥ this share of its peak alpha when 95 % of the growth is done
 FILL_MIN_ALPHA = 0.15             # (layers that never get this opaque are ignored)
@@ -197,6 +212,45 @@ MANA_HUE = hsv(hex01(MANA_SHIELD))[0]
 def is_violet(c) -> bool:
     h, s, _ = hsv(c)
     return s > VIOLET_SAT and hue_dist(h, VIOLET_HUE) < VIOLET_GUARD_DEG
+
+
+TARNISH_HUE = hsv(hex01(MOON_TARNISH))[0]
+SALLOW_HUE, SALLOW_S, SALLOW_V = hsv(hex01(SALLOW_LAMP))
+
+
+def is_tarnish(c) -> bool:
+    """A hero colour that would read as the fouled seal's light: saturated, bright, within the guard band."""
+    h, s, v = hsv(c)
+    return s > TARNISH_SAT and v >= TARNISH_MIN_VAL and hue_dist(h, TARNISH_HUE) < TARNISH_GUARD_DEG
+
+
+def o4_candidates(hits: list) -> list:
+    """Open decision O4 as numbers: for each candidate accent, the gating hero hits of the tarnish rule and the
+    nearest saturated hero hue on each side (the report's ``o4`` block)."""
+    hero = [x for x in hits if x["side"] == "hero" and x["gating"] and x["sat"] > TARNISH_SAT
+            and hsv(hex01(x["hex"]))[2] >= TARNISH_MIN_VAL]
+    out = []
+    for label, hx in O4_CANDIDATES:
+        hue, sat, _ = hsv(hex01(hx))
+        bad = [x for x in hero if hue_dist(x["hue"], hue) < TARNISH_GUARD_DEG]
+        below = [x for x in hero if 0.0 < (hue - x["hue"]) % 360.0 <= 90.0]
+        above = [x for x in hero if 0.0 < (x["hue"] - hue) % 360.0 <= 90.0]
+        lo = max(below, key=lambda x: x["hue"], default=None)
+        hi = min(above, key=lambda x: x["hue"], default=None)
+        out.append({"candidate": label, "hex": hx, "hue": round(hue, 1), "sat": round(sat, 3),
+                    "pass": not bad, "hits": len(bad), "recipes": sorted({x["recipe"] for x in bad}),
+                    "colours": sorted({x["hex"] for x in bad}),
+                    "nearestBelow": lo and {"hex": lo["hex"], "hue": lo["hue"], "deg": round(hue_dist(lo["hue"], hue), 1),
+                                            "recipe": lo["recipe"]},
+                    "nearestAbove": hi and {"hex": hi["hex"], "hue": hi["hue"], "deg": round(hue_dist(hi["hue"], hue), 1),
+                                            "recipe": hi["recipe"]}})
+    return out
+
+
+def tarnish_like(c) -> bool:
+    """Any moon-tarnish tint (the accent itself is sat .29): for the 'never a damage telegraph' rule."""
+    h, s, v = hsv(c)
+    return s > 0.15 and v >= TARNISH_MIN_VAL and hue_dist(h, TARNISH_HUE) < TARNISH_TELEGRAPH_DEG
 
 
 def is_ember(c) -> bool:
@@ -719,6 +773,21 @@ def audit(doc: dict) -> dict:
     ember = [x for x in hits if x["side"] == "enemy" and x["gating"] and is_ember(hex01(x["hex"]))]
     ember_adv = [x for x in hits if x["side"] == "enemy" and not x["gating"] and is_ember(hex01(x["hex"]))]
     near = [x for x in hits if x["side"] == "enemy" and x["gating"] and near_ember(hex01(x["hex"]))]
+    # Chapter 2 accents (chapter2.md §4.1 / O4). Hero colours in the moon-tarnish guard band; telegraph recipes
+    # (telegraph.*: the DR5 crimson / bone decal language) drawing a tarnish tint; the two accents' own constants.
+    tarnish = [x for x in hits if x["side"] == "hero" and x["gating"] and is_tarnish(hex01(x["hex"]))]
+    tarnish_late = [x for x in hits if x["side"] == "hero" and not x["gating"] and is_tarnish(hex01(x["hex"]))]
+    tarnish_adv = [x for x in hits if x["side"] in ("friendly", "neutral") and is_tarnish(hex01(x["hex"]))]
+    tarnish_tele = [x for x in hits if x["recipe"].startswith("telegraph.") and tarnish_like(hex01(x["hex"]))]
+    hero_near = sorted({(round(hue_dist(x["hue"], TARNISH_HUE), 1), x["hex"], x["recipe"]) for x in hits
+                        if x["side"] == "hero" and x["sat"] > TARNISH_SAT
+                        and hsv(hex01(x["hex"]))[2] >= TARNISH_MIN_VAL
+                        and TARNISH_GUARD_DEG <= hue_dist(x["hue"], TARNISH_HUE) < TARNISH_GUARD_DEG + 15.0})
+    sallow_gap = min(hue_dist(SALLOW_HUE, EMBER_HUE[0]), hue_dist(SALLOW_HUE, EMBER_HUE[1]))
+    sallow_ok = (not is_ember(hex01(SALLOW_LAMP)) and not EMBER_HUE[0] <= SALLOW_HUE <= EMBER_HUE[1]
+                 and sallow_gap >= SALLOW_EMBER_MARGIN_DEG)
+    tarnish_const_ok = (hue_dist(TARNISH_HUE, VIOLET_HUE) >= VIOLET_GUARD_DEG
+                        and not is_ember(hex01(MOON_TARNISH)))
     art = enemy_art(ctx)
     art_bad = [a for a in art if a["ember"]]
     art_near = [a for a in art if near_ember(hex01(a["hex"]))]
@@ -728,7 +797,7 @@ def audit(doc: dict) -> dict:
     for f in enemy_fill:
         f["hazardColours"] = all(hue_dist(hsv(hex01(c))[0], hsv(hex01(HAZARD_RIM))[0]) < 20.0
                                  or hsv(hex01(c))[1] <= 0.2 for c in f["colors"])
-    for x in violet + ember:
+    for x in violet + ember + tarnish + tarnish_tele:
         x["bad"] = True
 
     def per_recipe(xs):
@@ -750,6 +819,17 @@ def audit(doc: dict) -> dict:
                    f"{len(ember)} hits in {len({x['recipe'] for x in ember})} recipes"},
         {"rule": "ember", "subject": "enemy art (monster emissive / eye swatches, manifest fx)", "ok": not art_bad,
          "detail": f"{len(art)} colours checked; {len(art_bad)} ember"},
+        {"rule": "tarnish", "subject": "hero recipes", "ok": not tarnish,
+         "detail": f"no hero colour with HSV sat > {TARNISH_SAT} (value >= {TARNISH_MIN_VAL}) within "
+                   f"{TARNISH_GUARD_DEG:g} deg of moon-tarnish {MOON_TARNISH} (hue {TARNISH_HUE:.1f}); "
+                   f"{len(tarnish)} hits in {len({x['recipe'] for x in tarnish})} recipes"},
+        {"rule": "tarnish", "subject": "telegraph recipes (never a damage telegraph)", "ok": not tarnish_tele,
+         "detail": f"no telegraph.* layer within {TARNISH_TELEGRAPH_DEG:g} deg of moon-tarnish at sat > .15; "
+                   f"{len(tarnish_tele)} hits in {len({x['recipe'] for x in tarnish_tele})} recipes"},
+        {"rule": "accents", "subject": "Chapter 2 accent constants", "ok": sallow_ok and tarnish_const_ok,
+         "detail": f"sallow lamplight {SALLOW_LAMP} hue {SALLOW_HUE:.1f} sat {SALLOW_S:.2f}: {sallow_gap:.1f} deg "
+                   f"outside the ember band (>= {SALLOW_EMBER_MARGIN_DEG:g}); moon-tarnish hue {TARNISH_HUE:.1f} is "
+                   f"{hue_dist(TARNISH_HUE, VIOLET_HUE):.1f} deg from breach-violet"},
     ]
     sep = hue_dist(VIOLET_HUE, MANA_HUE)
     # The two relaxations of DR5's wording, listed with what they exempt today (pending confirmation: DECISIONS R22).
@@ -780,21 +860,38 @@ def audit(doc: dict) -> dict:
                       "violetGuardDeg": VIOLET_GUARD_DEG, "violetSat": VIOLET_SAT, "emberHue": list(EMBER_HUE),
                       "emberSat": EMBER_SAT, "emberMinVal": EMBER_MIN_VAL, "nearEmberDeg": NEAR_EMBER_DEG,
                       "hazard": {"rim": HAZARD_RIM, "fill": HAZARD_FILL},
+                      "moonTarnish": MOON_TARNISH, "moonTarnishHue": round(TARNISH_HUE, 1),
+                      "tarnishGuardDeg": TARNISH_GUARD_DEG, "tarnishSat": TARNISH_SAT,
+                      "tarnishMinVal": TARNISH_MIN_VAL, "tarnishTelegraphDeg": TARNISH_TELEGRAPH_DEG,
+                      "sallowLamp": SALLOW_LAMP, "sallowHue": round(SALLOW_HUE, 1), "sallowSat": round(SALLOW_S, 3),
+                      "sallowToEmberDeg": round(sallow_gap, 1),
                       "fill": {"grow": FILL_GROW, "keep": FILL_KEEP, "minAlpha": FILL_MIN_ALPHA},
                       "colourSpace": "display sRGB, HSV hue / saturation"},
         "rules": rules,
         "sides": {s: {"recipes": len(v), "colours": len(groups[s]) if s != "enemy" else len(
             [x for x in hits if x["side"] == "enemy"])} for s, v in sides.items()},
         "violations": {"violet": per_recipe(violet), "fill": hero_fill, "ember": per_recipe(ember),
-                       "emberArt": art_bad},
+                       "emberArt": art_bad, "tarnish": per_recipe(tarnish),
+                       "tarnishTelegraph": per_recipe(tarnish_tele)},
         "advisory": {"violetFriendlyNeutral": per_recipe(violet_adv), "fillFriendlyNeutral": fill_adv,
                      "enemyFills": enemy_fill, "emberLaterChapters": per_recipe(ember_adv),
                      "violetLaterChapters": per_recipe(violet_late),
+                     "tarnishFriendlyNeutral": per_recipe(tarnish_adv),
+                     "tarnishLaterChapters": per_recipe(tarnish_late),
+                     "tarnishNearestHero": [{"degFromTarnish": d, "hex": hx, "recipe": rid}
+                                            for d, hx, rid in hero_near[:24]],
                      "nearEmber": {"recipes": per_recipe(near), "art": art_near,
                                    "note": f"enemy colours within {NEAR_EMBER_DEG:g} deg outside the ember hue band "
                                            f"(sat > {EMBER_SAT}, value >= {EMBER_MIN_VAL}): ember in all but the "
                                            f"number"}},
         "relaxations": relaxations,
+        "o4": {"decision": "Docs/dark-remake/chapter2.md §22 O4 (two new enemy accents)",
+               "rule": f"no hero colour at sat > {TARNISH_SAT} (value >= {TARNISH_MIN_VAL}) within "
+                       f"{TARNISH_GUARD_DEG:g} deg of moon-tarnish",
+               "candidates": o4_candidates(hits),
+               "outcome": "the spec hex fails against the hero greens; the stated fallback (toward 150 deg) fails "
+                          "worse; 'shipped' is the nearest hue that clears both the greens and frost (same "
+                          "saturation and value). Provisional: the owner rules (or recolours the two hero greens)"},
         "unresolved": unresolved,
         "recipesBySide": sides,
         "enemyArt": art,
@@ -845,6 +942,22 @@ def main(argv: list[str]) -> int:
                                                                   for x in xs})))
         for a in res["violations"]["emberArt"]:
             print(f"    ember   {a['source']} {a['hex']}")
+        for key in ("tarnish", "tarnishTelegraph"):
+            for rid, xs in res["violations"][key].items():
+                print(f"    {key:7s} {rid:28s} " + ", ".join(sorted({f"{x['hex']} (h {x['hue']:.0f} s {x['sat']:.2f})"
+                                                                       for x in xs})))
+        for c in res["o4"]["candidates"]:
+            nb, na = c["nearestBelow"], c["nearestAbove"]
+            print(f"    O4 {c['candidate']:10s} {c['hex']} hue {c['hue']:5.1f}: {'PASS' if c['pass'] else 'FAIL'} "
+                  f"{c['hits']} hits in {len(c['recipes'])} hero recipes; nearest hero hue below "
+                  f"{nb['hue'] if nb else '-'} ({nb['deg'] if nb else '-'} deg), above {na['hue'] if na else '-'} "
+                  f"({na['deg'] if na else '-'} deg)")
+        tn = res["advisory"]["tarnishNearestHero"]
+        if tn:
+            print("    tarnish: nearest saturated hero colours outside the guard band: " + ", ".join(
+                f"{t['hex']} +{t['degFromTarnish'] - TARNISH_GUARD_DEG:.1f} deg ({t['recipe']})" for t in tn[:5]))
+        print(f"    tarnish (advisory): {len(res['advisory']['tarnishFriendlyNeutral'])} friendly / neutral recipes, "
+              f"{len(res['advisory']['tarnishLaterChapters'])} hero recipes of later chapters in the band")
         adv = res["advisory"]
         for rid, xs in adv["nearEmber"]["recipes"].items():
             print(f"    near-ember (advisory) {rid:28s} " + ", ".join(sorted({f"{x['hex']} (h {x['hue']:.0f})"

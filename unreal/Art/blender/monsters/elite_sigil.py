@@ -529,6 +529,9 @@ ROSTER = [("SK_Mon_RisenFootman", None, "FOOTMAN"), ("SK_Mon_RisenArbalest", Non
           ("SK_Mon_Breachclot", None, "BREACHCLOT"), ("SK_Mon_Cinderbloat", None, "CINDERBLOAT"),
           ("SK_Mon_Corpseherd", None, "CORPSEHERD"),
           ("SK_Mon_Pitwarden", None, "PITWARDEN")]           # Wave 3: the Pit's mini-boss
+# Chapter 2 (the Hanging Wood): solved with the same rule (``--solve-elite --only=MOONHOUND``); kept out of ROSTER so
+# the march roster sheet (``--roster``) stays Chapter 1's. 4R-2 appends its members here.
+ROSTER_CH2 = [("SK_Mon_MoonHound", None, "MOONHOUND")]
 
 # Wave 2 (2H, art review round 1): the sigil rides its own socket, ``fx_elite``. The roster sweep found the kit's
 # fx_overhead (crown + 25 cm on the head bone; root / body_top on the gnawers and clots) too low for the march's
@@ -722,9 +725,11 @@ def solve_elite(only=(), cap: float | None = GAP_CAP_PX, closest=()) -> dict:
     import unburied as UB
     UB.march_stage()
     groups: dict[str, list] = {}
-    for asset, variant, label in ROSTER:
+    for asset, variant, label in ROSTER + ROSTER_CH2:
         if only and label not in only:
             continue
+        if not only and (asset, variant, label) in ROSTER_CH2:
+            continue                                         # Chapter 2 members: only when asked for by label
         groups.setdefault(asset, []).append(variant)
     out = {}
     for asset, variants in groups.items():
@@ -748,7 +753,7 @@ def solve_elite(only=(), cap: float | None = GAP_CAP_PX, closest=()) -> dict:
         fails: dict[tuple, int] = {}
         chosen, tried = None, 0
         order = [(v, f) for v in variants for f in GAP_FACINGS]
-        near = asset in {a for a, _, lbl in ROSTER if lbl in closest or a in ELITE_CLOSEST}
+        near = asset in {a for a, _, lbl in ROSTER + ROSTER_CH2 if lbl in closest or a in ELITE_CLOSEST}
         best = None
 
         def head_px(i):
@@ -863,7 +868,7 @@ def over_roster(out_dir: Path, facings=GAP_FACINGS, only=()) -> dict:
     UB.march_stage()
     gaps, written = {}, []
     drop = Vector((0.0, 0.0, BOB_CM / 100.0))
-    for asset, variant, label in ROSTER:
+    for asset, variant, label in ROSTER + (ROSTER_CH2 if only else []):     # Chapter 2 members only by label
         if asset not in cohkit.manifest()["assets"] or (only and label not in only):
             continue
         cells = []

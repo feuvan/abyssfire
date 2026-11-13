@@ -8107,6 +8107,724 @@
     "toon": 5923
    }
   },
+  "SK_Mon_MoonHound": {
+   "abilities": {
+    "pounce": {
+     "clip": "Pounce",
+     "contactMs": 650.0,
+     "dash": true,
+     "leapMs": 380.0,
+     "travelMs": [
+      380.0,
+      650.0
+     ],
+     "travelNote": "the clip is airborne from Leap to Contact and stands from Contact on (the fores planted where they strike): the actor has to cover the dash line inside travelMs. The UE charge slide today starts at the core's EvEntityTeleported{Dash} (= Contact) and eases over 200 ms: played that way the hound leaps on the spot and then skates down the line on planted paws (HANDOFF 4U: slide the visual from Leap to Contact along the telegraph's line, or ask the core for the dash's start)",
+     "windupEndMs": 403.0
+    }
+   },
+   "anims": [
+    {
+     "asset": "A_Mon_MoonHound_Idle",
+     "fbx": "Monsters/A_Mon_MoonHound_Idle.fbx",
+     "fps": 60,
+     "frames": 96,
+     "lengthMs": 1600.0,
+     "loop": true,
+     "name": "Idle",
+     "notifies": []
+    },
+    {
+     "asset": "A_Mon_MoonHound_Idle_Sniff",
+     "fbx": "Monsters/A_Mon_MoonHound_Idle_Sniff.fbx",
+     "fps": 60,
+     "frames": 144,
+     "lengthMs": 2400.0,
+     "loop": false,
+     "name": "Idle_Sniff",
+     "notifies": [],
+     "usage": "idle variant: nose to the ground along the roots; one-shot from READY back to READY"
+    },
+    {
+     "asset": "A_Mon_MoonHound_Walk",
+     "fbx": "Monsters/A_Mon_MoonHound_Walk.fbx",
+     "fps": 60,
+     "frames": 42,
+     "lengthMs": 700.0,
+     "loop": true,
+     "name": "Walk",
+     "notifies": [
+      {
+       "ms": 0.0,
+       "name": "FootBR"
+      },
+      {
+       "ms": 0.0,
+       "name": "FootFL"
+      },
+      {
+       "ms": 350.0,
+       "name": "FootBL"
+      },
+      {
+       "ms": 350.0,
+       "name": "FootFR"
+      }
+     ],
+     "refSpeedCmS": 130.0,
+     "usage": "the trot (1.3 m/s at rate 1: play rate = v / ref); the slower of the two gaits (UE picks Walk or Run by the nearer ref speed)"
+    },
+    {
+     "asset": "A_Mon_MoonHound_Run",
+     "fbx": "Monsters/A_Mon_MoonHound_Run.fbx",
+     "fps": 60,
+     "frames": 28,
+     "lengthMs": 460.0,
+     "loop": true,
+     "name": "Run",
+     "notifies": [
+      {
+       "ms": 0.0,
+       "name": "FootBL"
+      },
+      {
+       "ms": 46.0,
+       "name": "FootBR"
+      },
+      {
+       "ms": 211.6,
+       "name": "FootFL"
+      },
+      {
+       "ms": 266.8,
+       "name": "FootFR"
+      }
+     ],
+     "refSpeedCmS": 375.0,
+     "usage": "the gallop (3.75 m/s at rate 1 = the monster's data speed: play rate = v / ref)"
+    },
+    {
+     "asset": "A_Mon_MoonHound_Attack01",
+     "contactMs": 320.0,
+     "fbx": "Monsters/A_Mon_MoonHound_Attack01.fbx",
+     "fps": 60,
+     "frames": 48,
+     "lengthMs": 800.0,
+     "loop": false,
+     "name": "Attack01",
+     "notifies": [
+      {
+       "ms": 198.4,
+       "name": "WindupEnd"
+      },
+      {
+       "ms": 320.0,
+       "name": "Contact"
+      }
+     ],
+     "usage": "the bite: one Contact (the jaws shut on it), one damage roll"
+    },
+    {
+     "asset": "A_Mon_MoonHound_Pounce",
+     "contactMs": 650.0,
+     "fbx": "Monsters/A_Mon_MoonHound_Pounce.fbx",
+     "fps": 60,
+     "frames": 60,
+     "lengthMs": 1000.0,
+     "loop": false,
+     "name": "Pounce",
+     "notifies": [
+      {
+       "ms": 380.0,
+       "name": "FX_PounceLeap"
+      },
+      {
+       "ms": 380.0,
+       "name": "Leap"
+      },
+      {
+       "ms": 403.0,
+       "name": "WindupEnd"
+      },
+      {
+       "ms": 650.0,
+       "name": "Contact"
+      },
+      {
+       "ms": 650.0,
+       "name": "FX_PounceLand"
+      }
+     ],
+     "usage": "the pounce (a dash line): Leap = the paws leave the ground, Contact = the fores and the jaws strike at the line's end (the core's windupMs); the clip is in place, the core dashes the actor"
+    },
+    {
+     "asset": "A_Mon_MoonHound_Hurt",
+     "fbx": "Monsters/A_Mon_MoonHound_Hurt.fbx",
+     "fps": 60,
+     "frames": 17,
+     "lengthMs": 280.0,
+     "loop": false,
+     "name": "Hurt",
+     "notifies": []
+    },
+    {
+     "asset": "A_Mon_MoonHound_Death",
+     "fbx": "Monsters/A_Mon_MoonHound_Death.fbx",
+     "fps": 60,
+     "frames": 54,
+     "lengthMs": 900.0,
+     "loop": false,
+     "name": "Death",
+     "notifies": [],
+     "usage": "rolls onto its side; the last frame is the corpse pose the husk holds"
+    },
+    {
+     "asset": "A_Mon_MoonHound_Stun",
+     "fbx": "Monsters/A_Mon_MoonHound_Stun.fbx",
+     "fps": 60,
+     "frames": 42,
+     "lengthMs": 700.0,
+     "loop": true,
+     "name": "Stun",
+     "notifies": [],
+     "usage": "stunned (stun stars over fx_overhead): loops until the stun ends"
+    }
+   ],
+   "attachments": [],
+   "attackStyle": "bite",
+   "blobShadowRadiusCm": 40.0,
+   "bones": 36,
+   "boundsCm": {
+    "max": [
+     14.703,
+     86.614,
+     80.778
+    ],
+    "min": [
+     -14.617,
+     -88.996,
+     -1.721
+    ]
+   },
+   "budget": {
+    "bones": 36,
+    "lod0": {
+     "outline": 2344,
+     "toon": 3278
+    },
+    "lod1": {
+     "outline": 1176,
+     "toon": 1876
+    },
+    "pass": true,
+    "spec": "chapter2.md \u00a717.1 moon_hound: LOD0 <= 5000 toon triangles, LOD1 <= 2500; hull <= 0.75 x toon",
+    "weightedBones": 30
+   },
+   "category": "Monsters",
+   "corpse": {
+    "carcassNote": "chapter2.md 4.4 / 11: corpse {leaves: 'remains'} \u2014 not consumable, not raisable (the Cantor raises the Wood's Dead, never a beast). The one exception is the core's: Volgan's phase feed eats a summoned hound that dies within 4 tiles of the dais (U3 plays corpse.consume on EvCorpseRemoved{consumed} as for any corpse)",
+    "consumable": false,
+    "deathClip": "Death",
+    "family": "moonbitten",
+    "holdFromMs": 900.0,
+    "husk": {
+     "anchors": {
+      "chest": [
+       22.7,
+       4.1,
+       13.3
+      ],
+      "head": [
+       58.4,
+       15.9,
+       13.3
+      ],
+      "pelvis": [
+       -47.0,
+       -10.0,
+       13.3
+      ]
+     },
+     "boundsCm": {
+      "max": [
+       73.4,
+       64.7,
+       28.0
+      ],
+      "min": [
+       -72.1,
+       -16.7,
+       -1.1
+      ]
+     },
+     "centerCm": [
+      0.6,
+      24.0,
+      0.0
+     ],
+     "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+     "radiusCm": 65.8,
+     "topCm": 28.0
+    },
+    "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+    "look": "carcass",
+    "note": "on its side where the roll left it, the legs run out, the collar still on (remains: nothing eats or raises them; a phase feed takes its own summons)",
+    "previews": [
+     "corpse_husks/SK_Mon_MoonHound/00016-00830ms.png",
+     "corpse_husks/SK_Mon_MoonHound/01280-02130ms.png"
+    ],
+    "raisable": false,
+    "recipes": {
+     "burn": "corpse.burn",
+     "crumble": "corpse.crumble",
+     "expire": "corpse.expire"
+    },
+    "registry": true,
+    "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+    "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3; chapter2.md 4.4 (remains)",
+    "timeline": {
+     "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+     "crumbleMs": 900,
+     "crumbleTo": 0.38,
+     "expireMs": 700,
+     "greyMs": 380,
+     "holdMs": 450,
+     "material": "M_AF_AshDissolve",
+     "ttlMs": 20000
+    }
+   },
+   "displayName": {
+    "en": "Moon-hound",
+    "zh-CN": "\u98df\u6708\u72ac"
+   },
+   "eliteMarker": {
+    "asset": "SM_FX_EliteSigil",
+    "gameId": "elite_sigil",
+    "note": "the W2 sigil rides fx_elite (on root: it does not swing with the head), the W1 crown / nameplate / stun stars fx_overhead",
+    "socket": "fx_elite"
+   },
+   "family": "moonbitten",
+   "fbx": "Monsters/SK_Mon_MoonHound.fbx",
+   "fx": {
+    "blobShadow": {
+     "note": "a long animal under a round blob: 40 cm covers the chest and the loin; the legs' contact is the ink",
+     "radiusCm": 40.0
+    },
+    "contactReach": {
+     "attackRangeTiles": 1.3,
+     "biteCm": [
+      94.4,
+      -12.3,
+      54.4
+     ],
+     "note": "Attack01 Contact 320: the jaws shut here (forward, right, up cm from the root)"
+    },
+    "eyeShine": {
+     "color": "#E6ECF5",
+     "emissive": 0.0,
+     "note": "the Moon-Bitten's marker (chapter2.md \u00a74.1): silver-white, NOT emissive \u2014 no eye card, no bloom in game; the sockets are for portraits and a later variant",
+     "sockets": [
+      "fx_eye_l",
+      "fx_eye_r"
+     ],
+     "swatch": "moonbitten.eye"
+    },
+    "pounce": {
+     "biteCm": [
+      86.0,
+      -7.1,
+      21.9
+     ],
+     "clip": "Pounce",
+     "contactMs": 650.0,
+     "dash": true,
+     "leapMs": 380.0,
+     "note": "in place: the core dashes the actor to the line's end; airborne from Leap to Contact (the body's arc peaks ~33 cm over the stand)",
+     "recipes": {
+      "land": "notify.FX_PounceLand",
+      "leap": "notify.FX_PounceLeap"
+     },
+     "shape": {
+      "kind": "line",
+      "lengthTiles": 4,
+      "widthTiles": 1.2
+     },
+     "skill": "pounce"
+    },
+    "telegraph": {
+     "elite": "#D11F2E",
+     "normal": "#FFE8DC",
+     "note": "dark remake: bone fill / crimson rim (monsters.md \u00a71.2)",
+     "untilMs": 198.4
+    }
+   },
+   "gameIds": [
+    "monster_moon_hound"
+   ],
+   "heightCm": 79.0,
+   "inkGate": {
+    "cells": 25,
+    "gate": {
+     "class": "monster",
+     "darkLum": 40.0,
+     "darkWithinPx": 3,
+     "maxHullLumP95": 40.0,
+     "minFrac": 0.9,
+     "minPx": 3.0
+    },
+    "maxHullLumP95": 24.6,
+    "medianFracRimSpec": 0.9938,
+    "medianRimPx": 3.74,
+    "minFracDark": 1.0,
+    "minFracRim": 0.9613,
+    "minFracRimSpec": 0.9613,
+    "outlinePx1080": 3.5,
+    "pass": true,
+    "specNote": "fraction of silhouette edge pixels with a rim >= 3 px (the class width, spec \u00a71.3) on every gated cell; the kit gate is 3 px (outline.GATE_SLACK_PX); shipped request 3.5 px (per-asset outlinePx1080, class 3 px): gated at 3 px",
+    "specPx": 3.0,
+    "worstSpecCell": "game_contacts.png Death F54 se"
+   },
+   "kind": "SkeletalMesh",
+   "locomotion": {
+    "Run": {
+     "footNotifies": [
+      "FootFL",
+      "FootFR",
+      "FootBL",
+      "FootBR"
+     ],
+     "gait": "gallop",
+     "refSpeedCmS": 375.0
+    },
+    "Walk": {
+     "footNotifies": [
+      "FootFL",
+      "FootFR",
+      "FootBL",
+      "FootBR"
+     ],
+     "gait": "trot",
+     "refSpeedCmS": 130.0
+    },
+    "rule": "UE picks the clip whose ref speed is nearer the actor's (log scale) and plays it at v / ref: the hound at its data speed gallops at rate 1.0, a slowed one (< 2.2 m/s) trots",
+    "slideMm": {
+     "Run": 0.0,
+     "Walk": 0.0
+    }
+   },
+   "lods": [
+    {
+     "asset": "SK_Mon_MoonHound_LOD1",
+     "fbx": "Monsters/SK_Mon_MoonHound_LOD1.fbx",
+     "import": "same SKEL_Quadruped armature and bind pose; import as LOD index 1 of SK_Mon_MoonHound (USkeletalMeshEditorSubsystem::ImportLOD / Interchange LOD import) \u2014 Blender's FBX exporter cannot write an FbxLODGroup, so the LOD ships as its own file",
+     "index": 1,
+     "screenSize": 0.05,
+     "screenSizeNote": "UE screen size of SK_Mon_MoonHound at the W1 camera: 0.174 (max zoom-out) to 0.291 (max zoom-in), 0.218 at the default distance \u2014 desktop always draws LOD0; LOD1 is the mobile-low gameplay mesh (skeletal LOD bias / MinLOD 1) and the far fallback",
+     "triangles": {
+      "outline": 1176,
+      "toon": 1876
+     }
+    }
+   ],
+   "marker": {
+    "family": "the Moon-Bitten",
+    "kind": "silver-white eye-shine #E6ECF5, non-emissive (chapter2.md \u00a74.1)",
+    "swatches": [
+     "moonbitten.eye"
+    ]
+   },
+   "materialSlots": [
+    {
+     "index": 0,
+     "name": "MI_AF_Toon_Monsters_Hangwood",
+     "palette": "Monsters_Hangwood",
+     "parent": "M_AF_Toon"
+    },
+    {
+     "class": "monster",
+     "index": 1,
+     "name": "M_AF_Outline",
+     "outlineMix": 0.4,
+     "outlinePx1080": 3.5,
+     "outlinePxClass": 3.0,
+     "outlinePxNote": "per-asset request (as every dark-remake monster): thin legs, ear tips, the tail and the jaw keep < 3 px on too many edges at the class's 3.0 px; gated at 3.0 px",
+     "palette": "Monsters_Hangwood",
+     "parent": "M_AF_Outline",
+     "px1080AtDefaultDistance": 1.8,
+     "widthCm": 1.5
+    }
+   ],
+   "notes": "Clips in place; the core moves the actor (play rate = v / ref). Attack01 is one bite (the jaws shut on Contact 320). Pounce = \u6251 (crouch, Leap 380, Contact 650; the core dashes the actor). Idle_Sniff is a one-shot idle variant. Death rolls onto its side and holds: the corpse (remains). Stun loops. No Rise (nothing raises the Moon-Bitten). Eye-shine is a palette swatch without emissive: it does not bloom.",
+   "portrait": "Portraits/T_UI_Portrait_MoonHound.png",
+   "previews": [
+    "mon_moon_hound/anim_Attack01.png",
+    "mon_moon_hound/anim_Death.png",
+    "mon_moon_hound/anim_Hurt.png",
+    "mon_moon_hound/anim_Idle.png",
+    "mon_moon_hound/anim_Idle_Sniff.png",
+    "mon_moon_hound/anim_Pounce.png",
+    "mon_moon_hound/anim_Run.png",
+    "mon_moon_hound/anim_Stun.png",
+    "mon_moon_hound/anim_Walk.png",
+    "mon_moon_hound/anim_back_Attack01.png",
+    "mon_moon_hound/anim_back_Death.png",
+    "mon_moon_hound/anim_back_Pounce.png",
+    "mon_moon_hound/closeup_front.png",
+    "mon_moon_hound/closeup_ne.png",
+    "mon_moon_hound/closeup_se.png",
+    "mon_moon_hound/game.png",
+    "mon_moon_hound/game_1080crop.png",
+    "mon_moon_hound/game_contacts.png",
+    "mon_moon_hound/game_facings.png",
+    "mon_moon_hound/game_inkgate.png",
+    "mon_moon_hound/game_poses.png",
+    "mon_moon_hound/lod1.png",
+    "mon_moon_hound/material_ab.png",
+    "mon_moon_hound/portrait.png",
+    "mon_moon_hound/portrait_zoom2x.png",
+    "mon_moon_hound/poses_close_a.png",
+    "mon_moon_hound/poses_close_b.png",
+    "mon_moon_hound/poses_close_c.png",
+    "mon_moon_hound/turnaround.png"
+   ],
+   "refSpeedCmS": 375.0,
+   "remake": {
+    "contactMs": 320.0,
+    "family": "moonbitten",
+    "palette": "Monsters_Hangwood",
+    "spec": "Docs/dark-remake/chapter2.md 4.4 moon_hound",
+    "voiceFamily": "Hound"
+   },
+   "rig": {
+    "animCategoryData": "beast",
+    "family": "quadruped",
+    "note": "the core's AnimRig (monster animCategory, anim_timing presets) has no 'quadruped': 'beast' is the existing preset that fits (hurt / death durations); the UE anim map resolves this asset's clips by name (Pounce is new), not by category",
+    "skeleton": "SKEL_Quadruped",
+    "views": "two (a 3-D mesh: the actor turns)"
+   },
+   "role": "packHunter",
+   "scale": 1.0,
+   "skeleton": "SKEL_Quadruped",
+   "skeletonNote": "SKEL_Quadruped (kit/skel_quadruped.py): 36 bones \u2014 root, pelvis + spine_01..04, neck_01..02, head, jaw, ear_l/r, tail_01..03, foreleg_01..03 + foretoe and hindleg_01..03 + hindtoe per side, ik_foot_root + ik_foot_fl/fr/bl/br (no weights)",
+   "sockets": [
+    {
+     "bone": "root",
+     "name": "fx_feet",
+     "relLocCm": [
+      0.0,
+      -0.0,
+      0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      -0.0,
+      0.0
+     ]
+    },
+    {
+     "bone": "spine_04",
+     "name": "fx_chest",
+     "relLocCm": [
+      -0.0,
+      -7.278,
+      10.844
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      26.0,
+      60.0
+     ]
+    },
+    {
+     "bone": "head",
+     "name": "fx_head",
+     "relLocCm": [
+      0.0,
+      -7.27,
+      -1.171
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      65.85,
+      65.05
+     ]
+    },
+    {
+     "bone": "root",
+     "name": "fx_overhead",
+     "relLocCm": [
+      0.0,
+      -105.0,
+      18.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      18.0,
+      105.0
+     ]
+    },
+    {
+     "bone": "head",
+     "name": "fx_eye_l",
+     "relLocCm": [
+      4.6,
+      -8.116,
+      -3.564
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      4.6,
+      67.2,
+      67.2
+     ]
+    },
+    {
+     "bone": "head",
+     "name": "fx_eye_r",
+     "relLocCm": [
+      -4.6,
+      -8.116,
+      -3.564
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      -4.6,
+      67.2,
+      67.2
+     ]
+    },
+    {
+     "bone": "head",
+     "name": "mouth",
+     "relLocCm": [
+      -0.0,
+      -14.185,
+      2.969
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      71.69,
+      59.496
+     ]
+    },
+    {
+     "bone": "jaw",
+     "name": "bite",
+     "relLocCm": [
+      0.0,
+      -14.832,
+      -1.158
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      78.12,
+      58.444
+     ]
+    },
+    {
+     "bone": "neck_01",
+     "name": "collar",
+     "relLocCm": [
+      -0.0,
+      -7.18,
+      10.393
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      39.625,
+      58.69
+     ]
+    },
+    {
+     "bone": "tail_03",
+     "name": "tail_tip",
+     "relLocCm": [
+      -0.0,
+      -14.239,
+      -0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      -87.0,
+      55.6
+     ]
+    },
+    {
+     "bone": "root",
+     "name": "fx_elite",
+     "relLocCm": [
+      0.0,
+      -137.0,
+      26.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      26.0,
+      137.0
+     ]
+    }
+   ],
+   "triangles": {
+    "outline": 2344,
+    "toon": 3278
+   },
+   "variantsPlanned": {
+    "hound_packleader": "scale 1.25, heavier shoulders, a grey saddle, a scarred muzzle; + Cast01 (qclips.howl 1400 / Contact 1000)",
+    "volgan": "SKEL_Quadruped at actor scale 2.2 with his own mesh and clips (qclips takes every length and beat as an argument)"
+   }
+  },
   "SK_Mon_OathZealot": {
    "anims": [
     {
@@ -84637,6 +85355,7 @@
   "monster_goblin_shaman": "SK_Mon_GoblinShaman",
   "monster_gravegnawer": "SK_Mon_Gravegnawer",
   "monster_miniboss_corpseherd": "SK_Mon_Corpseherd",
+  "monster_moon_hound": "SK_Mon_MoonHound",
   "monster_oath_zealot": "SK_Mon_OathZealot",
   "monster_risen_arbalest": "SK_Mon_RisenArbalest",
   "monster_risen_footman": "SK_Mon_RisenFootman",
@@ -84996,6 +85715,30 @@
   }
  },
  "palettes": {
+  "Foliage_Hangwood": {
+   "atlasPx": 256,
+   "baseColor": {
+    "file": "Textures/T_AF_Palette_Foliage_Hangwood_BC.png",
+    "name": "T_AF_Palette_Foliage_Hangwood_BC",
+    "srgb": true
+   },
+   "filter": "nearest",
+   "material": "MI_AF_Toon_Foliage_Hangwood",
+   "mips": false,
+   "params": {
+    "channels": {
+     "a": "outlineMix",
+     "b": "emissive",
+     "g": "lightAmt",
+     "r": "shadowAmt"
+    },
+    "file": "Textures/T_AF_Palette_Foliage_Hangwood_P.png",
+    "name": "T_AF_Palette_Foliage_Hangwood_P",
+    "srgb": false
+   },
+   "parent": "M_AF_Toon_Foliage",
+   "swatchPx": 16
+  },
   "Foliage_March": {
    "atlasPx": 256,
    "baseColor": {
@@ -85063,6 +85806,30 @@
     },
     "file": "Textures/T_AF_Palette_Heroes_P.png",
     "name": "T_AF_Palette_Heroes_P",
+    "srgb": false
+   },
+   "parent": "M_AF_Toon",
+   "swatchPx": 16
+  },
+  "Monsters_Hangwood": {
+   "atlasPx": 256,
+   "baseColor": {
+    "file": "Textures/T_AF_Palette_Monsters_Hangwood_BC.png",
+    "name": "T_AF_Palette_Monsters_Hangwood_BC",
+    "srgb": true
+   },
+   "filter": "nearest",
+   "material": "MI_AF_Toon_Monsters_Hangwood",
+   "mips": false,
+   "params": {
+    "channels": {
+     "a": "outlineMix",
+     "b": "emissive",
+     "g": "lightAmt",
+     "r": "shadowAmt"
+    },
+    "file": "Textures/T_AF_Palette_Monsters_Hangwood_P.png",
+    "name": "T_AF_Palette_Monsters_Hangwood_P",
     "srgb": false
    },
    "parent": "M_AF_Toon",
@@ -85183,6 +85950,30 @@
     },
     "file": "Textures/T_AF_Palette_Pickups_P.png",
     "name": "T_AF_Palette_Pickups_P",
+    "srgb": false
+   },
+   "parent": "M_AF_Toon",
+   "swatchPx": 16
+  },
+  "Props_Hangwood": {
+   "atlasPx": 256,
+   "baseColor": {
+    "file": "Textures/T_AF_Palette_Props_Hangwood_BC.png",
+    "name": "T_AF_Palette_Props_Hangwood_BC",
+    "srgb": true
+   },
+   "filter": "nearest",
+   "material": "MI_AF_Toon_Props_Hangwood",
+   "mips": false,
+   "params": {
+    "channels": {
+     "a": "outlineMix",
+     "b": "emissive",
+     "g": "lightAmt",
+     "r": "shadowAmt"
+    },
+    "file": "Textures/T_AF_Palette_Props_Hangwood_P.png",
+    "name": "T_AF_Palette_Props_Hangwood_P",
     "srgb": false
    },
    "parent": "M_AF_Toon",
@@ -85570,6 +86361,466 @@
   }
  },
  "terrain": {
+  "hangwood": {
+   "artExtras": {
+    "leafmould": "dead-leaf flecks (the style's leaf layer), two root ridges, pale fungus specks #9C9C88",
+    "rootearth": "root ridges (wood #3C352D, lit lip #574C40, shadow #191613), scuffs, a few fungus specks",
+    "rule": "painted into the BC textures only (the runtime samples textures)",
+    "wetstone": "moss #34402F, a wet sheen #525A58",
+    "yard": "scuffs"
+   },
+   "dataStyle": {
+    "ground": {
+     "0": {
+      "accents": [
+       "#A8A894",
+       "#8C8C78"
+      ],
+      "base": "#39382D",
+      "details": [
+       "stones",
+       "bigTuft",
+       "stones"
+      ],
+      "layers": [
+       {
+        "colors": [
+         "#3D3B2F",
+         "#333229",
+         "#403E2E"
+        ],
+        "count": 4,
+        "kind": "patch",
+        "r": [
+         14,
+         28
+        ]
+       },
+       {
+        "colors": [
+         "#2C2B24",
+         "#44412E"
+        ],
+        "count": 3,
+        "kind": "patch",
+        "r": [
+         5,
+         10
+        ]
+       },
+       {
+        "colors": [
+         "#5A4A2C",
+         "#4E3A26",
+         "#5C5434",
+         "#443A2A"
+        ],
+        "count": 16,
+        "kind": "leaf",
+        "size": [
+         2.2,
+         3.6
+        ]
+       },
+       {
+        "color": "#4A4A40",
+        "count": 3,
+        "kind": "pebble",
+        "light": "#5E5E52",
+        "shade": "#24241E",
+        "size": [
+         1.0,
+         1.7
+        ]
+       }
+      ],
+      "lip": "#4A4838",
+      "rank": 4
+     },
+     "1": {
+      "accents": [
+       "#4E463C"
+      ],
+      "base": "#39332C",
+      "details": [
+       "stones",
+       "crackStar",
+       "stones"
+      ],
+      "layers": [
+       {
+        "colors": [
+         "#352F29",
+         "#3E3831",
+         "#322D27"
+        ],
+        "count": 4,
+        "kind": "patch",
+        "r": [
+         10,
+         22
+        ]
+       },
+       {
+        "color": "#1C1815",
+        "count": 2,
+        "kind": "crack",
+        "len": [
+         8,
+         14
+        ],
+        "light": "#443C33",
+        "width": 2
+       },
+       {
+        "colors": [
+         "#4A3C28",
+         "#433627"
+        ],
+        "count": 5,
+        "kind": "leaf",
+        "size": [
+         2.0,
+         3.0
+        ]
+       },
+       {
+        "color": "#3E3830",
+        "count": 5,
+        "kind": "pebble",
+        "light": "#4E463C",
+        "shade": "#201C19",
+        "size": [
+         1.0,
+         2.0
+        ]
+       }
+      ],
+      "rank": 1
+     },
+     "2": {
+      "accents": [
+       "#4E5A48"
+      ],
+      "base": "#3D4242",
+      "details": [
+       "crackStar",
+       "stones",
+       "crackStar"
+      ],
+      "layers": [
+       {
+        "bevelLight": "#4E5454",
+        "bevelShade": "#2E3232",
+        "cells": 2,
+        "jitter": 0.09,
+        "kind": "slabs",
+        "mortar": "#1E2320",
+        "mortarW": 0.04
+       },
+       {
+        "colors": [
+         "#363C3A",
+         "#444A48"
+        ],
+        "count": 4,
+        "kind": "patch",
+        "r": [
+         4,
+         9
+        ]
+       }
+      ],
+      "rank": 2
+     },
+     "3": {
+      "accents": [
+       "#2A3A34"
+      ],
+      "base": "#0E1414",
+      "details": [
+       "stones"
+      ],
+      "layers": [
+       {
+        "colors": [
+         "#0B1010",
+         "#121A19"
+        ],
+        "count": 3,
+        "kind": "patch",
+        "r": [
+         14,
+         26
+        ]
+       },
+       {
+        "alpha": 0.4,
+        "color": "#4A6A60",
+        "count": 4,
+        "kind": "wave",
+        "len": [
+         6,
+         11
+        ]
+       }
+      ],
+      "liquid": {
+       "bank": "#1C1A16",
+       "foam": "#2E3A38",
+       "shallow": "#162020"
+      },
+      "rank": 0
+     },
+     "5": {
+      "accents": [
+       "#8A7E5A",
+       "#6E6448"
+      ],
+      "base": "#443D33",
+      "details": [
+       "straw",
+       "stones",
+       "straw"
+      ],
+      "layers": [
+       {
+        "colors": [
+         "#3E382F",
+         "#4A4337",
+         "#40392E"
+        ],
+        "count": 4,
+        "kind": "patch",
+        "r": [
+         10,
+         20
+        ]
+       },
+       {
+        "color": "#504A3E",
+        "count": 6,
+        "kind": "pebble",
+        "light": "#645C4E",
+        "shade": "#28241F",
+        "size": [
+         1.0,
+         1.9
+        ]
+       },
+       {
+        "color": "#26221D",
+        "count": 1,
+        "kind": "crack",
+        "len": [
+         7,
+         12
+        ],
+        "light": "#524A3E",
+        "width": 2
+       }
+      ],
+      "rank": 2
+     }
+    },
+    "outcrop": {
+     "accent": "#5A6A58",
+     "cap": "#2E3A30",
+     "extra": "#363A38",
+     "kind": "rootKnuckle",
+     "rock": "#444848",
+     "shadow": "#0C0E0E"
+    },
+    "palisade": {
+     "accent": "#8A7E62",
+     "band": "#5A4E3E",
+     "kind": "wattle",
+     "wood": "#3E342A"
+    }
+   },
+   "details": {
+    "alpha": "straight",
+    "cells": "4 x 4 cells of one tile: row 0 leafmould, 1 rootearth, 2 wetstone, 3 yard (paint 5); column = variant - 1 (variants 1..3); column 3 (pond) is transparent",
+    "file": "Terrain/T_Terrain_Hangwood_Details_BC.png",
+    "rule": "own tile (nearest centre) h = tileHash(col, row, 7): h % 12 >= 6 -> variant 1 + h % 3; sample cell at frac(UV0 + 0.5) (tile-local 0..1); composite over the winning material only when it is the own tile's material (AF_Terrain _pattern_block own_var / own_m)",
+    "srgb": true,
+    "texture": "T_Terrain_Hangwood_Details_BC"
+   },
+   "layers": {
+    "0": {
+     "accents": [
+      "#A8A894",
+      "#8C8C78"
+     ],
+     "base": "#39382D",
+     "details": [
+      "stones",
+      "bigTuft",
+      "stones"
+     ],
+     "file": "Terrain/T_Terrain_Hangwood_LeafMould_BC.png",
+     "lip": "#4A4838",
+     "name": "leafmould",
+     "rank": 4,
+     "srgb": true,
+     "texture": "T_Terrain_Hangwood_LeafMould_BC",
+     "tile": "grass"
+    },
+    "1": {
+     "accents": [
+      "#4E463C"
+     ],
+     "base": "#39332C",
+     "details": [
+      "stones",
+      "crackStar",
+      "stones"
+     ],
+     "file": "Terrain/T_Terrain_Hangwood_RootEarth_BC.png",
+     "lip": null,
+     "name": "rootearth",
+     "rank": 1,
+     "srgb": true,
+     "texture": "T_Terrain_Hangwood_RootEarth_BC",
+     "tile": "dirt"
+    },
+    "2": {
+     "accents": [
+      "#4E5A48"
+     ],
+     "base": "#3D4242",
+     "details": [
+      "crackStar",
+      "stones",
+      "crackStar"
+     ],
+     "file": "Terrain/T_Terrain_Hangwood_WetStone_BC.png",
+     "lip": null,
+     "name": "wetstone",
+     "rank": 2,
+     "srgb": true,
+     "texture": "T_Terrain_Hangwood_WetStone_BC",
+     "tile": "stone"
+    },
+    "3": {
+     "accents": [
+      "#2A3A34"
+     ],
+     "base": "#0E1414",
+     "details": [
+      "stones"
+     ],
+     "file": "Terrain/T_Water_Hangwood_BC.png",
+     "lip": null,
+     "name": "pond",
+     "rank": 0,
+     "srgb": true,
+     "texture": "T_Water_Hangwood_BC",
+     "tile": "water"
+    },
+    "5": {
+     "accents": [
+      "#8A7E5A",
+      "#6E6448"
+     ],
+     "base": "#443D33",
+     "details": [
+      "straw",
+      "stones",
+      "straw"
+     ],
+     "file": "Terrain/T_Terrain_Hangwood_Yard_BC.png",
+     "lip": null,
+     "name": "yard",
+     "rank": 2,
+     "srgb": true,
+     "texture": "T_Terrain_Hangwood_Yard_BC",
+     "tile": "camp"
+    }
+   },
+   "material": "M_AF_Terrain (+ M_AF_Water)",
+   "materials": {
+    "0": "leafmould: wet dead leaves over black soil; also what wall tiles paint (rank 4 wins the edge)",
+    "1": "rootearth: root-ribbed black earth \u2014 the darkest walkable tile (the 'root tile' of chapter2.md \u00a74.4; kept at L* ~19-20: a near-black body must stay >= 15 L* darker than any tile it stands on, and the slate hound's lit side clears it by 30+)",
+    "2": "wetstone: wet flags and outcrop, moss in the joints",
+    "3": "pond: black water",
+    "5": "yard: the mill yard's trodden earth and chaff"
+   },
+   "noise": {
+    "channels": {
+     "a": "1",
+     "b": "cel patch field pf (AF_Terrain _pattern_block, m = 0) * .5 + .5",
+     "g": "the same field pre-offset for m = 1",
+     "r": "latNoise(u + .5, v + .5) * .5 + .5 (period 3) \u2014 transition wobble: score += 0.3 * (2r - 1) with u, v offset by (m * .37, -m * .61) per material m"
+    },
+    "file": "Terrain/T_Terrain_Plains_Noise_M.png",
+    "shared": "theme-independent (the AF_Terrain lattice / patch fields): the plains noise texture",
+    "srgb": false,
+    "texture": "T_Terrain_Plains_Noise_M",
+    "use": "mobile / low quality: replaces the 12-sine analytic noise of AF_Terrain"
+   },
+   "params": {
+    "Tile0Base": "#39382D",
+    "Tile0Lip": "#4A4838",
+    "Tile0Rank": 4,
+    "Tile1Base": "#39332C",
+    "Tile1Rank": 1,
+    "Tile2Base": "#3D4242",
+    "Tile2Rank": 2,
+    "Tile3Base": "#0E1414",
+    "Tile3Rank": 0,
+    "Tile5Base": "#443D33",
+    "Tile5Rank": 2
+   },
+   "periodTiles": 3,
+   "previews": [
+    "Previews/terrain_hangwood/layers.png",
+    "Previews/terrain_hangwood/details.png",
+    "Previews/terrain_hangwood/transitions.png"
+   ],
+   "source": "environment/terrain_hangwood.py HANGWOOD_STYLE (the art lane's style: chapter2.md 4R-1, a first cut for the darkest-tile gate; 4R-3 owns it from here). HANDOFF content lane (4A): copy dataStyle to GameData as terrain_styles themes.hangwood (the runtime Tile<i>* vectors, ranks, lips and liquid colours come from Data/terrain_styles.json)",
+   "theme": "hangwood",
+   "transitions": [
+    "per pixel: the 4 tiles round its tile corner, w = (1 - d^2)^2 (d = distance to the tile centre), normalised per material",
+    "score s = w_norm + rank * 0.025 + 0.3 * noise_m; winner t1, runner-up t2, delta = s1 - s2",
+    "coverage a = 1 if delta >= 0.025 else 0.5 + delta / 0.05 (crisp anti-aliased cel edge)",
+    "t1 liquid: shallow tint (1 - smoothstep(.5, .95, w1)) * .75 toward WaterShallow; foam WaterFoam where delta < .065: (1 - delta / .065)^.6 * .92",
+    "t2 liquid: bank WaterBank .7 * (1 - delta / .045) for delta < .045, then .25 * (1 - (delta - .045) / .055) up to .1",
+    "rank1 > rank2: lip (Tile<i>Lip, else base + 25 % toward #FFF2D6) at .75 for delta < .032",
+    "rank1 < rank2: dark edge #241A3A at .2 * (1 - delta / .055) for delta < .055",
+    "walls paint the dominant ground (grass), camp walls camp ground; vertex G (wall coverage) darkens x (.62,.66,.6) * .45; vertex B (skirt) * .86"
+   ],
+   "uv": "UV0 = tile space (col, row; tile centre at integers); layer textures repeat every 3 tiles: sample at UV0 / 3, wrap, bilinear + mips (flat toon colour, no noise)",
+   "water": {
+    "bank": "#1C1A16",
+    "bankSlopeTiles": 0.3,
+    "base": "#0E1414",
+    "bedZcm": -60,
+    "foam": "#2E3A38",
+    "lilyPads": "none in this cut (4R-3 decides: the forest theme's lily pad ids resolve to <id>@hangwood first)",
+    "mask": {
+     "channels": {
+      "a": "1",
+      "b": "patch mask (#3B8AB0/#459AC0)",
+      "g": "foam breakup noise: foam = smoothstep(.55, .62, shore + (g - .5) * .2)",
+      "r": "silver-green sheen (#4A6A60 x 0.4), scroll UV0/3 + t*(.012,.008): still water"
+     },
+     "file": "Terrain/T_Water_Hangwood_Mask_M.png",
+     "srgb": false,
+     "texture": "T_Water_Hangwood_Mask_M"
+    },
+    "material": "M_AF_Water",
+    "note": "black pond water with a silver-green sheen (chapter2.md \u00a715)",
+    "shallow": "#162020",
+    "surfaceZcm": -12,
+    "texture": "T_Water_Hangwood_BC",
+    "wave": "#4A6A60",
+    "waveAlpha": 0.4
+   },
+   "zones": [
+    "twilight_forest"
+   ]
+  },
   "march": {
    "artExtras": {
     "camp": "charred board ends #26221F and ash drifts #5E5A52",

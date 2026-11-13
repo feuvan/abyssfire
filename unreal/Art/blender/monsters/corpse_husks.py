@@ -87,6 +87,9 @@ ROSTER = {
                        "(cs_rf_marshal_falls looks at it: the grey waits for the beat)"),
     "SK_Mon_Pitwarden": ("husk", "unburied", "Rise", "on his knees, folded forward against the spade he planted (the "
                          "spade stands in the earth and dissolves with him)"),
+    # Chapter 2 (chapter2.md §4.4): the Moon-Bitten leave remains — a beast's body on its side, the ash timeline
+    "SK_Mon_MoonHound": ("carcass", "moonbitten", None, "on its side where the roll left it, the legs run out, the "
+                         "collar still on (remains: nothing eats or raises them; a phase feed takes its own summons)"),
 }
 STORY_HOLD = {"SK_Mon_Corpseherd": "cs_rf_herd", "SK_Mon_Valdras": "cs_rf_marshal_falls"}
 # bodies nothing eats or raises although no cutscene holds them (the husk timeline runs at once)
@@ -94,8 +97,14 @@ GUARDED = {"SK_Mon_Pitwarden": "the Pit's mini-boss (Wave 3): his fall is the cl
                                "EvAreaCleansed) and the Tag Cellar's gnawers share his map — never Consumed, never "
                                "raised by another monster"}
 RAISED_AS = "monster_risen_footman"     # monsters.md 2.0: a raised Unburied or Living corpse stands as the footman
-# the ground a husk's previews stand on (default the march): the Pitwarden dies in his Cut, on the Pit's dug earth
-PREVIEW_GROUND = {"SK_Mon_Pitwarden": "pit"}
+# the ground a husk's previews stand on (default the march): the Pitwarden dies in his Cut, on the Pit's dug earth;
+# Chapter 2's bodies lie on the Hanging Wood's root earth
+PREVIEW_GROUND = {"SK_Mon_Pitwarden": "pit", "SK_Mon_MoonHound": "hangwood"}
+# why a carcass is neither eaten nor raised, per family (the default sentence is the gnawers')
+CARCASS_NOTES = {"moonbitten": "chapter2.md 4.4 / 11: corpse {leaves: 'remains'} — not consumable, not raisable (the "
+                               "Cantor raises the Wood's Dead, never a beast). The one exception is the core's: "
+                               "Volgan's phase feed eats a summoned hound that dies within 4 tiles of the dais (U3 "
+                               "plays corpse.consume on EvCorpseRemoved{consumed} as for any corpse)"}
 
 
 def _clip(e: dict, name: str) -> dict | None:
@@ -139,6 +148,8 @@ def block(asset: str, e: dict, husk: dict, previews: list[str]) -> dict:
     death = _clip(e, "Death")
     out = {"look": look, "family": family, "deathClip": "Death", "holdFromMs": float(death["lengthMs"]),
            "note": note, "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3"}
+    if family == "moonbitten":
+        out["spec"] += "; chapter2.md 4.4 (remains)"
     if look == "puddle":
         out.update({"registry": False, "puddle": "manifest fx.puddle" if "puddle" in (e.get("fx") or {}) else
                     "the scorched puddle under the burst (notify.FX_Burst's scorch + the Death clip's shards)",
@@ -158,7 +169,8 @@ def block(asset: str, e: dict, husk: dict, previews: list[str]) -> dict:
         if look == "carcass":
             out["consumable"] = False
             out["raisable"] = False
-            out["carcassNote"] = "monsters.md 1.5: the other gnawers ignore it (no Consume); not Unburied / Living (no raise)"
+            out["carcassNote"] = CARCASS_NOTES.get(
+                family, "monsters.md 1.5: the other gnawers ignore it (no Consume); not Unburied / Living (no raise)")
         if asset in STORY_HOLD:
             # art review: a later gnawer or raiser must not eat or raise the act boss / the mini-boss
             out["consumable"] = False
@@ -234,7 +246,7 @@ def main(argv: list[str]) -> int:
     recipes = FP.load_recipes()
     results = {}
     # one stage per ground (a new DarkStage resets the scene): the march's bodies, then the Pit's
-    for ground in ("march", "pit"):
+    for ground in ("march", "pit", "hangwood"):
         group = [a for a in assets if PREVIEW_GROUND.get(a, "march") == ground]
         if not group:
             continue
