@@ -743,6 +743,10 @@ export function exportMonsters(): TableResult[] {
       miniBossOncePerVisit: true,
       storyBoss: STORY_BOSS,
       patrolTimeoutMs: 4000, placementTries: 8, decisionRobustness: 'M10',
+      // Dark remake (DECISIONS DR17 item 27): a patrol target is refused within safe radius + patrolCampAggroMul x the
+      // monster's aggroRange of a camp (MonsterAI.h MonsterPatrolTargetAllowed), and so is a respawn's tile
+      // (MonsterSystem::Respawn); below 0 = the web's patrol and respawn (no rule).
+      patrolCampAggroMul: 1,
       yawTurnRateDegPerSec: 720, decisionYaw: 'M11',
       pathfinding: 'A* on the tile grid when line-of-walk is blocked + separation + wall sliding (M6)',
     },

@@ -248,7 +248,7 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
           m.patrolTimerMs = 0;
           const int32_t pc = m.spawnAnchor.col + rng.RandomInt(-ai.patrolRadius, ai.patrolRadius);  // col first
           const int32_t pr = m.spawnAnchor.row + rng.RandomInt(-ai.patrolRadius, ai.patrolRadius);
-          if (MonsterAiWalkable(world, pc, pr)) {
+          if (MonsterPatrolTargetAllowed(m, ai, TilePos{pc, pr}, world)) {
             m.state = MonsterState::Patrol;
             m.hasPatrolTarget = true;
             m.patrolTarget = TilePos{pc, pr};
@@ -397,6 +397,16 @@ constexpr double kCos30 = 0.8660254037844386, kSin30 = 0.5;
 constexpr double kCos45 = 0.7071067811865476;
 constexpr double kCos60 = 0.5, kSin60 = 0.8660254037844386;
 }  // namespace
+
+bool MonsterPatrolTargetAllowed(const MonsterInstance& m, const MonsterAiDef& ai, TilePos target,
+                                const MonsterWorld& world) {
+  if (!MonsterAiWalkable(world, target.col, target.row)) return false;
+  if (ai.patrolCampAggroMul >= 0 && world.nearSafeZone) {
+    const double margin = ai.patrolCampAggroMul * (std::max)(0.0, m.def.aggroRange);
+    if (world.nearSafeZone(target.Center(), margin)) return false;
+  }
+  return true;
+}
 
 bool MonsterKiteTarget(const MonsterInstance& m, const MonsterAiDef& ai, Vec2 heroPos, double heroDist,
                        const MonsterWorld& world, Vec2& out) {

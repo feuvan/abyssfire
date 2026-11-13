@@ -512,6 +512,13 @@ struct MonsterAiDef {
   bool storyBossFarmableAfterChapter = true;
   std::string chapterCompleteQuest;                // its turn-in plays the chapter finale (GameData/config.ts)
   double patrolTimeoutMs = 4000;                   // M10
+  // Dark remake (monster_ai.json port.patrolCampAggroMul; DECISIONS DR17 item 27): a patrol target is refused when its
+  // tile lies within safe radius + patrolCampAggroMul x the monster's aggroRange of a camp (strict, like InSafeZone), so
+  // a patrol never brings a monster close enough to notice a hero standing at the camp's edge. The two patrol draws are
+  // made either way (a refused target is a blocked one: the monster idles until the next interval). A respawn's tile
+  // (anchor +- respawnJitter, the same box) is refused by the same ring, like a tile in the safe zone: the next try
+  // draws again (MonsterSystem::Respawn; close-out review). < 0: no rule (the web's patrol and respawn).
+  double patrolCampAggroMul = -1;
   int32_t placementTries = 8;                      // M10
   double yawTurnRateDegPerSec = 720;               // M11 (render)
   // M6 steering constants. monster_ai.json only names the decision (port.pathfinding text), so these port-only tuning

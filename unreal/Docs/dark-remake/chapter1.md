@@ -254,6 +254,11 @@ the gate can use the camp's safe radius (9). The gate's HP uses today's defend f
 (M4). The regular trench detail stands at (30,24) since stage H (§17), 21.5 tiles from the gate (its entry tile
 (25,20) is 19.2 away; an earlier note here said 13 and that its footmen "may join"): with an aggro range of 4 and a
 patrol of 2 around their placement the footmen are no part of the siege at either tile; the waves are the fight.
+*Wave 3 close-out:* a patrol never picks a tile within the camp's safe radius plus the monster's own aggro range of a
+camp (`monster_ai.json` `port.patrolCampAggroMul` 1): the detail's footmen (aggro 4) keep their patrol targets 13
+tiles or more from Knellwatch's fire (they came within 10.8 before, 1.8 from the safe edge). The same ring refuses
+a respawn's tile (*close-out review*: the respawn box, anchor +- 2, is the patrol box, and a footman came back as
+near as 10.8 tiles without it).
 
 | Line | zh-CN | en |
 |---|---|---|
@@ -598,7 +603,10 @@ light radius is the main light; death returns the hero to Knellwatch.
 
 **Cleanse.** When the Pitwarden is dead and 5 or fewer hostiles remain, `clear_area` completes, `EvAreaCleansed` fires:
 embers rise from the floor, the grade warms, the niche lamps light one by one. What still stood lies down in the same
-step and nothing rises after it (*3B review*: a cleansed Pit holds no hostile). The Pit kit is reused for the
+step and nothing rises after it (*3B review*: a cleansed Pit holds no hostile). *Wave 3 close-out:* on screen the
+bodies lie down nearest the hero first, 120 ms apart (the last at most 1.2 s late; presentation only, the core's
+state is settled in the step), and while the hero is inside, the tracker's cleanse line reads "N left" (剩余 N): the
+hostiles above the five that may remain, and at least 1 while the Pitwarden stands. The Pit kit is reused for the
 Labyrinth's crypt floor.
 
 *K7 as built (3A, pending review; implementation-plan.md 3A outcomes).* The Pit is a `subDungeons` record with `tiles`

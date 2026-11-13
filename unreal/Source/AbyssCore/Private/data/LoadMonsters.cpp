@@ -954,6 +954,7 @@ void LoadMonsterAiFile(const JNode& r, MonsterTables& out) {
     if (!ParseEnum(role, parsed)) p.Child("noRespawn").Error("unknown monster role '" + role + "'");
   }
   a.patrolTimeoutMs = p.Num("patrolTimeoutMs");
+  a.patrolCampAggroMul = p.Num("patrolCampAggroMul", -1.0);
   a.placementTries = p.Int("placementTries");
   a.yawTurnRateDegPerSec = p.Num("yawTurnRateDegPerSec");
 }

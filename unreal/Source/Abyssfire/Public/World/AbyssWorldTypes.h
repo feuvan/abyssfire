@@ -113,6 +113,8 @@ struct FAbyssSubDungeonProbe
 	int32 PeakLampsLit = 0;
 	int32 DormantSeen = 0;          // the most distinct dormant monsters one visit showed in their still pose
 	int32 DormantWakes = 0;         // the most of them one visit saw waking
+	int32 DormantFell = 0;          // the most of them one visit saw die in their still pose
+	int32 DormantUnaccounted = 0;   // the most one visit lost without a wake or a fall (AbyssSubDungeonRules::DormantUnaccounted)
 	int32 Cleanses = 0;             // EvAreaCleansed received
 	int32 SequencesStarted = 0;     // of those, with a built sub-dungeon whose sequence started
 	int32 SequencesFinished = 0;    // sequences that ran to their end

@@ -691,9 +691,11 @@ double ZoneRuntime::SafeZoneRadius() const {
   return map_ != nullptr ? map_->safeZoneRadiusEffective : ctx_.data.World().constants.safeZoneRadiusDefault;
 }
 
-bool ZoneRuntime::InSafeZone(Vec2 p) const {
+bool ZoneRuntime::InSafeZone(Vec2 p) const { return NearSafeZone(p, 0.0); }
+
+bool ZoneRuntime::NearSafeZone(Vec2 p, double margin) const {
   if (map_ == nullptr) return false;
-  const double r = SafeZoneRadius();
+  const double r = SafeZoneRadius() + (margin > 0 ? margin : 0.0);
   for (const MapCampDef& c : map_->camps) {
     if (DistSq(p, Vec2(c.pos.col, c.pos.row)) < r * r) return true;
   }

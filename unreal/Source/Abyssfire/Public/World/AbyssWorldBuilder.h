@@ -388,6 +388,7 @@ private:
 	bool bDormantRanksDirty = false;
 	int32 VisitDormantSeen = 0;
 	int32 VisitDormantWakes = 0;
+	int32 VisitDormantFell = 0;
 	/** A cleanse sequence played last frame (a zone build or the session's end under it counts it as cut). */
 	bool bCleanseWasPlaying = false;
 	FAbyssSubDungeonProbe SubDungeonProbe;

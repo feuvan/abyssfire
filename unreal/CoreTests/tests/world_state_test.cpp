@@ -2633,8 +2633,10 @@ TEST_SUITE("world") {
     std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(a));
     MESSAGE("K6 replay digest " << hex);
     // pinned (GCC = Clang; 2F review: Valdras / Corpseherd numbers, affix rules; 3B: the regulars' exp, the Corpseherd's
-    // life; 3B review: Valdras 10400; stage H: the trench detail stands at (30,24), map.spawnAt)
-    CHECK(std::string(hex) == "625d27542beac8fa");
+    // life; 3B review: Valdras 10400; stage H: the trench detail stands at (30,24), map.spawnAt; Wave 3 close-out: the
+    // patrol keep-off, monster_ai.json port.patrolCampAggroMul - the surface's patrols near Knellwatch, baf5ec5ed99a65ff;
+    // its review: a respawn's tile follows the same ring - the trench detail's variant respawn)
+    CHECK(std::string(hex) == "48490d0ffea6bb34");
   }
   // ===================================================================================================================
   // 2F review: ambush variants, the champion's notFlag, boss affix pins

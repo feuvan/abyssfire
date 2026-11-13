@@ -140,7 +140,9 @@ wandering merchant), `zoneMoods.{themeByZone, moods, palettes, weather, weatherB
 moodWeather, windupTint}` (the last three are remake tables with no web entries: R18 light-scale overrides, the weather a
 mood brings and the monsters' wind-up body tint (DR5), per mood theme, written to `zone_moods.json` `port`),
 `eliteAffixes.{definitions, zoneAffixCounts}`, `terrainStyles`, `themeParents` (a remake table with no web entries,
-`add` only: presentation theme -> parent theme, written to `terrain_styles.json` `themeParents`; `pit` -> `march`). A table name the exporter does not know, a `replace` /
+`add` only: presentation theme -> parent theme, written to `terrain_styles.json` `themeParents`; `pit` -> `march`; the
+export refuses an unknown theme at either end, a looping chain, a chain of more than 8 themes and any difference from the
+art kit's `parent` values in `Art/blender/kit/theme.py`: `Tools/export-data/src/themeParents.ts`). A table name the exporter does not know, a `replace` /
 `remove` key the web table lacks or an `add` key it already has fails the export. Each change is recorded in the written
 file's `remake` block (`"replaced": ["achievements.ach_kill_slime"]`).
 

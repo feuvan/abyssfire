@@ -60,6 +60,7 @@
     "patrolTimeoutMs": 4000,
     "placementTries": 8,
     "decisionRobustness": "M10",
+    "patrolCampAggroMul": 1,
     "yawTurnRateDegPerSec": 720,
     "decisionYaw": "M11",
     "pathfinding": "A* on the tile grid when line-of-walk is blocked + separation + wall sliding (M6)"

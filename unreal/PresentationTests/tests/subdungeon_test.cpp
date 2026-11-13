@@ -450,6 +450,12 @@ TEST_SUITE("subdungeon")
 		// a reworded sequence fails here instead of silently keeping 600 ms
 		CHECK(Spec.bLampFirstRead);
 		CHECK(Spec.bNicheAtRead);
+		// Wave 3 close-out: the contract states the three moments as numbers beside lampStepMs (the sentences stay)
+		const abyss::JsonValue& Cleanse = Recipes().Get("dark").Get("pit").Get("cleanse");
+		CHECK(Cleanse.Get("lampFirstMs").AsDouble(-1.0) == 600.0);
+		CHECK(Cleanse.Get("lampStepMs").AsDouble(-1.0) == 420.0);
+		CHECK(Cleanse.Get("nicheAtMs").AsDouble(-1.0) == 600.0);
+		CHECK(Cleanse.Get("markStepMs").AsDouble(-1.0) == 180.0);
 		CHECK(Spec.Lamp.Gain == 0.85);
 		CHECK(Spec.Lamp.Power == 1.4);
 		CHECK(Spec.Lamp.Color[1] == 0.66);
@@ -868,6 +874,79 @@ TEST_SUITE("subdungeon")
 		}
 	}
 
+	// Wave 3 close-out (3D note 36): what still stands at the cleanse lies down body by body.
+	TEST_CASE("the cleanse's collapse: nearest to the hero first, 120 ms apart, the last at most 1.2 s late")
+	{
+		using namespace AbyssSubDungeonRules;
+		CHECK(CollapseStepMs == 120.0);
+		CHECK(CollapseMaxMs == 1200.0);
+		CHECK(CollapseDelayMs(0) == 0.0);
+		CHECK(CollapseDelayMs(1) == 120.0);
+		CHECK(CollapseDelayMs(4) == 480.0);
+		CHECK(CollapseDelayMs(10) == 1200.0);
+		CHECK(CollapseDelayMs(11) == 1200.0);   // capped
+		CHECK(CollapseDelayMs(1000) == 1200.0);
+		CHECK(CollapseDelayMs(-3) == 0.0);
+
+		// S7 leaves five standing at the most: the last falls 480 ms after the first
+		const abyss::QuestDef* Quest = Data().FindQuest("q_rf_the_pit");
+		REQUIRE(Quest != nullptr);
+		REQUIRE(Quest->objectives.size() == 3);
+		CHECK(CollapseDelayMs(Quest->objectives[1].maxRemaining - 1) == 480.0);
+
+		const abyss::Vec2 Hero(20.0, 30.0);
+		// the snapshot's order has nothing to do with the distance
+		const std::vector<abyss::Vec2> Standing{ abyss::Vec2(26, 30), abyss::Vec2(20, 31), abyss::Vec2(17, 26), abyss::Vec2(20, 33),
+			abyss::Vec2(12, 30) };
+		const std::vector<int> Ranks = CollapseRanks(Standing, Hero);
+		CHECK(Ranks == std::vector<int>{ 3, 0, 2, 1, 4 });   // 6, 1, 5, 3, 8 tiles
+		// every rank once, whatever the input
+		std::vector<int> Seen(Ranks.size(), 0);
+		for (int Rank : Ranks)
+		{
+			REQUIRE(Rank >= 0);
+			REQUIRE(Rank < static_cast<int>(Ranks.size()));
+			++Seen[static_cast<size_t>(Rank)];
+		}
+		CHECK(Seen == std::vector<int>(Ranks.size(), 1));
+		// ties keep the given order; a body on the hero's tile is first
+		CHECK(CollapseRanks({ abyss::Vec2(23, 30), abyss::Vec2(20, 33), abyss::Vec2(20, 30), abyss::Vec2(17, 30) }, Hero)
+			== std::vector<int>{ 1, 2, 0, 3 });
+		CHECK(CollapseRanks({}, Hero).empty());
+		CHECK(CollapseRanks({ abyss::Vec2(1, 1) }, Hero) == std::vector<int>{ 0 });
+		// a position that is not a number falls last and takes no rank from the others
+		const double NaN = std::nan("");
+		CHECK(CollapseRanks({ abyss::Vec2(NaN, 30), abyss::Vec2(25, 30), abyss::Vec2(21, 30) }, Hero) == std::vector<int>{ 2, 1, 0 });
+		// the same input gives the same ranks (no state)
+		CHECK(CollapseRanks(Standing, Hero) == Ranks);
+		// more bodies than the cap has steps: ranks 10 and up fall together at 1.2 s
+		std::vector<abyss::Vec2> Crowd;
+		for (int I = 0; I < 14; ++I)
+		{
+			Crowd.push_back(abyss::Vec2(20.0 + I, 30.0));
+		}
+		const std::vector<int> CrowdRanks = CollapseRanks(Crowd, Hero);
+		double Latest = 0.0;
+		for (size_t I = 0; I < Crowd.size(); ++I)
+		{
+			CHECK(CrowdRanks[I] == static_cast<int>(I));
+			Latest = (std::max)(Latest, CollapseDelayMs(CrowdRanks[I]));
+		}
+		CHECK(Latest == CollapseMaxMs);
+
+		// the actor's side: the cleanse's own Death is held until its delayed start, any other Death plays at once
+		const double Armed = 50000.0;
+		CHECK(!DefersCollapse(Armed, Armed, 0.0, Armed));                 // rank 0: on the core's time
+		CHECK(DefersCollapse(Armed, Armed, 120.0, Armed));                // held
+		CHECK(DefersCollapse(Armed, Armed, 120.0, Armed + 119.0));
+		CHECK(!DefersCollapse(Armed, Armed, 120.0, Armed + 120.0));       // due
+		CHECK(!DefersCollapse(Armed, Armed, 120.0, Armed + 5000.0));      // a long frame: it falls now
+		CHECK(DefersCollapse(Armed + 16.7, Armed, 480.0, Armed + 16.7));  // the event's own step time
+		CHECK(!DefersCollapse(Armed + 251.0, Armed, 480.0, Armed + 251.0));   // a later death is not the cleanse's
+		CHECK(!DefersCollapse(Armed - 251.0, Armed, 480.0, Armed));
+		CHECK(!DefersCollapse(Armed, Armed, -5.0, Armed));
+	}
+
 	TEST_CASE("only the hand-authored sub-dungeon is cut from rock; the generated caves keep the surface's zone rules")
 	{
 		// maps.json has three sub-dungeons and the core calls all three `inside`; void rock, the wall cull, the missing
@@ -941,6 +1020,56 @@ TEST_SUITE("subdungeon")
 		CHECK(HasString("data.questTarget.sub_rf_pit"));
 		CHECK(HasString("data.questTarget.zone_rf_flame_niche"));
 		CHECK(HasString("data.subDungeon.sub_rf_pit.name"));
+	}
+
+	// Wave 3 close-out: the tracker's clear_area line ends in "N left" while the hero is in the Pit.
+	TEST_CASE("the tracker's clear_area line: N left above the objective's maxRemaining, the guardian counted")
+	{
+		using namespace AbyssSubDungeonRules;
+		const abyss::QuestDef* Quest = Data().FindQuest("q_rf_the_pit");
+		REQUIRE(Quest != nullptr);
+		REQUIRE(Quest->objectives.size() == 3);
+		const abyss::QuestObjectiveDef& Clear = Quest->objectives[1];
+		REQUIRE(Clear.type == abyss::ObjectiveType::ClearArea);
+		CHECK(Clear.targetId == PitId);
+		CHECK(Clear.maxRemaining == 5);
+		const int32_t Max = Clear.maxRemaining;
+		// the Pit as the hero walks in: every monster alive, the guardian among them
+		CHECK(ClearAreaLeft(true, false, false, 23, Max, true) == 18);
+		CHECK(ClearAreaLeft(true, false, false, 6, Max, true) == 1);
+		CHECK(ClearAreaLeft(true, false, false, 6, Max, false) == 1);
+		// five or fewer: only the guardian is left to kill; once he is dead there is no line (the objective completes,
+		// or waits for its `after`)
+		CHECK(ClearAreaLeft(true, false, false, 5, Max, true) == 1);
+		CHECK(ClearAreaLeft(true, false, false, 1, Max, true) == 1);
+		CHECK(ClearAreaLeft(true, false, false, 5, Max, false) == -1);
+		CHECK(ClearAreaLeft(true, false, false, 0, Max, false) == -1);
+		// not in the objective's sub-dungeon (the count is another zone's), done, or cleansed: no line
+		CHECK(ClearAreaLeft(false, false, false, 23, Max, true) == -1);
+		CHECK(ClearAreaLeft(true, true, false, 23, Max, true) == -1);
+		CHECK(ClearAreaLeft(true, false, true, 23, Max, true) == -1);
+		// a negative maxRemaining counts as 0
+		CHECK(ClearAreaLeft(true, false, false, 3, -4, false) == 3);
+
+		// the string, in the three locales (zh-TW through the exporter's conversion)
+		auto Template = [](const char* Locale) {
+			abyss::JsonValue Table;
+			REQUIRE(abyss::ParseJson(ReadBytes(UnrealDir() + "/Data/i18n_" + Locale + ".json"), Table));
+			const abyss::JsonValue& Text = Table.Get("strings").Get(ClearAreaLeftKey);
+			REQUIRE(Text.IsString());
+			return std::string(Text.AsString());
+		};
+		CHECK(ObjectiveProgressText(0, 1, 18, Template("en")) == "18 left");
+		CHECK(ObjectiveProgressText(0, 1, 18, Template("zh-CN")) == "\xE5\x89\xA9\xE4\xBD\x99 18");   // 剩余 18
+		// zh-TW is the web converter's output, which keeps 余 (as in the web's own "剩余 {time}" of the caravan page)
+		CHECK(ObjectiveProgressText(0, 1, 1, Template("zh-TW")) == "\xE5\x89\xA9\xE4\xBD\x99 1");
+		// no line, or a locale without the string: the plain count, capped
+		CHECK(ObjectiveProgressText(0, 1, -1, Template("en")) == "0/1");
+		CHECK(ObjectiveProgressText(0, 1, 18, "") == "0/1");
+		CHECK(ObjectiveProgressText(0, 1, 18, "left") == "0/1");
+		CHECK(ObjectiveProgressText(7, 5, -1, "") == "5/5");
+		CHECK(ObjectiveProgressText(-2, 5, 0, "{n} left") == "0/5");
+		CHECK(ObjectiveProgressText(0, 1, 3, "{n} of {n}") == "3 of 3");
 	}
 
 	TEST_CASE("the Pitwarden: the data's beats are the clips' own, his kit is in the manifest")
@@ -1103,6 +1232,28 @@ TEST_SUITE("subdungeon")
 		CHECK(ProbeVerdict(Probe).find("dormant") != std::string::npos);
 		Probe.DormantWakes = 8;
 		CHECK(ProbeVerdict(Probe).empty());   // not cleansed yet: unlit lamps are right
+		// Wave 3 close-out: the wakes against the count seen. Five woke, two fell in their still pose at the cleanse, one
+		// still stands: all eight are accounted for; one dropped without a wake or a fall is a fault, and so are more
+		// wakes than monsters shown.
+		CHECK(DormantUnaccounted(8, 8, 0, 0) == 0);
+		CHECK(DormantUnaccounted(8, 5, 2, 1) == 0);
+		CHECK(DormantUnaccounted(8, 5, 2, 0) == 1);
+		CHECK(DormantUnaccounted(8, 0, 0, 8) == 0);
+		CHECK(DormantUnaccounted(8, 3, 0, 0) == 5);
+		CHECK(DormantUnaccounted(8, 9, 0, 0) == 0);     // never negative (the verdict's other line reports it)
+		CHECK(DormantUnaccounted(8, -1, -1, -1) == 8);
+		{
+			FProbe Partial = Probe;
+			Partial.DormantWakes = 5;
+			Partial.DormantFell = 2;
+			CHECK(ProbeVerdict(Partial).empty());   // the eighth still stands, or the bot left
+			Partial.DormantUnaccounted = DormantUnaccounted(8, 5, 2, 0);
+			CHECK(ProbeVerdict(Partial) == "1 of 8 dormant monsters left their still pose without a wake or a fall being shown");
+			FProbe Over = Probe;
+			Over.DormantWakes = 7;
+			Over.DormantFell = 2;
+			CHECK(ProbeVerdict(Over) == "7 wakes and 2 falls for 8 dormant monsters shown");
+		}
 		Probe.Cleanses = 1;
 		Probe.SequencesStarted = 1;
 		Probe.PeakLampsLit = 9;

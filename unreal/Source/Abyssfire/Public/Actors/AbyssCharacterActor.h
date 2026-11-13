@@ -223,7 +223,15 @@ public:
 
 	// ---- corpse layer hooks (dark remake U3, UAbyssCorpseLayer) ----
 	/** Dying with its pose held for the corpse layer (setup bCorpseHold), not yet faded by the fallback. */
-	bool HoldsCorpsePose() const { return bCorpseDeath; }
+	bool HoldsCorpsePose() const { return bCorpseDeath || (bHasPendingDeath && bCorpseHold); }
+	/**
+	 * Wave 3 close-out (3D note 36; AbyssSubDungeonRules::CollapseDelayMs): the Death the core sends in the cleanse's
+	 * step (armed at ArmedSimMs) is shown DelayMs late - the body keeps standing until then. Any other Death plays at
+	 * once (AbyssSubDungeonRules::DefersCollapse). No effect on a body that is already dying.
+	 */
+	void DeferNextDeath(double DelayMs, double ArmedSimMs);
+	/** The delay of a deferred Death that has not started yet (0: none): the corpse layer starts its husk that late. */
+	double GetPendingDeathDelayMs() const { return bHasPendingDeath ? PendingDeathDelayMs : 0.0; }
 	/** Set up to hold its death pose for the corpse layer when it dies (FAbyssCharacterSetup::bCorpseHold). */
 	bool WillHoldCorpsePose() const { return bCorpseHold; }
 	/**
@@ -513,6 +521,14 @@ private:
 	/** The rank along its line the last dormant frame gave (FAbyssCharacterFrame::DormantRank). */
 	int32 DormantRank = 0;
 	abyss::EvPlayAnim PendingRise;
+	/** The cleanse's collapse (DeferNextDeath): the armed delay, and the Death held until its delayed start. */
+	double DeferDeathDelayMs = 0.0;
+	double DeferDeathArmedMs = 0.0;
+	bool bHasPendingDeath = false;
+	double PendingDeathDelayMs = 0.0;
+	/** The corpse layer adopted the body while its Death was held: the hold counts as adopted once it starts. */
+	bool bAdoptPendingDeath = false;
+	abyss::EvPlayAnim PendingDeath;
 	/** The idle variant (manifest clip Idle_Order): time shown in plain Idle, the wait before the next one, rounds
 	 *  played, and the variant's remaining time while it plays (< 0: not playing). */
 	float IdleShownSec = 0.f;

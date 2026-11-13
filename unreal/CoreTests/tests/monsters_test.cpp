@@ -779,6 +779,69 @@ TEST_SUITE("monsters") {
     CHECK(k.patrolTarget == TilePos{20, 20});
   }
 
+  // Wave 3 close-out (DECISIONS DR17 item 27): the patrol target choice keeps a monster's aggro range off the camps.
+  TEST_CASE("patrol keep-off: a target within safe radius + aggro range of a camp is refused; the draws are kept") {
+    const Vec2 camp(10, 20);
+    const double safeR = 9;
+    MonsterWorld w = MOpenWorld();
+    w.nearSafeZone = [camp, safeR](Vec2 p, double margin) {
+      const double r = safeR + (margin > 0 ? margin : 0.0);
+      return DistSq(p, camp) < r * r;
+    };
+    MonsterAiDef ai = MAi();
+    CHECK(ai.patrolCampAggroMul == 1);  // shipped (monster_ai.json port.patrolCampAggroMul)
+    MonsterInstance g = MMake(MFix(fixture::Grunt()), {24, 20});
+    g.def.aggroRange = 4;  // the ring is 9 + 4 = 13 tiles (strict)
+    CHECK(MonsterPatrolTargetAllowed(g, ai, TilePos{23, 20}, w));        // 13 tiles: on the ring, allowed
+    CHECK_FALSE(MonsterPatrolTargetAllowed(g, ai, TilePos{22, 20}, w));  // 12
+    CHECK_FALSE(MonsterPatrolTargetAllowed(g, ai, TilePos{22, 21}, w));  // 12.04
+    CHECK(MonsterPatrolTargetAllowed(g, ai, TilePos{23, 21}, w));        // 13.04
+    // The margin is the monster's own aggro range.
+    MonsterInstance far = g;
+    far.def.aggroRange = 7;
+    CHECK_FALSE(MonsterPatrolTargetAllowed(far, ai, TilePos{25, 20}, w));  // 15 < 16
+    CHECK(MonsterPatrolTargetAllowed(far, ai, TilePos{26, 20}, w));
+    // Data: 0 = the safe zone alone, 2 = twice the aggro range, below 0 = no rule (the web's patrol).
+    MonsterAiDef zero = ai, twice = ai, web = ai;
+    zero.patrolCampAggroMul = 0;
+    twice.patrolCampAggroMul = 2;
+    web.patrolCampAggroMul = -1;
+    CHECK(MonsterPatrolTargetAllowed(g, zero, TilePos{19, 20}, w));
+    CHECK_FALSE(MonsterPatrolTargetAllowed(g, zero, TilePos{18, 20}, w));
+    CHECK_FALSE(MonsterPatrolTargetAllowed(g, twice, TilePos{26, 20}, w));  // 16 < 17
+    CHECK(MonsterPatrolTargetAllowed(g, twice, TilePos{27, 20}, w));
+    CHECK(MonsterPatrolTargetAllowed(g, web, TilePos{11, 20}, w));
+    // A world without camps, and a blocked tile.
+    CHECK(MonsterPatrolTargetAllowed(g, ai, TilePos{11, 20}, MOpenWorld()));
+    auto grid = std::make_shared<MTestGrid>(40, 40);
+    grid->Block(30, 20);
+    CHECK_FALSE(MonsterPatrolTargetAllowed(g, ai, TilePos{30, 20}, MGridWorld(grid, false)));
+
+    // In the tick: both draws are made, a refused target leaves it idle with the timer reset (as a blocked tile does),
+    // and the same draws under the web rule start the patrol.
+    Rng rng(1);
+    g.patrolTimerMs = 3000;
+    rng.Script({0.0, 0.5});  // (-2, 0): tile (22,20), inside the ring
+    MTick(g, ai, Vec2(90, 90), w, rng, 1000);
+    CHECK(g.state == MonsterState::Idle);
+    CHECK_FALSE(g.hasPatrolTarget);
+    CHECK(g.patrolTimerMs == 0);
+    CHECK(rng.ScriptedRemaining() == 0);
+    MonsterInstance old = MMake(MFix(fixture::Grunt()), {24, 20});
+    old.def.aggroRange = 4;
+    old.patrolTimerMs = 3000;
+    rng.Script({0.0, 0.5});
+    MTick(old, web, Vec2(90, 90), w, rng, 1000);
+    CHECK(old.state == MonsterState::Patrol);
+    CHECK(old.patrolTarget == TilePos{22, 20});
+    g.patrolTimerMs = 3000;
+    rng.Script({0.9, 0.5});  // (+2, 0): tile (26,20)
+    MTick(g, ai, Vec2(90, 90), w, rng, 2000);
+    CHECK(g.state == MonsterState::Patrol);
+    CHECK(g.patrolTarget == TilePos{26, 20});
+    CHECK(rng.ScriptedRemaining() == 0);
+  }
+
   TEST_CASE("M2 provoke contract: idle / patrol, or chase beyond aggro; Returning ignores it") {
     const MonsterAiDef& ai = MAi();
     MonsterInstance m;

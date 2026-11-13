@@ -17,6 +17,7 @@
     "sys.inventory.levelTooLow": "I3",
     "zone.quest.clueNote": "Q11",
     "sys.quest.objType.clear_area": "K7",
+    "sys.quest.clearAreaLeft": "K7",
     "zone.event.puzzle.solved": "world 13.3",
     "menu.settings": "U9",
     "menu.quit": "U4",
@@ -131,7 +132,7 @@
     "ui.permanentReward.skillPoints": "DR16",
     "ui.permanentReward.respecTokens": "DR16"
   },
-  "keyCount": 2820,
+  "keyCount": 2821,
   "strings": {
     "boot.title": "Abyssfire",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2599,6 +2600,7 @@
     "sys.inventory.levelTooLow": "Level too low: requires level {level}",
     "zone.quest.clueNote": "{targetName}\n{note}",
     "sys.quest.objType.clear_area": "Cleanse",
+    "sys.quest.clearAreaLeft": "{n} left",
     "zone.event.puzzle.solved": "{solution} — {reward}",
     "menu.settings": "Settings",
     "menu.quit": "Quit",

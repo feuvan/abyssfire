@@ -341,6 +341,9 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	bDormantPose = false;
 	bHasPendingRise = false;
 	DormantRank = 0;
+	DeferDeathDelayMs = 0.0;
+	bHasPendingDeath = false;
+	bAdoptPendingDeath = false;
 	ArtFx = Art->Fx;
 	ArtName = Art->Name;
 	// Dark remake 2G stage H (K6): the hero's Ashnumb band twin, loaded with the hero (not at the first stack), and the
@@ -960,6 +963,9 @@ void AAbyssCharacterActor::ResetPresentation()
 	bCorpseDeath = false;
 	bCorpseAdopted = false;
 	bPoseHeld = false;
+	DeferDeathDelayMs = 0.0;
+	bHasPendingDeath = false;
+	bAdoptPendingDeath = false;
 	UpdateHeldPoseTick();   // the body ticks again
 	HuskShadowAlpha = 1.f;
 	bAshRise = false;
@@ -1151,10 +1157,29 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	}
 	if (Event.action == abyss::AnimAction::Death)
 	{
+		// Wave 3 close-out (3D note 36): the cleanse's survivors lie down one after the other. The world builder armed the
+		// delay on EvAreaCleansed (DeferNextDeath); the body keeps standing until the delayed start (PresentFrame).
+		const double DeferMs = DeferDeathDelayMs;
+		DeferDeathDelayMs = 0.0;
+		if (!bDying && !bHasPendingDeath
+			&& AbyssSubDungeonRules::DefersCollapse(Event.startMs, DeferDeathArmedMs, DeferMs, Frame.RenderSimMs))
+		{
+			PendingDeath = Event;
+			PendingDeath.startMs = Event.startMs + DeferMs;
+			PendingDeathDelayMs = DeferMs;
+			bHasPendingDeath = true;
+			return;
+		}
+		bHasPendingDeath = false;
 		bHasPendingRise = false;
 		bDormantPose = false;
 		IdleVariantRemainingSec = -1.f;
 		BeginDeath(Event);
+		if (bAdoptPendingDeath)
+		{
+			bAdoptPendingDeath = false;
+			AdoptAsCorpse();
+		}
 		return;
 	}
 	if (bDying || Event.action == abyss::AnimAction::Idle || Event.action == abyss::AnimAction::Walk)
@@ -1540,6 +1565,20 @@ void AAbyssCharacterActor::AdoptAsCorpse()
 	{
 		bCorpseAdopted = true;
 	}
+	else if (bHasPendingDeath)
+	{
+		bAdoptPendingDeath = true;   // its held Death adopts when it starts (OnPlayAnim)
+	}
+}
+
+void AAbyssCharacterActor::DeferNextDeath(double DelayMs, double ArmedSimMs)
+{
+	if (bDying || bHasPendingDeath || EntityKind == abyss::EntityKind::Hero)
+	{
+		return;
+	}
+	DeferDeathDelayMs = FMath::Max(0.0, DelayMs);
+	DeferDeathArmedMs = ArmedSimMs;
 }
 
 void AAbyssCharacterActor::PoseAsHusk()
@@ -2699,7 +2738,14 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 		bDormantPose = false;
 		OnPlayAnim(PendingRise, Info);
 	}
-	bDormantPose = !bDying && (Frame.bDormant || bHasPendingRise);
+	// ---- Wave 3 close-out: the cleanse's deferred fall (the body stood until now) ----
+	if (bHasPendingDeath && Info.RenderSimMs >= PendingDeath.startMs)
+	{
+		const abyss::EvPlayAnim Held = PendingDeath;
+		OnPlayAnim(Held, Info);   // not deferred again: its delay was consumed when it was held
+	}
+	// (a dormant body whose fall is held keeps its still pose until it falls)
+	bDormantPose = !bDying && (Frame.bDormant || bHasPendingRise || (bHasPendingDeath && bDormantPose));
 	if (Frame.bDormant)
 	{
 		DormantRank = Frame.DormantRank;
@@ -2716,7 +2762,7 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 			ActionState.bFaceLock = false;
 		}
 	}
-	if (!bDying && !Frame.bAlive)
+	if (!bDying && !Frame.bAlive && !bHasPendingDeath)
 	{
 		// Dead without a death anim (state restored from a snapshot): stay hidden.
 		SetActorHiddenInGame(true);

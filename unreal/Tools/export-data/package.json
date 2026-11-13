@@ -6,6 +6,7 @@
   "scripts": {
     "export": "node run.mjs",
     "check": "node run.mjs --check",
+    "test": "node scripts/theme_parents_test.mjs",
     "typecheck": "../../../node_modules/.bin/tsc -p tsconfig.json"
   }
 }

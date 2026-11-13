@@ -16,7 +16,8 @@ node unreal/Tools/export-data/run.mjs --out=DIR # export into DIR/Data + DIR/Cor
 node_modules/.bin/tsc -p unreal/Tools/export-data/tsconfig.json   # type-check the exporter, unreal/GameData and the TS they import
 ```
 
-or `npm run export | check | typecheck` inside this directory. Every run type-checks first (the tsc line above; a type
+or `npm run export | check | typecheck` inside this directory; `npm test` (`node scripts/theme_parents_test.mjs`, Node
+22.18+) tests the theme parent checks of `src/themeParents.ts` and the committed tables against the art kit. Every run type-checks first (the tsc line above; a type
 error fails the export) and rejects any other argument (`--out DIR` with a space exits 2 instead of overwriting the
 committed data). A run takes ~6 s and prints a record-count summary.
 Output is deterministic (same source → byte-identical files); re-run and commit the outputs whenever `src/data`,

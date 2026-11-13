@@ -383,16 +383,29 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 			Entry.bCompleted ? TEXT(" \x2713") : TEXT(""));
 		Entry.TitleColor = Entry.bCompleted ? FAbyssUiStyle::Rgb(0xf1c40f) : (Entry.bMain ? FAbyssUiStyle::Rgb(0xe8c252) : FAbyssUiStyle::Rgb(0xa89060));
 		int32 Done = 0;
+		FString ObjectiveSignature;
 		for (size_t Index = 0; Index < Def.objectives.size(); ++Index)
 		{
 			const abyss::QuestObjectiveDef& Objective = Def.objectives[Index];
 			const int32 Current = Index < Progress.objectives.size() ? Progress.objectives[Index] : 0;
 			const bool bDone = Current >= Objective.required;
 			Done += bDone ? 1 : 0;
+			// Wave 3 close-out: a clear_area objective reads "N left" while the hero is in its sub-dungeon
+			// (AbyssSubDungeonRules::ClearAreaLeft; a locale without the string keeps the plain count).
+			int32 Left = -1;
+			if (Objective.type == abyss::ObjectiveType::ClearArea)
+			{
+				const abyss::SubDungeonView& Sub = Snap.zone.subDungeon;
+				Left = AbyssSubDungeonRules::ClearAreaLeft(Sub.inside && Sub.id == Objective.targetId, bDone, Sub.cleansed, Sub.hostiles,
+					Objective.maxRemaining, Sub.guardianAlive);
+			}
+			const FString LeftTemplate = Left > 0 ? Ctx->LocOrStr(AbyssSubDungeonRules::ClearAreaLeftKey, TEXT("")) : FString();
+			const FString ProgressText = AbyssText::ToFString(AbyssSubDungeonRules::ObjectiveProgressText(Current, Objective.required, Left,
+				AbyssText::ToStd(LeftTemplate)));
+			ObjectiveSignature += FString::Printf(TEXT("%d:%s,"), bDone ? 1 : 0, *ProgressText);
 			FObjectiveLine Line;
 			Line.Text = FString::Printf(TEXT("%s %s %s"), *Ctx->ObjectiveTypeLabel(Objective, Def.type),
-				*Ctx->ObjectiveTargetLabel(Def, static_cast<int32>(Index)),
-				bDone ? TEXT("\x2713") : *FString::Printf(TEXT("%d/%d"), FMath::Min(Current, Objective.required), Objective.required));
+				*Ctx->ObjectiveTargetLabel(Def, static_cast<int32>(Index)), bDone ? TEXT("\x2713") : *ProgressText);
 			Line.bDone = bDone;
 			Line.Icon = Ctx->QuestObjectiveIcon(Objective);
 			Entry.Objectives.Add(MoveTemp(Line));
@@ -416,7 +429,8 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 				{ FAbyssUiContext::Arg("done", Done), FAbyssUiContext::Arg("total", static_cast<int64>(Def.objectives.size())) });
 			Entry.SummaryColor = FAbyssUiStyle::Rgb(0xaaaaaa);
 		}
-		NewSignature += FString::Printf(TEXT("%s|%d|%s\n"), *AbyssText::ToFString(Def.id), Entry.bCompleted ? 1 : 0, *Entry.Summary);
+		NewSignature += FString::Printf(TEXT("%s|%d|%s|%s\n"), *AbyssText::ToFString(Def.id), Entry.bCompleted ? 1 : 0, *Entry.Summary,
+			*ObjectiveSignature);
 		Entries.Add(MoveTemp(Entry));
 	}
 	TArray<FString> Expanded = ExpandedQuests.Array();

@@ -1556,6 +1556,8 @@ private:
 		Out.PeakLampsLit = Probe.PeakLampsLit;
 		Out.DormantSeen = Probe.DormantSeen;
 		Out.DormantWakes = Probe.DormantWakes;
+		Out.DormantFell = Probe.DormantFell;
+		Out.DormantUnaccounted = Probe.DormantUnaccounted;
 		Out.Cleanses = Probe.Cleanses;
 		Out.SequencesStarted = Probe.SequencesStarted;
 		Out.SequencesFinished = Probe.SequencesFinished;
@@ -2508,6 +2510,8 @@ private:
 			Int("peakLampsLit", Probe.PeakLampsLit);
 			Int("dormantSeen", Probe.DormantSeen);
 			Int("dormantWakes", Probe.DormantWakes);
+			Int("dormantFell", Probe.DormantFell);
+			Int("dormantUnaccounted", Probe.DormantUnaccounted);
 			Int("cleanses", Probe.Cleanses);
 			Int("cleanseSequencesStarted", Probe.SequencesStarted);
 			Int("cleanseSequencesFinished", Probe.SequencesFinished);

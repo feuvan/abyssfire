@@ -1238,6 +1238,12 @@ AAbyssCharacterActor* UAbyssWorldBuilder::ReleaseCorpseActor(abyss::EntityId Id)
 	// stay until the core despawns the instance (the label hides with the life).
 	Characters.Remove(Id);
 	Tracks.Remove(Id);
+	if (DormantShown.Remove(Id) > 0)
+	{
+		// The body changes hands in the step it died, before a frame showed it dead: it fell in its still pose.
+		++VisitDormantFell;
+		SubDungeonProbe.DormantFell = FMath::Max(SubDungeonProbe.DormantFell, VisitDormantFell);
+	}
 	if (RimmedCharacters.Remove(Id) > 0)
 	{
 		Actor->SetSelectionRim(EAbyssSelectionRim::None);
@@ -2032,10 +2038,19 @@ void UAbyssWorldBuilder::PresentCharacters(const abyss::Snapshot& Snap, const FA
 					SubDungeonProbe.DormantSeen = FMath::Max(SubDungeonProbe.DormantSeen, VisitDormantSeen);
 				}
 			}
-			else if (DormantShown.Remove(Id) > 0 && Monster->alive)
+			else if (DormantShown.Remove(Id) > 0)
 			{
-				++VisitDormantWakes;
-				SubDungeonProbe.DormantWakes = FMath::Max(SubDungeonProbe.DormantWakes, VisitDormantWakes);
+				if (Monster->alive)
+				{
+					++VisitDormantWakes;
+					SubDungeonProbe.DormantWakes = FMath::Max(SubDungeonProbe.DormantWakes, VisitDormantWakes);
+				}
+				else
+				{
+					// it died in its still pose (a kill in one blow, the cleanse's collapse)
+					++VisitDormantFell;
+					SubDungeonProbe.DormantFell = FMath::Max(SubDungeonProbe.DormantFell, VisitDormantFell);
+				}
 			}
 			// DR5: the mood's wind-up tint (zone_moods.json port.windupTint; else the web port's #FFC4B0 / #FF7A5C).
 			if (ZoneActor != nullptr)
@@ -2096,6 +2111,18 @@ void UAbyssWorldBuilder::PresentCharacters(const abyss::Snapshot& Snap, const FA
 		}
 		CharacterFrame.Location = GroundAt(Tile);
 		Actor->PresentFrame(CharacterFrame, Frame, VisualDelta, RealDelta);
+	}
+	// Wave 3 close-out (the autotest's verdict): every monster this visit showed dormant still stands dormant, or was seen
+	// waking or falling above. One whose actor or view is gone without either is unaccounted for.
+	if (DormantShown.Num() > 0)
+	{
+		int32 Standing = 0;
+		for (const TPair<uint32, FDormantShown>& Pair : DormantShown)
+		{
+			Standing += Characters.Contains(Pair.Key) && Index != nullptr && Index->FindMonster(Pair.Key) != nullptr ? 1 : 0;
+		}
+		SubDungeonProbe.DormantUnaccounted = FMath::Max(SubDungeonProbe.DormantUnaccounted,
+			AbyssSubDungeonRules::DormantUnaccounted(VisitDormantSeen, VisitDormantWakes, VisitDormantFell, Standing));
 	}
 }
 
@@ -3075,6 +3102,29 @@ void UAbyssWorldBuilder::HandleAreaCleansed(const abyss::EvAreaCleansed& Event)
 	// mood starts toward the cleansed one (the zone actor: UpdateMood reads the sequence's progress; its ambience,
 	// ambient.pit_embers, starts with it); from 600 ms the lamps light nearest first (UpdateSubDungeon).
 	ZoneActor->StartCleanse(Event.pos, NowMs);
+	// Wave 3 close-out (3D note 36): what still stands falls in this step (the Death events follow this one); the bodies
+	// lie down nearest the hero first, 120 ms apart (AbyssSubDungeonRules::CollapseRanks / CollapseDelayMs). The order
+	// is the snapshot's monster list, so the same step gives the same stagger.
+	if (Snap != nullptr)
+	{
+		std::vector<abyss::Vec2> Positions;
+		TArray<AAbyssCharacterActor*> Standing;
+		for (const abyss::MonsterView& View : Snap->monsters)
+		{
+			AAbyssCharacterActor* Actor = FindCharacter(View.id);
+			if (Actor == nullptr || Actor->IsDying() || Actor->IsHidden())
+			{
+				continue;   // already falling (the kill that cleansed the place), or never shown
+			}
+			Positions.push_back(View.pos);
+			Standing.Add(Actor);
+		}
+		const std::vector<int> Ranks = AbyssSubDungeonRules::CollapseRanks(Positions, Event.pos);
+		for (int32 Index = 0; Index < Standing.Num(); ++Index)
+		{
+			Standing[Index]->DeferNextDeath(AbyssSubDungeonRules::CollapseDelayMs(Ranks[static_cast<size_t>(Index)]), NowMs);
+		}
+	}
 	if (ZoneActor->GetSubDungeonStatus().bCleansing)
 	{
 		// The probe counts a sequence only when one started; a zone rebuilt or left under it counts it as cut.
@@ -3106,6 +3156,7 @@ void UAbyssWorldBuilder::EndSubDungeonVisit()
 	bDormantRanksDirty = false;
 	VisitDormantSeen = 0;
 	VisitDormantWakes = 0;
+	VisitDormantFell = 0;
 }
 
 void UAbyssWorldBuilder::RankDormant()

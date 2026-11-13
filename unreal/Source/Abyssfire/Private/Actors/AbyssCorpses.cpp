@@ -597,13 +597,16 @@ void UAbyssCorpseLayer::HandleCorpseAdded(const abyss::EvCorpseAdded& Event)
 	{
 		return;   // its death did not hold (no ash twins, no corpse block): today's fade played; the entry stays undrawn
 	}
+	// Wave 3 close-out: a cleanse survivor whose fall is held (AAbyssCharacterActor::DeferNextDeath) starts its husk
+	// that late, so the ash does not begin on a body that still stands.
+	const double FallDelayMs = Actor->GetPendingDeathDelayMs();
 	Actor->AdoptAsCorpse();
 	Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bHuskSunShadow);   // 2G review X4: no CSM on mobile
 	Entry.Actor = Actor;
 	Entry.Block = State->BlockFor(Assets->GetManifest(), Actor->GetArtName());
 	const abyss::Snapshot* Snap = CurrentSnapshot();
 	const bool bHeld = AbyssCorpseRules::StoryHoldActive(Entry.Block, State->PlayingBeat, Snap != nullptr && Snap->storyBusy, false);
-	Entry.Husk = AbyssCorpseRules::MakeHusk(Event.deathMs, Entry.Block.HoldFromMs, /*bBornHusk*/ false, bHeld);
+	Entry.Husk = AbyssCorpseRules::MakeHusk(Event.deathMs + FallDelayMs, Entry.Block.HoldFromMs, /*bBornHusk*/ false, bHeld);
 }
 
 void UAbyssCorpseLayer::HandleCorpseRemoved(const abyss::EvCorpseRemoved& Event)

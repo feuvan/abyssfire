@@ -19,6 +19,7 @@
     "sys.inventory.levelTooLow": "I3",
     "zone.quest.clueNote": "Q11",
     "sys.quest.objType.clear_area": "K7",
+    "sys.quest.clearAreaLeft": "K7",
     "zone.event.puzzle.solved": "world 13.3",
     "menu.settings": "U9",
     "menu.quit": "U4",
@@ -133,7 +134,7 @@
     "ui.permanentReward.skillPoints": "DR16",
     "ui.permanentReward.respecTokens": "DR16"
   },
-  "keyCount": 2819,
+  "keyCount": 2820,
   "strings": {
     "boot.title": "淵  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2600,6 +2601,7 @@
     "sys.inventory.levelTooLow": "等級不足，需要等級 {level}",
     "zone.quest.clueNote": "{targetName}\n{note}",
     "sys.quest.objType.clear_area": "淨化",
+    "sys.quest.clearAreaLeft": "剩余 {n}",
     "zone.event.puzzle.solved": "{solution} — {reward}",
     "menu.settings": "設置",
     "menu.quit": "退出遊戲",

@@ -60,6 +60,7 @@ void MonsterSystem::BuildWorld() {
     return zone->Paths().FindPath(from.x, from.y, to.x, to.y, out);
   };
   world_.safeZone = [zone](Vec2 p) { return zone->InSafeZone(p); };  // K5: the flee / kite steps keep out of camps
+  world_.nearSafeZone = [zone](Vec2 p, double margin) { return zone->NearSafeZone(p, margin); };  // patrol keep-off
 }
 
 void MonsterSystem::SetWorldForTesting(MonsterWorld world) {
@@ -69,6 +70,13 @@ void MonsterSystem::SetWorldForTesting(MonsterWorld world) {
     world_.safeZone = [ctx](Vec2 p) {
       const ZoneRuntime* zone = ctx->sys.zone;
       return zone != nullptr && zone->HasZone() && zone->InSafeZone(p);
+    };
+  }
+  if (!world_.nearSafeZone) {  // the patrol keep-off reads the zone's camps the same way
+    SimContext* ctx = &ctx_;
+    world_.nearSafeZone = [ctx](Vec2 p, double margin) {
+      const ZoneRuntime* zone = ctx->sys.zone;
+      return zone != nullptr && zone->HasZone() && zone->NearSafeZone(p, margin);
     };
   }
   worldOverride_ = true;
@@ -1286,11 +1294,18 @@ void MonsterSystem::Respawn(EntityId deadId) {
   // anchor itself (no safe-zone check, web).
   const TilePos anchor = monsters_[idx].spawnAnchor;
   TilePos tile = anchor;
+  // The margin of MonsterPatrolTargetAllowed for the monster that comes back (< 0: no rule).
+  const double freshAggro = variant != nullptr ? variantDef.aggroRange : monsters_[idx].originalDef.aggroRange;
+  const double keepOff = ai.patrolCampAggroMul >= 0 ? ai.patrolCampAggroMul * (std::max)(0.0, freshAggro) : -1.0;
   for (int32_t attempt = 0; attempt < ai.placementTries; ++attempt) {
     const int32_t tc = anchor.col + rng.RandomInt(-ai.respawnJitter, ai.respawnJitter);
     const int32_t tr = anchor.row + rng.RandomInt(-ai.respawnJitter, ai.respawnJitter);
     if (!Walkable(tc, tr)) continue;
     if (InSafeZone(Vec2(tc, tr))) continue;
+    // Wave 3 close-out review (patrolCampAggroMul): the respawn box is the patrol box, so a tile the patrol refuses is
+    // refused here too - or it would stand again inside its aggro range of the camp's edge. A refused try is spent like
+    // a tile in the safe zone (the next try draws again); the anchor fallback below stays the web's.
+    if (keepOff >= 0 && world_.nearSafeZone && world_.nearSafeZone(TilePos{tc, tr}.Center(), keepOff)) continue;
     tile = TilePos{tc, tr};
     break;
   }

@@ -38,6 +38,9 @@ const PORT_STRINGS: Record<string, { 'zh-CN': string; en: string; decision: stri
   // Dark remake K7 (3B): the quest card's label of a `clear_area` objective (ObjectiveType::ClearArea; the web has no
   // such objective type, so no `sys.quest.objType.clear_area`).
   'sys.quest.objType.clear_area': { 'zh-CN': '净化', en: 'Cleanse', decision: 'K7' },
+  // Wave 3 close-out: the HUD tracker's progress cell of a `clear_area` objective while the hero is in its sub-dungeon
+  // (AbyssSubDungeonRules::ClearAreaLeft: the monsters that must still fall before the cleanse).
+  'sys.quest.clearAreaLeft': { 'zh-CN': '剩余 {n}', en: '{n} left', decision: 'K7' },
   // world 13.3: a solved puzzle logs "<solution> — <reward>" before the gold / exp line (ZoneScene.ts joined them in code).
   'zone.event.puzzle.solved': { 'zh-CN': '{solution} — {reward}', en: '{solution} — {reward}', decision: 'world 13.3' },
   // UE-layer UI (save-ui-input, DECISIONS U1/U2/U4/U8/U9, P4, P13, Q6, I3/I4, C3, C10, W3): text the port UI shows that the

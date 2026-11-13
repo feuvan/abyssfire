@@ -113,21 +113,21 @@
     },
     {
       "file": "i18n_en.json",
-      "counts": {"keys": 2820},
-      "bytes": 234962,
-      "sha256": "5e1e241560873308b4f62fbcae638863cbfc381058e06823143371281b48e9c0"
+      "counts": {"keys": 2821},
+      "bytes": 235042,
+      "sha256": "2e513bac1d2eebbb318dffa6f486ec5442afca11d696763650084d9ced72f796"
     },
     {
       "file": "i18n_zh-CN.json",
-      "counts": {"keys": 2819},
-      "bytes": 226931,
-      "sha256": "bbd96aaafdc3258da3c36d75fbf91cb04e307dccd210336dc7122cacc7f069c3"
+      "counts": {"keys": 2820},
+      "bytes": 227013,
+      "sha256": "f49e478ab629f462f529f5c90d7821886070f5898cfaee228eb537fe5639084a"
     },
     {
       "file": "i18n_zh-TW.json",
-      "counts": {"keys": 2819},
-      "bytes": 227098,
-      "sha256": "62eaf08755d6815d58a2ab08ede7b9bfc605d6ed9b7058b7f4d0d9683329ed3f"
+      "counts": {"keys": 2820},
+      "bytes": 227180,
+      "sha256": "763dabf9c70fa73c49114d086af0305ad0bd2b5cd29e555e45080a4edb44a2d4"
     },
     {
       "file": "item_bases.json",
@@ -182,8 +182,8 @@
     {
       "file": "monster_ai.json",
       "counts": {"constants": 25},
-      "bytes": 2404,
-      "sha256": "2c44692f2d33bf58dbf227241b85490346aa34fcc5c65c46015c38b2464aa22b"
+      "bytes": 2433,
+      "sha256": "5e43584d871dc5d2f7530dbb5b6fd65db3cc9d6c16b9e7c1e24d58395b459e52"
     },
     {
       "file": "monsters.json",

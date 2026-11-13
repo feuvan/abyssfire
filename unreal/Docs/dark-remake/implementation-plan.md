@@ -2914,6 +2914,119 @@ engine risk, rules under adversarial input); each was checked against the code a
   the bot left inside 6.06 s), `gradeExpected` and `graded` true, `dormantSeen 8`, `dormantWakes 8`, empty `verdict`.
   The by-eye list is README *What to check by eye in the Pit*, now 15 items.
 
+**Wave 3 close-out (2026-11; pending review; DECISIONS DR17 (27)-(32)).** Seven items left open by stage H and the
+stage P review.
+- **The core suite on HEAD (item 1).** The stage P commit was pushed without it. Run on HEAD before any change: core
+  GCC 14 / 14 and Clang 14 / 14 test targets pass. Nothing was red. Core ASan + UBSan was run on the close-out tree
+  (HEAD plus the changes below, a clean build; a first HEAD-only ASan build was spoilt by this stage's own header
+  edits landing in the middle of it - objects of two struct layouts in one binary - and was discarded): GCC 14 / 14
+  pass, no report. A Clang ASan build cannot link in this container (no `libclang_rt.asan`); `core-asan` is the GCC
+  one.
+- **playerStart (item 2).** Not moved, and the reason is recorded: stage H tried (18,22), the map re-rolled and the
+  set-piece route check failed (DR17 (8), *Stage H outcomes* above). Nothing to try again here; `heroStart` stays the
+  open alternative.
+- **Patrols keep off the camps (item 3; DR17 (27)).** `monster_ai.json` `port.patrolCampAggroMul` = 1 (exporter
+  `tables/monsters.ts`; `MonsterAiDef::patrolCampAggroMul`, absent or below 0 = the web's patrol). The Idle -> Patrol
+  choice makes its two draws as before and then asks `MonsterPatrolTargetAllowed` (`MonsterAI.h`): the tile is
+  walkable and not within safe radius + mul x the monster's own `aggroRange` of a camp (strict;
+  `MonsterWorld::nearSafeZone`, `ZoneRuntime::NearSafeZone`, of which `InSafeZone` is now the margin-0 case). A
+  refused target is a blocked one: the monster idles until the next interval. No draw is added or dropped, so every
+  other RNG consumer keeps its stream position. Only the target is tested, not the walk: between two allowed tiles
+  of the 5 x 5 patrol box a footman cuts the 13-tile ring by at most 0.32 tiles. Tests: `monsters_test.cpp` *patrol
+  keep-off* (the ring, the margin per monster, mul 0 / 2 / -1, a world without camps, a blocked tile, the draws
+  kept); `content_ch1_test.cpp` *close-out: a patrol keeps ...* (12 seeds x 40 s of the idle zone: every patrol
+  target of every monster outside its ring, the trench detail still patrols, no unprovoked footman nearer than
+  12.68 tiles to the fire; it was 10.8). Applies to every zone (the web chapters' camps too).
+- **Close-out review: the ring holds for a respawn too.** The review re-ran the 12-seed bound on 400 seeds (66 331
+  patrol targets, nearest unprovoked footman 12.87 tiles: the 12.68 bound holds) and then found the hole beside it:
+  the respawn box (anchor +- `respawnJitter` 2) is the patrol box, and `MonsterSystem::Respawn` only refused the safe
+  zone, so a killed footman came back inside the ring (12 seeds x 6 rounds: 10 of 576 respawns, the nearest 11.66
+  tiles; the box reaches 10.8) and stood there, inside its aggro range of the camp's edge, until its first patrol.
+  `Respawn` now refuses a tile inside the same ring (the margin is the returning monster's `aggroRange`, the
+  variant's when a spawn variant is active) exactly as it refuses a safe-zone tile: the try is spent and the next one
+  draws again, the anchor fallback stays the web's. Unlike the patrol rule this one can add draws to the AI stream
+  (only when a try is refused). Test: `content_ch1_test.cpp` *close-out review: a respawn stands outside the patrol
+  ring* (12 seeds x 6 rounds of the trench detail killed and back: every respawn tile outside the ring, the nearest
+  13 tiles; 100 seeds, 4800 respawns: the same). The numbers below are measured with it.
+- **What moved, and the re-pin.** One pin: the K6 replay digest, `625d27542beac8fa` -> `baf5ec5ed99a65ff` with the
+  patrol rule (the surface's patrols near Knellwatch) -> `48490d0ffea6bb34` with the respawn rule (the replay's
+  variant respawn of the trench detail); GCC = Clang. The K2-K5 and K7 replay digests, the golden maps, the smoke
+  run's pins and every content pin kept their values. DR9, 20 seeds x 3 classes at bases 1000 and 7000, both bot
+  models, with and without the Pit (8 sweeps of 60 runs, GCC; all 8 pass before and after):
+
+  | Sweep | Levels (13 / 14) | Exp | Kills | Valdras median s (warrior / mage / rogue) |
+  |---|---|---|---|---|
+  | frame-perfect, 1000, Pit | 19 / 41 -> 19 / 41 | 4505-5122 -> 4499-5117 | 109-168 -> 117-165 | 37.5 / 49.5 / 132.7 -> 45.9 / 57.6 / 147.8 |
+  | frame-perfect, 1000, no Pit | 60 / 0 -> 60 / 0 | 3976-4534 -> 3917-4552 | 98-153 -> 98-149 | 53.6 / 70.6 / 174.1 -> 63.2 / 88.2 / 193.2 |
+  | reaction-limited, 1000, Pit | 19 / 41 -> 20 / 40 | 4586-5169 -> 4476-5160 | 120-171 -> 115-164 | 31.4 / 46.9 / 117.2 -> 39.9 / 57.5 / 121.6 |
+  | reaction-limited, 1000, no Pit | 60 / 0 -> 60 / 0 | 3906-4564 -> 3942-4517 | 95-144 -> 100-144 | 47.9 / 94.5 / 167.2 -> 56.9 / 104.0 / 172.3 |
+  | frame-perfect, 7000, Pit | 19 / 41 -> 24 / 36 | 4570-5129 -> 4521-5086 | 121-171 -> 115-170 | 40.8 / 41.2 / 150.8 -> 37.3 / 55.9 / 130.1 |
+  | frame-perfect, 7000, no Pit | 60 / 0 -> 60 / 0 | 3930-4542 -> 3933-4609 | 95-154 -> 93-165 | 62.1 / 67.5 / 153.7 -> 49.8 / 82.6 / 170.0 |
+  | reaction-limited, 7000, Pit | 17 / 43 -> 16 / 44 | 4555-5094 -> 4542-5112 | 120-164 -> 115-171 | 41.3 / 52.8 / 129.5 -> 42.2 / 61.8 / 139.7 |
+  | reaction-limited, 7000, no Pit | 60 / 0 -> 60 / 0 | 3991-4475 -> 3979-4520 | 98-153 -> 100-157 | 51.4 / 80.0 / 136.8 -> 48.2 / 94.6 / 156.3 |
+
+  The "before" column is HEAD as the builder re-measured it (the stage H write-up gave 31.1 s for the reaction-limited
+  warrior at base 1000 with the Pit; HEAD measures 31.4); the "after" column is the review's, with both rules (the
+  builder's column for the patrol rule alone was reproduced first, row for row: e.g. 190.7 s for the rogue below).
+  The sweep the stage H review flagged is at 39.9 s against the floor of 30: the floor was not touched, and
+  `playthrough_test.cpp` (every DR9 band) has no change in this stage. The lowest warrior median of the eight sweeps
+  is 37.3 s (frame-perfect, base 7000, with the Pit). The nearest band is the rogue's frame-perfect median without
+  the Pit at base 1000, 193.2 s against the ceiling of 210 (HEAD 174.1; the patrol rule alone 190.7); its 90th
+  percentile is 245.7 s, and 247.6 s at base 7000, against 275. Deaths: 5 in 480 runs before, 1 after (a
+  reaction-limited rogue to Valdras without the Pit); none inside the Pit either time. The largest hit 19.6 % of
+  life both times; the largest 1 s burst 31.0 % both times (the cap is 50). `dormantWakes` 8 in every run with the
+  Pit. Exp stays under Lv 15 (5670; the highest run 5160, was 5169). Determinism: all eight sweeps were run on GCC
+  and on Clang - the 480 stats lines and the 480 final saves are byte-identical between the two. Why the medians moved at all: the rule changes where the surface's monsters near a camp
+  stand when the bot arrives, so fights and kills shift along the whole route; no balance number was edited.
+- **"N left" (item 4; DR17 (28)).** Port string `sys.quest.clearAreaLeft`: zh-CN 剩余 {n}, en {n} left, zh-TW through
+  the web converter (剩余 {n}: it keeps 余, as in the web's own `homestead.caravan.progress`). No new glyph: fonts
+  `--check` passes without a rebuild. `AbyssSubDungeonRules::ClearAreaLeft` (the hostiles above the objective's
+  `maxRemaining`, at least 1 while the guardian stands; -1 = no line: not inside the objective's sub-dungeon, done,
+  cleansed, or nothing left to kill) and `ObjectiveProgressText` (the locale's string with `{n}`, else the capped
+  count). Glue: the HUD quest tracker's objective line (`SAbyssHudWidgets.cpp`; the line's text is part of the
+  tracker's refresh signature now, so it counts down). The quest card and the quest log keep the plain count.
+- **The collapse stagger (item 5; DR17 (29)).** `AbyssSubDungeonRules::CollapseRanks` (nearest the hero first, the
+  snapshot's order breaking ties), `CollapseDelayMs` (120 ms per rank, capped at 1200 ms), `DefersCollapse`. Glue:
+  `UAbyssWorldBuilder::HandleAreaCleansed` arms every standing monster's actor (`DeferNextDeath`);
+  `AAbyssCharacterActor` holds the cleanse's Death until its delayed start and stands meanwhile (a dormant body keeps
+  its still pose); the corpse layer adopts a held body and starts its husk that late. The obstacle the stage P review
+  recorded (the actor hides a dead monster that has not begun its death) is lifted for a held death only.
+- **Exporter and the contract (item 6; DR17 (30), (31)).** `Tools/export-data/src/themeParents.ts`: unknown theme
+  (either end), a looping chain, a chain of more than 8 names (`AbyssThemeRules::MaxThemeChain`), and equality with
+  `Art/blender/kit/theme.py`'s `parent` values (read as text at export; a difference fails the export).
+  `scripts/theme_parents_test.mjs` (26 cases, `npm test` in the exporter directory; Node loads the `.ts` itself).
+  `vfx_recipes.json` `dark.pit.cleanse` gains `lampFirstMs` 600, `nicheAtMs` 600, `markStepMs` 180 beside
+  `lampStepMs`: the file is generated by `Art/blender/vfx/fx_recipes.py` (pure Python, no Blender; a regeneration of
+  HEAD was byte-identical first), so the three constants were added to `fx_recipes_dark.py` and the file
+  regenerated: three added lines, the sentences unchanged; `fx_validate` 194 recipes, 0 errors. **`fx_recipes_dark.py`
+  is outside this stage's path list** (`Art/Export/**` only): it is the generator the item names; no other file under
+  `Art/blender` was touched.
+- **The autotest's verdict (item 7; DR17 (32)).** The probe counts `dormantFell` (died in the still pose: a kill in
+  one blow, the cleanse's collapse, a body the corpse layer took in the step it died) and `dormantUnaccounted`
+  (`AbyssSubDungeonRules::DormantUnaccounted`: shown dormant, then gone without a wake or a fall, the largest value
+  of a visit); `ProbeVerdict` fails on wakes + falls above the count seen and on any unaccounted. The death-inside
+  probe (3D note 21) was not added: it needs a scripted death in the Pit and a window deactivation inside the
+  autotest, which is not simple.
+- **Checks.** Core GCC and Clang 14 / 14 (943 test cases each with the review's respawn test, 940 on HEAD; 278104 /
+  278040 assertions; the builder's tree had 942 cases, 276864 / 276800 assertions - the difference
+  is `world_test.cpp` *A\* connectivity labels*, a random-grid property check that makes a different number of
+  checks per compiler, as on HEAD; not this stage's); core-asan (GCC) 14 / 14; data `--check` up to date; exporter
+  `theme_parents_test.mjs` 26 / 26; fonts `--check` rc 0 (no new glyph); PresentationTests GCC and Clang 245 cases,
+  218164 assertions (was 243 cases); Scripts unit tests 147; `build_content.py --plan --strict` rc 0, no problem;
+  the compile check, full run, 4 x 103 translation units pass, link scan 0 errors, `RESULT: PASS`; `fx_validate` 194
+  recipes, 0 errors; `git diff --check` clean; `git diff --exit-code -- src/` clean.
+- **Unverified (no engine here).** The collapse stagger on screen (the held body's idle, the husk's late start, a
+  dormant survivor's pose), the tracker's "N left" line and its wrap in zh-CN on touch, the two new report fields on
+  a real run. The Mac run's expectations gain: `dormantFell` (0 when the bot wakes all eight, as the sweeps do) and
+  `dormantUnaccounted 0`.
+- **Open.** `heroStart` (item 2's alternative); the death-inside autotest probe; the death cue at the cleanse is not
+  staggered with the bodies; the patrol rule tests the target tile, not the walk (0.32 tiles of chord); the initial
+  placement and the respawn's anchor fallback are not held to the ring (Chapter 1's entries stand outside it; a
+  later map's spawn entry near a camp would not be); core-asan was not re-run after the review's respawn rule (the
+  builder's clean ASan run is of the tree before it); the lamp pool's strength and `M_AF_Water` (DR17 (18), (19),
+  mac-look); the rogue's no-Pit median at 193.2 s of 210 should be re-swept before the next change to the early
+  route.
+
 ### Phase 4 — later chapters
 
 One content + art + audio pass per chapter when it is built in 3D (story-bible.md §7, monsters.md §6), each starting

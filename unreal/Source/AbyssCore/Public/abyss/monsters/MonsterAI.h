@@ -50,6 +50,9 @@ struct MonsterWorld {
   // steps never walk a monster into one: the safe-zone repel would drop it to Idle and, with the hero outside the camp
   // within its aggro range, the aggro scan would put it back in Chase on a no-movement tick, every tick (frozen).
   std::function<bool(Vec2 p)> safeZone;
+  // Patrol keep-off (MonsterAiDef::patrolCampAggroMul): `p` lies within the safe radius + `margin` tiles of a camp
+  // (strict; margin 0 = safeZone). May be null (no camps: every patrol target passes).
+  std::function<bool(Vec2 p, double margin)> nearSafeZone;
 };
 
 struct MonsterAiInput {
@@ -107,6 +110,12 @@ ABYSS_API double MonsterTopSpeed(const MonsterDef& def, const MonsterAiDef& ai);
 // the centre; flee / kite steps and an elite blink stay inside the range.
 ABYSS_API Vec2 MonsterLeashCentre(const MonsterInstance& m);
 ABYSS_API double MonsterLeashRange(const MonsterInstance& m, const MonsterAiDef& ai);
+
+// Patrol target rule (the Idle -> Patrol choice of UpdateMonsterAI, after its two draws): the tile is walkable and, when
+// ai.patrolCampAggroMul >= 0, not within safe radius + patrolCampAggroMul x def.aggroRange of a camp
+// (MonsterWorld::nearSafeZone). Pure: no draw, no state.
+ABYSS_API bool MonsterPatrolTargetAllowed(const MonsterInstance& m, const MonsterAiDef& ai, TilePos target,
+                                          const MonsterWorld& world);
 
 // K5 kite target (header "Kite"): the first point, from kite.max tiles from the hero down to heroDist + kiteSampleTiles
 // (every kiteSampleTiles; at each distance along the away vector - monster - hero, else the reverse heading, else +col -

@@ -639,8 +639,16 @@ does not have).
   / `cleanse.nicheAtMs` when the contract has them, else from the sequence step whose sentence opens with "the lamps
   light" / "if the Flame Niche"; with neither, the defaults stay and the zone build logs a Warning. The mood blended
   to is the contract's `grade.to.mood`, resolved once per zone build.
-  The clock is the sim's (a pause holds it). Entering a cleansed Pit shows the end state at once (no niche beat). The survivors'
-  fall is the core's `EvPlayAnim{Death}` in the cleanse's step: all at once (no stagger: see *Not done*).
+  The clock is the sim's (a pause holds it). Entering a cleansed Pit shows the end state at once (no niche beat).
+* **The collapse (Wave 3 close-out, 3D note 36).** The survivors' `EvPlayAnim{Death}` all arrive in the cleanse's
+  step; the bodies lie down nearest the hero first, 120 ms apart, the last at most 1.2 s late
+  (`AbyssSubDungeonRules::CollapseRanks` over the snapshot's monster order, `CollapseDelayMs`, `DefersCollapse`). On
+  `EvAreaCleansed` the world builder arms each standing monster's actor (`AAbyssCharacterActor::DeferNextDeath`); the
+  actor holds the Death event until its delayed start (sim clock, in `PresentFrame`), stands idle meanwhile (the
+  "dead without a death: hidden" rule skips a held death), then plays the Death whole. The corpse layer adopts the
+  body in the cleanse's step as before (`HoldsCorpsePose` is true for a held death) and starts its husk that late
+  (`GetPendingDeathDelayMs`), so no ash begins on a standing body. Rank 0 falls on the core's time; with S7's five
+  survivors the last falls 480 ms late. The death cue of the audio system is not staggered (it plays on the events).
 * **HUD.** The quest card's `clear_area` row (type label, the Pit's name, 0 / 1), the explore row and its minimap
   point inside the Pit (an objective's own `zone`), the guide arrow's `entrance` / `exit` targets, the minimap in the
   Pit's palette, the world map's pin on the parent zone. Inside the Pit S7 ranks as a quest of this place in the
@@ -687,15 +695,22 @@ are the references):
     outcrops everywhere, hills and trees beyond the border, no black ground.
 15. Hidden lamp twins: before the cleanse no lit lamp shows, after it no unlit one; no log line about degenerate
     instance transforms (the hidden twin is scale 0 in place).
+16. The collapse at the cleanse (close-out): the survivors lie down one after the other, nearest the hero first, about
+    an eighth of a second apart; none vanishes while it waits, none slides, and each husk starts greying only after its
+    own fall. The Death sounds still play together.
+17. The tracker inside the Pit (close-out): S7's cleanse line reads "N left" (剩余 N) and counts down with each kill
+    to 1 while the Pitwarden stands; outside the Pit and after the cleanse it reads 0/1 or the check mark.
+    `report.json` `subDungeon` gains `dormantFell` and `dormantUnaccounted` (0 on a sound run; above 0 fails the run).
 
 **Not done / deviations (recorded in DR17).** The lamp's light pool lies at the `light` socket with the contract's
 colour and radius, but its strength and falloff are the flame recipe's R18 light (alpha .34 x the cleansed mood's
 light scale .30 = about .10, additive, added after the grade and outside its ceiling; the contract's lamp light is
-gain .85, power 1.4, inside `min(ambient + pools, ceil)`); it needs the art owner's agreement at mac-look. No "N left"
-line on the quest card (no string for it: a content-string request). The bodies at the cleanse fall in one frame (3D
-note 36's stagger is open: a staggered Death would hide the actor for the delay, because the actor hides a dead
-monster that has not started its death; no rule or helper for it exists). The autotest has no probe for dying in the
-Pit or for backgrounding the app there (3D note 21). The pit mouth has no lit variant after the cleanse (no
+gain .85, power 1.4, inside `min(ambient + pools, ceil)`); it needs the art owner's agreement at mac-look. The HUD
+tracker's `clear_area` line ends in "N left" while the hero is in the Pit (Wave 3 close-out: `sys.quest.clearAreaLeft`,
+`AbyssSubDungeonRules::ClearAreaLeft` = the hostiles above the objective's `maxRemaining`, at least 1 while the
+guardian stands; `ObjectiveProgressText`); the quest card and the quest log keep the plain count. The autotest has no
+probe for dying in the Pit or for backgrounding the app there (3D note 21: it needs a scripted death and a window
+deactivation in the autotest, not built). The pit mouth has no lit variant after the cleanse (no
 such art). The ash twin's and the Ashnumb band's own colours are not graded.
 
 ## First engine run (UE 5.8.3, macOS arm64, Metal)

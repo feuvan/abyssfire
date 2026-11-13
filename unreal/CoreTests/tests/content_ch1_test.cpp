@@ -537,6 +537,95 @@ TEST_SUITE("monsters") {
     }
   }
 
+  // Wave 3 close-out (DECISIONS DR17 item 27): the bound above let a patrolling footman come within 1.8 tiles of the
+  // safe edge (10.8 from the fire). The patrol target choice now refuses a tile within safe radius + the monster's
+  // aggro range of a camp (monster_ai.json port.patrolCampAggroMul 1): the trench detail (aggro range 4) keeps its
+  // patrol targets 13 tiles or more from Knellwatch's fire. A walk between two such tiles (5.7 tiles at the most: the
+  // patrol box is 5 x 5) cuts the ring by at most 0.32 tiles, so an unprovoked footman stands 12.68 tiles or more away.
+  TEST_CASE("close-out: a patrol keeps the monster's aggro range off Knellwatch, on every seed") {
+    const MonsterAiDef& ai = MAi();
+    CHECK(ai.patrolCampAggroMul == 1);
+    const MapDef* map = MD().World().FindMap(test::ch1::kZone);
+    REQUIRE(map != nullptr);
+    REQUIRE_FALSE(map->camps.empty());
+    const Vec2 camp = map->camps[0].pos.Center();
+    const double safeR = map->safeZoneRadiusEffective;
+    CHECK(safeR == 9);
+    int64_t patrols = 0, trenchPatrols = 0;
+    double nearest = 1e9;
+    for (uint64_t seed = 1; seed <= 12; ++seed) {
+      CAPTURE(seed);
+      MonsterRig rig(seed, map->playerStart.Center());  // the hero stands in the camp: nothing sees him
+      REQUIRE(rig.ok);
+      rig.monsters.SpawnZonePopulation();
+      std::map<EntityId, TilePos> last;
+      for (int step = 0; step < 40 * 60; ++step) {
+        rig.Step();
+        for (const MonsterInstance& m : rig.monsters.All()) {
+          if (!m.IsAlive()) continue;
+          if (m.state == MonsterState::Patrol && m.hasPatrolTarget) {
+            const auto it = last.find(m.id);
+            if (it == last.end() || !(it->second == m.patrolTarget)) {
+              last[m.id] = m.patrolTarget;
+              ++patrols;
+              trenchPatrols += m.spawnEntry == 0 ? 1 : 0;
+              const double ring = safeR + ai.patrolCampAggroMul * m.def.aggroRange;
+              CHECK(Dist(m.patrolTarget.Center(), camp) >= ring);
+              CHECK_FALSE(rig.zone.NearSafeZone(m.patrolTarget.Center(), m.def.aggroRange));
+            }
+          } else {
+            last.erase(m.id);
+          }
+          if (m.spawnEntry == 0 && !m.IsAggro()) nearest = (std::min)(nearest, Dist(m.pos, camp));
+        }
+      }
+    }
+    CHECK(patrols > 1000);
+    CHECK(trenchPatrols > 100);  // the detail still patrols (its box reaches 10.8 tiles from the fire, its targets do not)
+    CHECK(nearest >= safeR + 4.0 - 0.32);
+  }
+
+  // Wave 3 close-out review: the ring holds for a respawn too. The web's respawn jitter (anchor +- 2, outside the safe
+  // zone) is the patrol box itself: without the rule a footman of the trench detail comes back as near as 10.8 tiles
+  // from the fire, inside its aggro range of the camp's edge. MonsterSystem::Respawn refuses those tiles like a safe one.
+  TEST_CASE("close-out review: a respawn stands outside the patrol ring, on every seed") {
+    const MonsterAiDef& ai = MAi();
+    const MapDef* map = MD().World().FindMap(test::ch1::kZone);
+    REQUIRE(map != nullptr);
+    REQUIRE_FALSE(map->camps.empty());
+    const Vec2 camp = map->camps[0].pos.Center();
+    const double safeR = map->safeZoneRadiusEffective;
+    int64_t respawns = 0;
+    double nearest = 1e9;
+    for (uint64_t seed = 1; seed <= 12; ++seed) {
+      CAPTURE(seed);
+      MonsterRig rig(seed, map->playerStart.Center());
+      REQUIRE(rig.ok);
+      rig.monsters.SpawnZonePopulation();
+      std::set<EntityId> seen;
+      for (const MonsterInstance& m : rig.monsters.All()) seen.insert(m.id);
+      for (int round = 0; round < 6; ++round) {
+        std::vector<EntityId> detail;
+        for (const MonsterInstance& m : rig.monsters.All()) {
+          if (m.spawnEntry == 0 && m.IsAlive()) detail.push_back(m.id);
+        }
+        REQUIRE_FALSE(detail.empty());
+        for (EntityId id : detail) rig.monsters.ApplyDamage(id, 1e6, DamageFlags{});
+        rig.Step(static_cast<int>(ai.respawnDelayMs / kSimStepMs) + 2);
+        for (const MonsterInstance& m : rig.monsters.All()) {
+          if (m.spawnEntry != 0 || !m.IsAlive() || !seen.insert(m.id).second) continue;
+          ++respawns;
+          CHECK(m.state == MonsterState::Idle);
+          const TilePos tile{JsRoundInt(m.pos.x), JsRoundInt(m.pos.y)};
+          CHECK_FALSE(rig.zone.NearSafeZone(tile.Center(), ai.patrolCampAggroMul * m.def.aggroRange));
+          nearest = (std::min)(nearest, Dist(tile.Center(), camp));
+        }
+      }
+    }
+    CHECK(respawns > 300);
+    CHECK(nearest >= safeR + 4.0);
+  }
+
   TEST_CASE("M7 story boss: skipped after q_rf_marshal, back once the chapter is complete") {
     MonsterRig rig(3);
     QuestProgress chief;

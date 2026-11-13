@@ -1187,7 +1187,10 @@ PIT_EMBER_DIM = "#B8401C"              # hearth.ember_dim
 PIT_EARTH = "#5A4E44"                  # dug grave earth, lit (clods read on the Pit's dug earth, L* 20.7)
 PIT_EARTH_DUST = "#6E655C"
 PIT_DIG_AT = [81.8, 34.0, 0.0]         # the spade's bite in the actor frame (manifest fx.dig.plantAtCm, on the ground)
+PIT_LAMP_FIRST_MS = 600                # the first lamp lights this long after EvAreaCleansed
 PIT_LAMP_STEP_MS = 420                 # the lamps light one by one: this far apart, nearest to the hero first
+PIT_NICHE_AT_MS = 600                  # the Flame Niche's glow
+PIT_MARK_STEP_MS = 180                 # its marks, this far apart from the glow
 PIT_GRADE_MS = 6000                    # the grade warms over this long from EvAreaCleansed
 PIT = {
     "_doc": "信者之坑 / the Pit of the Faithful (sub_rf_pit): the light-radius look, the cleanse sequence and the "
@@ -1230,14 +1233,21 @@ PIT = {
             {"atMs": 0, "do": "play prop.pit_cleanse.embers at the hero (camera volume, 6 s) and start "
                               "ambient.pit_embers as the zone's ambience (it stays for every later visit)"},
             {"atMs": 0, "do": f"blend the mood from pit to pit_cleansed over {PIT_GRADE_MS} ms (grade below)"},
-            {"atMs": 600, "do": "the lamps light one by one: sort every setpiece_pit_lamp by distance from the hero; "
-                                f"lamp k at 600 + k × {PIT_LAMP_STEP_MS} ms: swap its mesh for setpiece_pit_lamp_lit "
+            {"atMs": PIT_LAMP_FIRST_MS,
+             "do": "the lamps light one by one: sort every setpiece_pit_lamp by distance from the hero; "
+                                f"lamp k at {PIT_LAMP_FIRST_MS} + k × {PIT_LAMP_STEP_MS} ms: swap its mesh for setpiece_pit_lamp_lit "
                                 "at the same transform, play prop.pit_lamp.light once at socket flame, start the "
                                 "loop prop.pit_lamp.flame at socket flame (its light pool at socket light)"},
-            {"atMs": 600, "do": "if the Flame Niche is on screen: prop.pit_cleanse.niche at its socket niche, then "
-                                "prop.pit_cleanse.mark at mark_1 … mark_5, 180 ms apart (clockwise from the top)"},
+            {"atMs": PIT_NICHE_AT_MS,
+             "do": "if the Flame Niche is on screen: prop.pit_cleanse.niche at its socket niche, then "
+                                f"prop.pit_cleanse.mark at mark_1 … mark_5, {PIT_MARK_STEP_MS} ms apart (clockwise from the top)"},
         ],
+        # the sequence's numbers as fields (the UE module reads these first, the sentences above only without them:
+        # AbyssSubDungeonRules::ParseCleanseSpec)
+        "lampFirstMs": PIT_LAMP_FIRST_MS,
         "lampStepMs": PIT_LAMP_STEP_MS,
+        "nicheAtMs": PIT_NICHE_AT_MS,
+        "markStepMs": PIT_MARK_STEP_MS,
         "grade": {
             "from": {"mood": "pit", "ambient": [0.21, 0.23, 0.30]},
             "to": {"mood": "pit_cleansed", "ambient": [0.52, 0.44, 0.36]},

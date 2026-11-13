@@ -11,8 +11,9 @@
 //   and on EvAreaCleansed the sequence - lamps lit nearest first LampStepMs apart from LampFirstMs, the mood and the
 //   ambient going to the cleansed ones over GradeMs, the niche's glow and its marks - with its end state (a visit to a
 //   cleansed sub-dungeon shows everything lit at once).
-// * The stagger the core leaves to the presentation: a dormant rank's Rise along its line (LineRanks). The bodies
-//   that fall at the cleanse are NOT staggered (3D note 36 is open: they fall on the core's Death events, in one frame).
+// * The staggers the core leaves to the presentation: a dormant rank's Rise along its line (LineRanks), and the fall
+//   of what still stood at the cleanse (3D note 36: the core's Death events all arrive in the cleanse's step) - nearest
+//   to the hero first, CollapseStepMs apart, the last one at most CollapseMaxMs late (CollapseRanks, CollapseDelayMs).
 // * Small state rules: the spent guardian wears no elite marker, the world map shows the parent zone, an objective's
 //   own zone decides what the minimap marks, the scene label of the smoothness measurement.
 //
@@ -807,6 +808,64 @@ namespace AbyssSubDungeonRules
 		return Out;
 	}
 
+	// ---- the cleanse's collapse (3D note 36) ----
+
+	/** The survivors of a cleanse lie down one after the other: rank k falls k x this late, never later than the cap. */
+	inline constexpr double CollapseStepMs = 120.0;
+	inline constexpr double CollapseMaxMs = 1200.0;
+
+	/** The delay of the fall of rank k (CollapseRanks; 0 = the body nearest the hero: it falls on the core's time). */
+	inline double CollapseDelayMs(int Rank)
+	{
+		const double Delay = static_cast<double>(Rank < 0 ? 0 : Rank) * CollapseStepMs;
+		return Delay > CollapseMaxMs ? CollapseMaxMs : Delay;
+	}
+
+	/**
+	 * The ranks of the bodies that fall at a cleanse: nearest to Hero first, the given order (the snapshot's monster
+	 * list) breaking ties. Out[i] = the rank of Positions[i]; the ranks are 0 .. n-1, each once. A position that is not a
+	 * number sorts last.
+	 */
+	inline std::vector<int> CollapseRanks(const std::vector<abyss::Vec2>& Positions, const abyss::Vec2& Hero)
+	{
+		const size_t Count = Positions.size();
+		std::vector<double> Squared(Count, 0.0);
+		for (size_t I = 0; I < Count; ++I)
+		{
+			const double Dx = Positions[I].x - Hero.x;
+			const double Dy = Positions[I].y - Hero.y;
+			const double D = Dx * Dx + Dy * Dy;
+			Squared[I] = D == D ? D : HUGE_VAL;   // NaN: last
+		}
+		std::vector<int> Ranks(Count, 0);
+		for (size_t I = 0; I < Count; ++I)
+		{
+			int Rank = 0;
+			for (size_t J = 0; J < Count; ++J)
+			{
+				Rank += J != I && (Squared[J] < Squared[I] || (Squared[J] == Squared[I] && J < I)) ? 1 : 0;
+			}
+			Ranks[I] = Rank;
+		}
+		return Ranks;
+	}
+
+	/**
+	 * Whether a Death that the core started at EventStartMs is the cleanse's (armed at ArmedMs for a delay of DelayMs)
+	 * and still lies ahead of the frame shown (RenderMs): the event belongs to the cleanse's step (within
+	 * CollapseArmWindowMs after the arming; a later death is its own) and its delayed start is not yet due. False = play
+	 * it now.
+	 */
+	inline constexpr double CollapseArmWindowMs = 250.0;
+	inline bool DefersCollapse(double EventStartMs, double ArmedMs, double DelayMs, double RenderMs)
+	{
+		if (!(DelayMs > 0.0) || EventStartMs < ArmedMs - CollapseArmWindowMs || EventStartMs > ArmedMs + CollapseArmWindowMs)
+		{
+			return false;
+		}
+		return EventStartMs + DelayMs > RenderMs;
+	}
+
 	// =================================================================================================================
 	// Small state rules
 	// =================================================================================================================
@@ -838,6 +897,54 @@ namespace AbyssSubDungeonRules
 		bool bAnyObjectiveInMap)
 	{
 		return QuestZone == MapId || (bInside && !ParentZone.empty() && QuestZone == ParentZone) || bAnyObjectiveInMap;
+	}
+
+	/** The "N left" string of a clear_area objective's tracker line (`{n}` = ClearAreaLeft). */
+	inline constexpr std::string_view ClearAreaLeftKey = "sys.quest.clearAreaLeft";
+
+	/**
+	 * How many monsters must still fall before a clear_area objective completes, for the tracker's "N left": the
+	 * hostiles above the objective's `maxRemaining` (SubDungeonView::hostiles; QuestObjectiveDef::maxRemaining), and
+	 * at least 1 while the guardian stands (he has to die whatever the count is). -1 = no such line: the hero is not in
+	 * the objective's sub-dungeon (the count is the zone's own), the objective is done, the place is cleansed, or
+	 * nothing is left to kill (the objective then waits for its `after`).
+	 */
+	inline int32_t ClearAreaLeft(bool bInsideTarget, bool bObjectiveDone, bool bCleansed, int32_t Hostiles, int32_t MaxRemaining,
+		bool bGuardianAlive)
+	{
+		if (!bInsideTarget || bObjectiveDone || bCleansed)
+		{
+			return -1;
+		}
+		const int32_t Over = Hostiles - (MaxRemaining > 0 ? MaxRemaining : 0);
+		const int32_t Floor = bGuardianAlive ? 1 : 0;
+		const int32_t Left = Over > Floor ? Over : Floor;
+		return Left > 0 ? Left : -1;
+	}
+
+	/**
+	 * The progress cell that ends a tracker objective line: the locale's "N left" (every `{n}` of Template replaced)
+	 * when Left > 0 and the locale has the string, else "current/required" with current capped at required. A done
+	 * objective's check mark is the caller's.
+	 */
+	inline std::string ObjectiveProgressText(int32_t Current, int32_t Required, int32_t Left, std::string_view LeftTemplate)
+	{
+		if (Left > 0 && LeftTemplate.find("{n}") != std::string_view::npos)
+		{
+			const std::string Number = std::to_string(Left);
+			std::string Out;
+			size_t At = 0;
+			for (size_t Hit = LeftTemplate.find("{n}"); Hit != std::string_view::npos; Hit = LeftTemplate.find("{n}", At))
+			{
+				Out.append(LeftTemplate.substr(At, Hit - At));
+				Out.append(Number);
+				At = Hit + 3;
+			}
+			Out.append(LeftTemplate.substr(At));
+			return Out;
+		}
+		const int32_t Shown = Current < Required ? (Current > 0 ? Current : 0) : Required;
+		return std::to_string(Shown) + "/" + std::to_string(Required);
 	}
 
 	/**
@@ -877,6 +984,8 @@ namespace AbyssSubDungeonRules
 		int PeakLampsLit = 0;
 		int DormantSeen = 0;          // the most distinct dormant monsters one visit showed in their still pose
 		int DormantWakes = 0;         // the most of them one visit saw waking
+		int DormantFell = 0;          // the most of them one visit saw die in their still pose (a kill, the cleanse)
+		int DormantUnaccounted = 0;   // the most one visit lost: shown dormant, then gone without a wake or a fall
 		int Cleanses = 0;             // EvAreaCleansed received
 		int SequencesStarted = 0;     // of those, with a built sub-dungeon to play the sequence in
 		int SequencesFinished = 0;
@@ -884,6 +993,17 @@ namespace AbyssSubDungeonRules
 		bool bGradeExpected = false;  // the theme chain has a dark contract (vfx_recipes.json dark.<theme>.lightRadius)
 		bool bGraded = false;         // the grade was written to the materials' collection (the content has the parameters)
 	};
+
+	/**
+	 * The dormant monsters of a visit the presentation lost: Seen were shown in their still pose; each of them is still
+	 * Standing dormant, or was seen waking (Wakes), or was seen dying dormant (Fell). What is left over was dropped
+	 * without either being shown (0 on a sound run; never negative).
+	 */
+	inline int DormantUnaccounted(int Seen, int Wakes, int Fell, int Standing)
+	{
+		const int Rest = Seen - (Wakes > 0 ? Wakes : 0) - (Fell > 0 ? Fell : 0) - (Standing > 0 ? Standing : 0);
+		return Rest > 0 ? Rest : 0;
+	}
 
 	/** "" while the presentation kept up with the core; else what the core did that nothing showed. */
 	inline std::string ProbeVerdict(const FProbe& P)
@@ -926,6 +1046,18 @@ namespace AbyssSubDungeonRules
 		if (P.DormantSeen > 0 && P.DormantWakes == 0)
 		{
 			Add(std::to_string(P.DormantSeen) + " dormant monsters shown but none seen waking");
+		}
+		// The wakes against the count seen: nothing wakes or falls that was not shown dormant first, and nothing shown
+		// dormant disappears without one of the two.
+		if (P.DormantWakes + P.DormantFell > P.DormantSeen)
+		{
+			Add(std::to_string(P.DormantWakes) + " wakes and " + std::to_string(P.DormantFell) + " falls for "
+				+ std::to_string(P.DormantSeen) + " dormant monsters shown");
+		}
+		if (P.DormantUnaccounted > 0)
+		{
+			Add(std::to_string(P.DormantUnaccounted) + " of " + std::to_string(P.DormantSeen)
+				+ " dormant monsters left their still pose without a wake or a fall being shown");
 		}
 		return Out;
 	}

@@ -31209,7 +31209,10 @@
       "do": "if the Flame Niche is on screen: prop.pit_cleanse.niche at its socket niche, then prop.pit_cleanse.mark at mark_1 \u2026 mark_5, 180 ms apart (clockwise from the top)"
      }
     ],
+    "lampFirstMs": 600,
     "lampStepMs": 420,
+    "nicheAtMs": 600,
+    "markStepMs": 180,
     "grade": {
      "from": {
       "mood": "pit",

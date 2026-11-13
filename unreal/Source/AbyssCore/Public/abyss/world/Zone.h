@@ -152,6 +152,7 @@ class ABYSS_API ZoneRuntime {
   std::span<const ExitState> Exits() const { return exits_; }
   double SafeZoneRadius() const;
   bool InSafeZone(Vec2 p) const;           // any camp: distSq < safeR^2 (strict)
+  bool NearSafeZone(Vec2 p, double margin) const;  // any camp: distSq < (safeR + margin)^2 (strict; margin < 0 as 0)
   bool NearCampfire(Vec2 p) const;         // within campfireRadiusTiles of a camp (regen x50)
   Vec2 CampPosition(int32_t index) const;  // camps[i] (fallback playerStart, then (3,3))
   Vec2 NearestCamp(Vec2 p) const;
