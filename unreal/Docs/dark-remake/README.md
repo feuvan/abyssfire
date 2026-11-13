@@ -10,6 +10,13 @@
 | [monsters.md](monsters.md) | The full roster: Chapter 1 monsters in detail (stats, behaviour, telegraphs, on-death, packs, spawns, sound, 3D art brief), chapters 2-5 families in outline |
 | [implementation-plan.md](implementation-plan.md) | How to build it: content ownership, core features with specs and tests, AutoPilot, art, audio, work packages with disjoint file ownership and acceptance checks |
 
+**Phase 4 (Chapter 2).** [chapter2.md](chapter2.md) is the design spec for the second chapter, 被抹去的名字 / The Erased
+Name, in the Hanging Wood (`twilight_forest`): hub, roster with the first quadruped rig family, quests, story beats,
+the Cantor, Volgan, the Root Barrow, moods, art list, balance bands and acceptance checks. It is revision 2 of a
+design, reviewed against the core, and **nothing in it is built**. It names eight core requests ([R1]-[R8], its §20),
+nine work packages (4A-4G, its §21) and eight open decisions for the project owner (its §22); the first of those, the
+zh-CN names and a sensitivity read, should be settled before art starts.
+
 ## Logline
 
 四十天前，一场圣战死在了东境。赤幡原喝下了太多的血，地底的封印裂开了。战死的大军仍在执行最后的军令——死守；食腐的东西在尸野上分肉；裂口深处，有东西在听。你从丧钟堡外的焚尸坑里爬出来，掌心烙着五焰一空。每到黄昏，那口钟就为当天数到的每一个名字敲一下。
